@@ -15,10 +15,10 @@
     ],
     "autoload": {
         "psr-4": {
-            "Gogol\\VpsManagerCLI\\": "./"
+            "Gogol\\VpsManagerCLI\\": "./src"
         },
         "files": [
-            "./Helpers/helpers.php"
+            "./src/Helpers/helpers.php"
         ]
     }
 }
