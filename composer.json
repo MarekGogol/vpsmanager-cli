@@ -1,0 +1,24 @@
+{
+    "name": "marekgogol/manager",
+    "description": "Manage server configuration",
+    "type": "metapackage",
+    "require": {
+        "php": ">=7.0",
+        "symfony/console": "^4.2",
+        "symfony/var-dumper": "^4.2"
+    },
+    "authors": [
+        {
+            "name": "Marek Gogol",
+            "email": "info@marekgogol.sk"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Gogol\\VpsManager\\App\\": "./"
+        },
+        "files": [
+            "./Helpers/helpers.php"
+        ]
+    }
+}
