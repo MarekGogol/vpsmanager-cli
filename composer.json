@@ -1,9 +1,9 @@
 {
-    "name": "marekgogol/manager",
-    "description": "Manage server configuration",
-    "type": "metapackage",
+    "name": "marekgogol/vpsmanager-cli",
+    "description": "CLI For your wamp VPS management",
+    "type": "library",
     "require": {
-        "php": ">=7.0",
+        "php": ">=7.1",
         "symfony/console": "^4.2",
         "symfony/var-dumper": "^4.2"
     },
