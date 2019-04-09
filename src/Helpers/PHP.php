@@ -1,9 +1,9 @@
 <?php
 
-namespace Gogol\Gogol\VpsManagerCLI\Helpers;
+namespace Gogol\VpsManagerCLI\Helpers;
 
-use Gogol\Gogol\VpsManagerCLI\Application;
-use Gogol\Gogol\VpsManagerCLI\Traits\PHPSettingsTrait;
+use Gogol\VpsManagerCLI\Application;
+use Gogol\VpsManagerCLI\Traits\PHPSettingsTrait;
 
 class PHP extends Application
 {

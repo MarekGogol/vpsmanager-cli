@@ -7,7 +7,7 @@ $vps_manager = null;
 
 function vpsManagerPath()
 {
-    return '/etc/vpsmanager';
+    return './src';
 }
 
 function vpsManager()
@@ -18,7 +18,7 @@ function vpsManager()
     if ( $vpsmanager )
         return $vpsmanager;
 
-    return $vpsmanager = new Gogol\Gogol\VpsManagerCLI\Application;
+    return $vpsmanager = new Gogol\VpsManagerCLI\Application;
 }
 
 function isValidDomain($domain = null)

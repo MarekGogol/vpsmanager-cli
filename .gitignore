@@ -1,3 +1,5 @@
+/src/config.php
 /vendor
+.vps-wamp-setup
 composer.lock
 run.sh

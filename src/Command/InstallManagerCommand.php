@@ -1,8 +1,8 @@
 <?php
 
-namespace Gogol\Gogol\VpsManagerCLI\Command;
+namespace Gogol\VpsManagerCLI\Command;
 
-use Gogol\Gogol\VpsManagerCLI\Nginx\Nginx;
+use Gogol\VpsManagerCLI\Nginx\Nginx;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -77,14 +77,14 @@ class InstallManagerCommand extends Command
                 'config_key' => 'php_version',
                 'default' => '7.2'
             ],
-            // 'setVpsManagerPath' => [
-            //     'config_key' => 'vpsmanager_path',
-            //     'default' => $input->getOption('vpsmanager_path') ?: null,
-            // ],
             'setWWWPath' => [
                 'config_key' => 'www_path',
                 'default' => '/var/www'
             ],
+            // 'setVpsManagerPath' => [
+            //     'config_key' => 'vpsmanager_path',
+            //     'default' => $input->getOption('vpsmanager_path') ?: null,
+            // ],
             // 'setHost' => [
             //     'config_key' => 'host',
             //     'default' => $input->getOption('host') ?: 'vpsmanager.example.com'

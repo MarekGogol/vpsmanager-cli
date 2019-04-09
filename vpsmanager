@@ -2,10 +2,10 @@
 <?php
 require_once 'vendor/autoload.php';
 
-use Gogol\Gogol\VpsManagerCLI\Command\HostingCreateCommand;
-use Gogol\Gogol\VpsManagerCLI\Command\HostingRemoveCommand;
-use Gogol\Gogol\VpsManagerCLI\Command\InstallManagerCommand;
-use Gogol\Gogol\VpsManagerCLI\Command\SSLCreateCommand;
+use Gogol\VpsManagerCLI\Command\HostingCreateCommand;
+use Gogol\VpsManagerCLI\Command\HostingRemoveCommand;
+use Gogol\VpsManagerCLI\Command\InstallManagerCommand;
+use Gogol\VpsManagerCLI\Command\SSLCreateCommand;
 use Symfony\Component\Console\Application;
 
 $application = new Application();

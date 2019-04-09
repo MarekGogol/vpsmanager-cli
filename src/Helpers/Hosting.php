@@ -1,8 +1,8 @@
 <?php
 
-namespace Gogol\Gogol\VpsManagerCLI\Helpers;
+namespace Gogol\VpsManagerCLI\Helpers;
 
-use Gogol\Gogol\VpsManagerCLI\Application;
+use Gogol\VpsManagerCLI\Application;
 
 class Hosting extends Application
 {
