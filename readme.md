@@ -2,7 +2,7 @@
 
 ### 1. Installation
 
-This command securely first check all your VPS requirements such as PHP, MySQL, Npm, NodeJS, Composer and downloads all required components for proper wamp configuration on your VPS. When everything will be instaled, then will be initialized configuration of VPS Manager CLI.
+This command first checks all your VPS requirements such as PHP, MySQL, Npm, NodeJS, Composer and downloads all required components for proper wamp configuration in your VPS. When everything will be instaled, then will be initialized configuration of VPS Manager CLI.
 
 ```bash
 cd /root/
