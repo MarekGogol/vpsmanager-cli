@@ -1,6 +1,6 @@
 <?php
 
-namespace Gogol\VpsManager\App\Helpers;
+namespace Gogol\Gogol\VpsManagerCLI\Helpers;
 
 class Response
 {

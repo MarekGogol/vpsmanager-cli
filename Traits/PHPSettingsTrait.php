@@ -1,6 +1,6 @@
 <?php
 
-namespace Gogol\VpsManager\App\Traits;
+namespace Gogol\Gogol\VpsManagerCLI\Traits;
 
 trait PHPSettingsTrait
 {

@@ -14,7 +14,7 @@ RUN apt install -y php7.2-fpm && apt install -y php7.2-cli php7.2-fpm php7.2-jso
 RUN apt install -y php7.3-fpm && apt install -y php7.3-cli php7.3-fpm php7.3-json php7.3-pdo php7.3-mysql php7.3-zip php7.3-gd php7.3-mbstring php7.3-curl php7.3-xml php7.3-bcmath php7.3-json
 RUN apt install -y mysql-server && service mysql start
 
-WORKDIR /var/www/vpsmanager.com/vendor/marekgogol/vpsmanager/src/app
+WORKDIR /root/vpsmanager
 
 EXPOSE 80 443
 

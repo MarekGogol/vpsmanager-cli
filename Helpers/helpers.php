@@ -18,7 +18,7 @@ function vpsManager()
     if ( $vpsmanager )
         return $vpsmanager;
 
-    return $vpsmanager = new Gogol\VpsManager\App\Application;
+    return $vpsmanager = new Gogol\Gogol\VpsManagerCLI\Application;
 }
 
 function isValidDomain($domain = null)

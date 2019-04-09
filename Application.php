@@ -1,15 +1,15 @@
 <?php
 
-namespace Gogol\VpsManager\App;
+namespace Gogol\Gogol\VpsManagerCLI;
 
-use Gogol\VpsManager\App\Helpers\Certbot;
-use Gogol\VpsManager\App\Helpers\Hosting;
-use Gogol\VpsManager\App\Helpers\MySQL;
-use Gogol\VpsManager\App\Helpers\Nginx;
-use Gogol\VpsManager\App\Helpers\PHP;
-use Gogol\VpsManager\App\Helpers\Response;
-use Gogol\VpsManager\App\Helpers\Server;
-use Gogol\VpsManager\App\Helpers\Stub;
+use Gogol\Gogol\VpsManagerCLI\Helpers\Certbot;
+use Gogol\Gogol\VpsManagerCLI\Helpers\Hosting;
+use Gogol\Gogol\VpsManagerCLI\Helpers\MySQL;
+use Gogol\Gogol\VpsManagerCLI\Helpers\Nginx;
+use Gogol\Gogol\VpsManagerCLI\Helpers\PHP;
+use Gogol\Gogol\VpsManagerCLI\Helpers\Response;
+use Gogol\Gogol\VpsManagerCLI\Helpers\Server;
+use Gogol\Gogol\VpsManagerCLI\Helpers\Stub;
 
 class Application
 {

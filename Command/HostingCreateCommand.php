@@ -1,8 +1,8 @@
 <?php
 
-namespace Gogol\VpsManager\App\Command;
+namespace Gogol\Gogol\VpsManagerCLI\Command;
 
-use Gogol\VpsManager\App\Nginx\Nginx;
+use Gogol\Gogol\VpsManagerCLI\Nginx\Nginx;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
