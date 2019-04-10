@@ -9,6 +9,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ChoiceQuestion;
+use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Console\Question\Question;
 
 class HostingCreateCommand extends Command
@@ -37,13 +38,14 @@ class HostingCreateCommand extends Command
 
         $domain = $this->getDomainName();
         $php_version = $this->getPHPVersion();
+        $database = $this->askForCreatingDatabase();
 
         //Remove all hosting settings
         //If dev parameter will be presented as number 2, all www data and database will be destroyed!
         if ( $this->isDev() )
             vpsManager()->hosting()->remove($domain, $this->input->getOption('dev') == 2);
 
-        $this->generateManagerHosting($domain, $php_version);
+        $this->generateManagerHosting($domain, $php_version, $database);
     }
 
     public function getDomainName()
@@ -85,6 +87,13 @@ class HostingCreateCommand extends Command
         }
     }
 
+    public function askForCreatingDatabase()
+    {
+        $question = new ConfirmationQuestion('Would you like to create MySql <info>user</info> and <info>database</info> for this domain? (y/N) ', false);
+
+        return $this->helper->ask($this->input, $this->output, $question);
+    }
+
     public function isDev()
     {
         return $this->input->getOption('dev') > 1;
@@ -93,10 +102,11 @@ class HostingCreateCommand extends Command
     /*
      * Set host
      */
-    private function generateManagerHosting($domain, $php_version)
+    private function generateManagerHosting($domain, $php_version, $database = false)
     {
         if ( ($response = vpsManager()->hosting()->create($domain, [
-            'php_version' => $php_version
+            'php_version' => $php_version,
+            'database' => $database
         ]))->isError() )
             throw new \Exception($response->message);
 

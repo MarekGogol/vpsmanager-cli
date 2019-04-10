@@ -34,12 +34,16 @@ class MySQL extends Application
         $database = $this->dbName($domain);
         $password = getRandomPassword();
 
+        //Check if db exists
+        if ( $this->connect()->select_db($database) )
+            return $this->response()->success('User and database <comment>'.$database.'</comment> already exists.')->writeln(null, true);
+
         $this->connect()->query('CREATE DATABASE IF NOT EXISTS `'.$database.'` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
         $this->connect()->query('GRANT ALL PRIVILEGES ON `'.$database.'`.* to `'.$database.'`@`localhost` identified by \''.$password.'\'');
         $this->connect()->query('flush privileges');
 
         return $this->response()
-                    ->success("<info>MySQL databáza úspešne vytvorená</info>\nDatabáza\Používateľ: <comment>$database</comment>\nHeslo: <comment>$password</comment>");
+                    ->success("<info>MySQL database has been successfuly created.</info>\nDatabase\User: <comment>$database</comment>\nPassword: <comment>$password</comment>");
     }
 
     /**

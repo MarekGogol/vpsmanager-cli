@@ -125,7 +125,10 @@ class Hosting extends Application
             return $response;
 
         //Create mysql database
-        if ( ($response = $this->mysql()->createDatabase($domain)->writeln(true))->isError() )
+        if ( isset($config['database'])
+             && $config['database'] == true
+             && ($response = $this->mysql()->createDatabase($domain)->writeln(true))->isError()
+         )
             return $response;
 
         // Create domain directory tree
