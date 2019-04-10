@@ -29,6 +29,11 @@ class Nginx extends Application
         return $this->config('nginx_path').'/sites-enabled/'.$this->toUserFormat($domain);
     }
 
+    public function getErrorLogPath($domain, $config = null, $filename = null)
+    {
+        return $this->getWebPath($domain, $config) . '/logs/'.($filename ?: 'error').'.log';
+    }
+
     public function cloneNginxSettins()
     {
         $nginx_path = $this->config('nginx_path');
@@ -103,6 +108,7 @@ class Nginx extends Application
         $stub->replace('{path}', $www_path);
         $stub->replace('{php_version}', $php_version);
         $stub->replace('{php_sock_name}', $this->php()->getSocketName($domain, $php_version));
+        $stub->replace('{error_log_path}', $this->getErrorLogPath($domain, $config));
 
         $this->addSubdomainSupport($domain, $stub, $host_stub, $redirect_stub, $php_version);
 
@@ -125,6 +131,7 @@ class Nginx extends Application
         $sub_stub->replace('{path}', $this->getWebPath($domain).'/sub/$sub/public');
         $sub_stub->replace('{php_version}', $php_version);
         $sub_stub->replace('{php_sock_name}', $this->php()->getSocketName($domain, $php_version));
+        $sub_stub->replace('{error_log_path}', $this->getErrorLogPath($domain));
 
         $stub->addLine("\n".$sub_stub);
     }

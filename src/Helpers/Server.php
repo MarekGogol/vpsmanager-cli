@@ -98,7 +98,7 @@ class Server extends Application
             $web_path.'/web' => 710,
             $web_path.'/web/public' => 710,
             $web_path.'/sub' => 710,
-            $web_path.'/logs' => 700,
+            $web_path.'/logs' => ['chmod' => 750, 'user' => 'root', 'group' => $user],
         ];
 
         //Create subdomain
@@ -125,8 +125,12 @@ class Server extends Application
             }
 
             //Change permissions
-            if ( $with_permissions )
-                shell_exec('chmod '.$permissions.' -R '.$path.' && chown -R '.$user.':www-data '.$path);
+            if ( $with_permissions ){
+                $dir_chmod = isset($permissions['chmod']) ? $permissions['chmod'] : $permissions;
+                $dir_user = isset($permissions['user']) ? $permissions['user'] : $user;
+                $dir_group = isset($permissions['group']) ? $permissions['group'] : 'www-data';
+                shell_exec('chmod '.$dir_chmod.' -R '.$path.' && chown -R '.$dir_user.':'.$dir_group.' '.$path);
+            }
         }
 
         return $this->response()->success('Directory <info>'.$web_path.'</info> has been successfully setted up.');
