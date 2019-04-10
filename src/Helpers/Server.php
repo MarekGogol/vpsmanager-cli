@@ -14,6 +14,11 @@ class Server extends Application
         return shell_exec('getent passwd '.$this->toUserFormat($user)) ? true : false;
     }
 
+    public function getHostingUserGroup()
+    {
+        return 'vpsmanager_hosting_user';
+    }
+
     /*
      * Create linux user
      */
@@ -34,8 +39,10 @@ class Server extends Application
 
         $password = getRandomPassword(16);
 
+        exec('(getent group '.$this->getHostingUserGroup().' || groupadd '.$this->getHostingUserGroup().') 2> /dev/null');
+
         //Create new linux user
-        exec('useradd -s /bin/bash -d '.$web_path.' -U '.$user.' -p $(openssl passwd -1 '.$password.')', $output, $return_var);
+        exec('useradd -s /bin/bash -d '.$web_path.' -U '.$user.' -G '.$this->getHostingUserGroup().' -p $(openssl passwd -1 '.$password.')', $output, $return_var);
         if ( $return_var != 0 )
             return $this->response()->error('User could not be created.');
 
