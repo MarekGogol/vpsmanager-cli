@@ -104,6 +104,7 @@ class Certbot extends Application
         $stub->addLineBefore('# HTTPS host for subdomain '.$domain);
         $stub->replace('{host}', $domain);
         $stub->replace('{path}', $this->getWebPath($domain).'/sub/'.$this->getSubdomain($domain).'/public');
+        $stub->replace('{error_log_path}', $this->nginx()->getErrorLogPath($domain));
         $stub->replace('listen 80;', 'listen 443 ssl http2;');
         $stub->replace('listen [::]:80;', 'listen [::]:443 ssl http2;'.$this->getSSLPaths($cert_name));
 
