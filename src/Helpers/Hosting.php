@@ -203,6 +203,13 @@ class Hosting extends Application
             }
         }
 
+        //Test and reboot services
+        $this->rebootNginx();
+
+        //Rebot all php version from which has been pool removed
+        foreach ($reboot_php_versions as $version)
+            $this->rebootPHP($version);
+
         //Remove user
         if ( vpsManager()->server()->deleteUser($domain) )
             $this->response()->success('<info>User</info> <comment>'.$domain.'</comment> <info>has been successfuly removed.</info>')->writeln();
@@ -220,13 +227,6 @@ class Hosting extends Application
             else
                 $this->response()->message('<error>Data storage '.vpsManager()->getWebPath($domain).' could not be deleted.</error>')->writeln();
         }
-
-        //Test and reboot services
-        $this->rebootNginx();
-
-        //Rebot all php version from which has been pool removed
-        foreach ($reboot_php_versions as $version)
-            $this->rebootPHP($version);
 
         return $this->response()->success('<info>Hosting has been successfully removed.</info>');
     }
