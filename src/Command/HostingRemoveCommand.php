@@ -21,6 +21,7 @@ class HostingRemoveCommand extends Command
     protected function configure()
     {
         $this->setName('hosting:remove')
+             ->addArgument('domain', InputArgument::OPTIONAL, 'Domain name')
              ->setDescription('Delete all hosting configruations');
     }
 
@@ -44,6 +45,14 @@ class HostingRemoveCommand extends Command
 
     public function getDomainName()
     {
+        if ( ($domain = $this->input->getArgument('domain')) )
+        {
+            if ( ! isValidDomain($domain) )
+                $this->output->writeln('<error>Please fill valid domain name.</error>');
+            else
+                return $domain;
+        }
+
         $question = new Question('<info>Please fill domain name of hosting you want delete (eg.</info> example.com<info>):</info> ', null);
         $question->setValidator(function($host) {
             if ( ! $host || ! isValidDomain($host) )

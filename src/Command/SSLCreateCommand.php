@@ -21,6 +21,7 @@ class SSLCreateCommand extends Command
     protected function configure()
     {
         $this->setName('hosting:ssl')
+             ->addArgument('domain', InputArgument::OPTIONAL, 'Domain name')
              ->addOption('domain', null, InputOption::VALUE_OPTIONAL, 'Domain name', null)
              ->setDescription('Set up lets encrypt SSL certificate for your domain/subdomain');
     }
@@ -40,6 +41,14 @@ class SSLCreateCommand extends Command
 
     public function getDomainName()
     {
+        if ( ($domain = $this->input->getArgument('domain')) )
+        {
+            if ( ! isValidDomain($domain) )
+                $this->output->writeln('<error>Please fill valid domain name.</error>');
+            else
+                return $domain;
+        }
+
         $question = new Question('<info>Please fill domain name of hosting you want set up SSL certificates. (eg.</info> example.com<info>):</info> ', $this->input->getOption('domain'));
         $question->setValidator(function($host) {
             if ( ! $host || ! isValidDomain($host) )
