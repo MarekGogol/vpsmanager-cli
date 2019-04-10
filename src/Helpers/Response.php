@@ -84,6 +84,6 @@ class Response
      */
     public function wrongDomainName()
     {
-        return $this->error('Zadali ste neplatný názov domený.');
+        return $this->error('Domain name is not in valid format.');
     }
 }
