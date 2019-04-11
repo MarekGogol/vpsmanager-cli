@@ -39,7 +39,7 @@ class Certbot extends Application
 
         $first_level_domain = $this->toUserFormat($domain);
 
-        $redirect_section = str_replace('server_name '.$first_level_domain.';', "listen 80;\n    listen [::]:80;\n\n".'    server_name '.$first_level_domain.' www.'.$first_level_domain.';', $redirect_section);
+        $redirect_section = str_replace('server_name '.$first_level_domain.';', "listen 80;\n    listen [::]:80;\n\n".'    server_name www.'.$first_level_domain.' '.$first_level_domain.';', $redirect_section);
         $redirect_section = str_replace('return 301 $scheme://www.'.$first_level_domain.'$request_uri;', 'return 301 https://www.'.$first_level_domain.'$request_uri;', $redirect_section);
 
         return str_replace($redirect_section_def, $redirect_section, $nginx_conf);
@@ -52,6 +52,17 @@ class Certbot extends Application
     ssl_certificate_key /etc/letsencrypt/live/'.$domain.'/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;';
+    }
+
+    public function getSSLWWWRedirect($domain)
+    {
+        $first_level_domain = $this->toUserFormat($domain);
+
+        return "\n".'
+    # Non www to www redirect
+    if ($host = \''.$first_level_domain.'\') {
+        return 301 https://www.'.$first_level_domain.'$request_uri;
+    }';
     }
 
     /*
@@ -67,8 +78,11 @@ class Certbot extends Application
             return $nginx_conf;
         }
 
+        $first_level_domain = $this->toUserFormat($domain);
+
+        $host_section = str_replace('server_name www.'.$first_level_domain.';', 'server_name www.'.$first_level_domain.' '.$first_level_domain.';', $host_section);
         $host_section = str_replace('listen 80;', 'listen 443 ssl http2;', $host_section);
-        $host_section = str_replace('listen [::]:80;', 'listen [::]:443 ssl http2;'.$this->getSSLPaths($cert_name), $host_section);
+        $host_section = str_replace('listen [::]:80;', 'listen [::]:443 ssl http2;'.$this->getSSLPaths($cert_name).$this->getSSLWWWRedirect($domain), $host_section);
 
         return str_replace($host_section_def, $host_section, $nginx_conf);
     }
