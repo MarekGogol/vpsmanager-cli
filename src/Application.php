@@ -4,7 +4,7 @@ namespace Gogol\VpsManagerCLI;
 
 use Gogol\VpsManagerCLI\Helpers\Certbot;
 use Gogol\VpsManagerCLI\Helpers\Hosting;
-use Gogol\VpsManagerCLI\Helpers\MySQL;
+use Gogol\VpsManagerCLI\Helpers\MySQLHelper;
 use Gogol\VpsManagerCLI\Helpers\Nginx;
 use Gogol\VpsManagerCLI\Helpers\PHP;
 use Gogol\VpsManagerCLI\Helpers\Response;
@@ -150,7 +150,7 @@ class Application
      */
     public function mysql()
     {
-        return $this->boot(MySQL::class);
+        return $this->boot(MySQLHelper::class);
     }
 
     public function getSubdomain($domain)

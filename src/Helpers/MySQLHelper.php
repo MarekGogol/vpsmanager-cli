@@ -4,7 +4,7 @@ namespace Gogol\VpsManagerCLI\Helpers;
 
 use Gogol\VpsManagerCLI\Application;
 
-class MySQL extends Application
+class MySQLHelper extends Application
 {
     protected $mysqli;
 
