@@ -9,6 +9,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ChoiceQuestion;
+use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Console\Question\Question;
 
 class InstallManagerCommand extends Command
@@ -33,12 +34,14 @@ class InstallManagerCommand extends Command
 
         $this->input = $input;
         $this->output = $output;
+        $this->helper = $helper = $this->getHelper('question');
 
         $output->writeln('');
 
-        $helper = $this->getHelper('question');
 
         $this->setConfig($input, $output, $helper);
+
+        $this->enableSelfSignedSSL();
 
         // $this->generateManagerHosting($input, $output);
 
@@ -300,5 +303,24 @@ class InstallManagerCommand extends Command
             throw new \Exception($response->message);
 
         $output->writeln('<info>'.$response->message.'</info>');
+    }
+
+    private function enableSelfSignedSSL()
+    {
+        $question = new ConfirmationQuestion("\n".'<info>Would you like to allow self signed SSL certificates in NGINX?</info> (y/N) ', true);
+
+        if ( ! $this->helper->ask($this->input, $this->output, $question) )
+            return;
+
+        //Enable self signed certs in sites-available/default
+        vpsManager()->certbot()->enableDefaultSSLCert();
+
+        $generate = "\n".'<info>run command:</info> make-ssl-cert generate-default-snakeoil --force-overwrite';
+
+        if ( ! file_exists($path = '/etc/ssl/private/ssl-cert-snakeoil.pem') )
+            return $this->output->writeln('<error>SSL Snakeoil certificate does not exists at: '.$path.'</error>'.$generate);
+
+        if ( ! file_exists($path = '/etc/ssl/private/ssl-cert-snakeoil.key') )
+            return $this->output->writeln('<error>SSL Snakeoil certificate does not exists at: '.$path.'</error>'.$generate);
     }
 }

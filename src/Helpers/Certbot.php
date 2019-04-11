@@ -131,6 +131,23 @@ class Certbot extends Application
         return $nginx_conf . "\n\n" . $stub;
     }
 
+    /*
+     * Enable self signed certs in sites-available/default
+     */
+    public function enableDefaultSSLCert()
+    {
+        $default_path = $this->nginx()->getAvailablePath('default');
+
+        $default = file_get_contents($default_path);
+
+        //Uncomment self signed certs
+        $default = str_replace('# listen 443 ssl default_server;', 'listen 443 ssl default_server;', $default);
+        $default = str_replace('# listen [::]:443 ssl default_server;', 'listen [::]:443 ssl default_server;', $default);
+        $default = str_replace('# include snippets/snakeoil.conf;', 'include snippets/snakeoil.conf;', $default);
+
+        file_put_contents($default_path, $default);
+    }
+
     public function create(string $domain)
     {
         if ( ! isValidDomain($domain) )
