@@ -315,12 +315,27 @@ class InstallManagerCommand extends Command
         //Enable self signed certs in sites-available/default
         vpsManager()->certbot()->enableDefaultSSLCert();
 
-        $generate = "\n".'<info>run command:</info> make-ssl-cert generate-default-snakeoil --force-overwrite';
+        $command = 'make-ssl-cert generate-default-snakeoil --force-overwrite';
+        $generate = "\n".'<info>run command:</info> '.$command;
 
-        if ( ! file_exists($path = '/etc/ssl/private/ssl-cert-snakeoil.pem') )
-            return $this->output->writeln('<error>SSL Snakeoil certificate does not exists at: '.$path.'</error>'.$generate);
+        if ( ! file_exists($path = '/etc/ssl/certs/ssl-cert-snakeoil.pem') )
+        {
+            exec($command, $output, $return_var);
+
+            if ( $return_var == 0 )
+                $this->output->writeln('SSL Snakeoil certificate has been created: '.$path);
+            else
+                return $this->output->writeln('<error>SSL Snakeoil certificate does not exists and could not be created at: '.$path.'</error>'.$generate);
+        }
 
         if ( ! file_exists($path = '/etc/ssl/private/ssl-cert-snakeoil.key') )
-            return $this->output->writeln('<error>SSL Snakeoil certificate does not exists at: '.$path.'</error>'.$generate);
+        {
+            exec($command, $output, $return_var);
+
+            if ( $return_var == 0 )
+                $this->output->writeln('SSL Snakeoil certificate has been created: '.$path);
+            else
+                return $this->output->writeln('<error>SSL Snakeoil certificate does not exists and could not be created at: '.$path.'</error>'.$generate);
+        }
     }
 }
