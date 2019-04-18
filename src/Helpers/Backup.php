@@ -134,6 +134,7 @@ class Backup extends Application
     /*
      * Backup all required directories and zip them
      */
+    // cd /var/www/html/../ && zip -r /root/backups/2019-04-18_16/www/html.zip html -x */\node_modules/\* -x */\vendor/\* -x */\cache/\* -x */\laravel.log
     public function backupWWWData()
     {
         $backup_path = $this->createIfNotExists($this->getBackupPath().'/www');
