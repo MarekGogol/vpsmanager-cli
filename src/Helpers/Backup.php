@@ -54,7 +54,7 @@ class Backup extends Application
             $filename = $backup_path.'/'.$database.'.sql.gz';
 
             $this->response()->success('Saving and compressing <comment>'.$database.'</comment> database.')->writeln();
-            exec('(mysqldump '.$database.' || rm -f "'.$filename.'") | gzip > "'.$filename.'"', $output, $return_var);
+            exec('(mysqldump -uroot '.$database.' || rm -f "'.$filename.'") | gzip > "'.$filename.'"', $output, $return_var);
         }
 
         //Check if is available at least one backup
