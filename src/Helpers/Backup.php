@@ -165,21 +165,41 @@ class Backup extends Application
     }
 
     /*
+     * Check if is backup type allowed
+     */
+    private function isAllowed($config, $key)
+    {
+        return array_key_exists($key, $config) && $config[$key] == true;
+    }
+
+    /*
      * Run all types of backups
      */
-    public function perform()
+    public function perform($backup = [])
     {
-        //Check errors
-        if ( ($response = $this->backupDatabases()->writeln())->isError() )
+        //Backup databases
+        if (
+            $this->isAllowed($backup, 'databases')
+            && ($response = $this->backupDatabases()->writeln())->isError()
+        ) {
             return $response;
+        }
 
-        //Check errors
-        if ( ($response = $this->backupDirectories()->writeln())->isError() )
+        //Backup directories
+        if (
+            $this->isAllowed($backup, 'dirs')
+            && ($response = $this->backupDirectories()->writeln())->isError()
+        ) {
             return $response;
+        }
 
-        //Check errors
-        if ( ($response = $this->backupWWWData()->writeln())->isError() )
+        //Backup www data
+        if (
+            $this->isAllowed($backup, 'www')
+            && ($response = $this->backupWWWData()->writeln())->isError()
+        ) {
             return $response;
+        }
 
         return $this->response()->success('Full backup has been successfullu performed.');
     }
