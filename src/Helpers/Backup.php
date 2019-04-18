@@ -6,9 +6,9 @@ use Gogol\VpsManagerCLI\Application;
 
 class Backup extends Application
 {
-    private function getBackupPath()
+    private function getBackupPath($directory)
     {
-        return $this->config('backup_path') . '/' . date('Y-m-d_H');
+        return $this->config('backup_path').'/'.$directory.'/'.date('Y-m-d_H');
     }
 
     /*
@@ -41,7 +41,7 @@ class Backup extends Application
             return $this->sendError('Could not connect to database.');
 
         //Where store backup
-        $backup_path = $this->createIfNotExists($this->getBackupPath().'/mysql');
+        $backup_path = $this->createIfNotExists($this->getBackupPath('databases'));
 
         $does_not_backup = ['information_schema', 'performance_schema'];
 
@@ -109,7 +109,7 @@ class Backup extends Application
      */
     public function backupDirectories()
     {
-        $backup_path = $this->createIfNotExists($this->getBackupPath().'/folders');
+        $backup_path = $this->createIfNotExists($this->getBackupPath('dirs'));
 
         $directories = explode(';', $this->config('backup_directories'));
 
@@ -137,7 +137,7 @@ class Backup extends Application
     // cd /var/www/html/../ && zip -r /root/backups/2019-04-18_16/www/html.zip html -x */\node_modules/\* -x */\vendor/\* -x */\cache/\* -x */\laravel.log
     public function backupWWWData()
     {
-        $backup_path = $this->createIfNotExists($this->getBackupPath().'/www');
+        $backup_path = $this->createIfNotExists($this->getBackupPath('www'));
 
         $www_path = $this->config('www_path');
 
