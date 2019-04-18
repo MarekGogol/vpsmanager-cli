@@ -3,12 +3,16 @@
 namespace Gogol\VpsManagerCLI\Helpers;
 
 use Gogol\VpsManagerCLI\Application;
+use \DateTime;
+use \DateInterval;
 
 class Backup extends Application
 {
-    private function getBackupPath($directory)
+    private function getBackupPath($directory = null, $storage = 'local')
     {
-        return $this->config('backup_path').'/'.$directory.'/'.date('Y-m-d_H');
+        $path = $this->config('backup_path').'/'.($storage ? $storage.'/' : '').$directory;
+
+        return $path;
     }
 
     /*
@@ -41,7 +45,7 @@ class Backup extends Application
             return $this->sendError('Could not connect to database.');
 
         //Where store backup
-        $backup_path = $this->createIfNotExists($this->getBackupPath('databases'));
+        $backup_path = $this->createIfNotExists('databases');
 
         $does_not_backup = ['information_schema', 'performance_schema'];
 
@@ -58,7 +62,7 @@ class Backup extends Application
         }
 
         //Check if is available at least one backup
-        $backed_up = array_diff(scandir($backup_path), ['.', '..']);
+        $backed_up = $this->getTree($backup_path);
 
         //Get just databases without unnecessary ones...
         $all_databases = array_map(function($item){
@@ -90,10 +94,23 @@ class Backup extends Application
      */
     private function createIfNotExists($directory)
     {
+        $directory = $this->getBackupPath($directory).'/'.date('Y-m-d_H-i-00');
+
         if ( ! file_exists($directory) )
             exec('mkdir -p "'.$directory.'"');
 
         return $directory;
+    }
+
+    /*
+     * Return directory tree
+     */
+    private function getTree($path)
+    {
+        if ( ! file_exists($path) )
+            return [];
+
+        return array_values(array_diff(scandir($path), ['.', '..']));
     }
 
     private function getZipName($name)
@@ -109,7 +126,7 @@ class Backup extends Application
      */
     public function backupDirectories()
     {
-        $backup_path = $this->createIfNotExists($this->getBackupPath('dirs'));
+        $backup_path = $this->createIfNotExists('dirs');
 
         $directories = explode(';', $this->config('backup_directories'));
 
@@ -137,11 +154,11 @@ class Backup extends Application
     // cd /var/www/html/../ && zip -r /root/backups/2019-04-18_16/www/html.zip html -x */\node_modules/\* -x */\vendor/\* -x */\cache/\* -x */\laravel.log
     public function backupWWWData()
     {
-        $backup_path = $this->createIfNotExists($this->getBackupPath('www'));
+        $backup_path = $this->createIfNotExists('www');
 
         $www_path = $this->config('www_path');
 
-        $directories = array_diff(scandir($www_path), ['.', '..']);
+        $directories = $this->getTree($www_path);
 
         $errors = [];
 
@@ -174,6 +191,125 @@ class Backup extends Application
     }
 
     /*
+     * Removes old database backups in intervals:
+     * 1 day => does not remove anything
+     * 7 days => backups one per day
+     * 1 month => 1 backup per week
+     */
+    public function removeOldDatabaseBackups($storage)
+    {
+        $backup_path = $this->getBackupPath('databases', $storage);
+        $backups = $this->getTree($backup_path);
+
+        asort($backups);
+
+        //Remove files which are not in format of backups
+        foreach ($backups as $key => $date_dir) {
+            if ( ! DateTime::createFromFormat('Y-m-d_H-i-s', $date_dir) )
+                unset($backups[$key]);
+        }
+
+        //In every case of date does not delete 2 last backups. Because if backups stops
+        //you will have 2 last backups...
+        $allow = array_slice($backups, -2);
+
+        //Delete uneccessary backups
+        foreach ($backups as $date_dir)
+        {
+            $date = DateTime::createFromFormat('Y-m-d_H-i-s', $date_dir);
+
+            $yesterday = (new DateTime)->sub(new DateInterval('P1D'));
+            $week_before = (new DateTime)->sub(new DateInterval('P1W'));
+            $month_before = (new DateTime)->sub(new DateInterval('P1M'));
+
+            //Allow everything from today
+            if ( $date >= $yesterday )
+                $allow[] = $date_dir;
+
+            //Allow one backup per day from last week
+            if ( $date >= $week_before && $date < $yesterday )
+                $allow[$date->format('y-m-d')] = $date_dir;
+
+            //Allow one backup per week from last month interval
+            if (
+                $date >= $month_before && $date < $week_before
+                && !array_key_exists($key = 'week-'.$date->format('y-m-W'), $allow)
+            ) {
+                $allow[$key] = $date_dir;
+            }
+        }
+
+        //Remove uneccessary backups
+        foreach (array_diff($backups, array_unique($allow)) as $dir)
+            exec('rm -rf "'.$backup_path.'/'.$dir.'"');
+    }
+
+    /*
+     * Removes old data backups in intervals:
+     * 1 day => does not remove anything
+     * 2 weeks => 1 backup from start of week
+     */
+    public function removeOldDataBackups($storage, $type)
+    {
+        $backup_path = $this->getBackupPath($type, $storage);
+        $backups = $this->getTree($backup_path);
+
+        asort($backups);
+
+        //Remove files which are not in format of backups
+        foreach ($backups as $key => $date_dir) {
+            if ( ! DateTime::createFromFormat('Y-m-d_H-i-s', $date_dir) )
+                unset($backups[$key]);
+        }
+
+        //In every case of date does not delete last backup. Because if backups stops
+        //you will have last backup...
+        $allow = array_slice($backups, -1);
+
+        //Delete uneccessary backups
+        foreach ($backups as $date_dir)
+        {
+            $date = DateTime::createFromFormat('Y-m-d_H-i-s', $date_dir);
+
+            $yesterday = (new DateTime)->sub(new DateInterval('P1D'));
+            $weeks2_before = (new DateTime)->sub(new DateInterval('P2W'));
+
+            //Allow everything from today
+            if ( $date >= $yesterday )
+                $allow[] = $date_dir;
+
+            //Allow first one backup per week in year
+            if (
+                $date >= $weeks2_before && $date < $yesterday
+                && !array_key_exists($key = 'week-'.$date->format('y-m-W'), $allow)
+            ) {
+                $allow[$key] = $date_dir;
+            }
+        }
+
+        //Remove uneccessary backups
+        foreach (array_diff($backups, array_unique($allow)) as $dir)
+            exec('rm -rf "'.$backup_path.'/'.$dir.'"');
+    }
+
+    /*
+     * Remove all old unnecessary backups
+     */
+    public function removeOldBackups()
+    {
+        $backup_path = $this->getBackupPath(null, null);
+        $storages = $this->getTree($backup_path);
+
+        //Remove from all storages
+        foreach ($storages as $storage)
+        {
+            $this->removeOldDatabaseBackups($storage);
+            $this->removeOldDataBackups($storage, 'dirs');
+            $this->removeOldDataBackups($storage, 'www');
+        }
+    }
+
+    /*
      * Run all types of backups
      */
     public function perform($backup = [])
@@ -201,6 +337,8 @@ class Backup extends Application
         ) {
             return $response;
         }
+
+        $this->removeOldBackups();
 
         return $this->response()->success('Full backup has been successfullu performed.');
     }
