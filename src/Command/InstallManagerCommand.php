@@ -56,7 +56,7 @@ class InstallManagerCommand extends Command
 
     public function setConfig($input, $output, $helper)
     {
-        $config = [];
+        $config = vpsManager()->config();
 
         //Set config properties
         foreach ([
@@ -83,10 +83,6 @@ class InstallManagerCommand extends Command
             'setWWWPath' => [
                 'config_key' => 'www_path',
                 'default' => '/var/www'
-            ],
-            'setBackupPath' => [
-                'config_key' => 'backup_path',
-                'default' => '/root/backups'
             ],
             // 'setVpsManagerPath' => [
             //     'config_key' => 'vpsmanager_path',
@@ -243,18 +239,6 @@ class InstallManagerCommand extends Command
         });
 
         $value = $config = $helper->ask($input, $output, $question) ?: $default;
-
-        $output->writeln('Used path: <comment>' . $value . '</comment>');
-    }
-
-    private function setBackupPath($input, $output, $helper, &$config, $default)
-    {
-        $output->writeln('<info>Please set backup path where will be stored all backups of your resources.</info>');
-
-        //Nginx path
-        $question = new Question('Type new path or press enter for using default <comment>'.$default.'</comment> path: ', null);
-
-        $value = $config = trim_end($helper->ask($input, $output, $question) ?: $default, '/');
 
         $output->writeln('Used path: <comment>' . $value . '</comment>');
     }
