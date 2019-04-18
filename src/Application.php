@@ -2,6 +2,7 @@
 
 namespace Gogol\VpsManagerCLI;
 
+use Gogol\VpsManagerCLI\Helpers\Backup;
 use Gogol\VpsManagerCLI\Helpers\Certbot;
 use Gogol\VpsManagerCLI\Helpers\Hosting;
 use Gogol\VpsManagerCLI\Helpers\MySQLHelper;
@@ -111,6 +112,14 @@ class Application
     public function hosting()
     {
         return $this->boot(Hosting::class);
+    }
+
+    /*
+     * Return backup helper
+     */
+    public function backup()
+    {
+        return $this->boot(Backup::class);
     }
 
     /*

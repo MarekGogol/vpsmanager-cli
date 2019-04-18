@@ -2,6 +2,7 @@
 <?php
 require_once 'vendor/autoload.php';
 
+use Gogol\VpsManagerCLI\Command\BackupPerformCommand;
 use Gogol\VpsManagerCLI\Command\HostingCreateCommand;
 use Gogol\VpsManagerCLI\Command\HostingRemoveCommand;
 use Gogol\VpsManagerCLI\Command\InstallManagerCommand;
@@ -14,6 +15,7 @@ $application->add(new InstallManagerCommand());
 $application->add(new HostingCreateCommand());
 $application->add(new HostingRemoveCommand());
 $application->add(new SSLCreateCommand());
+$application->add(new BackupPerformCommand());
 
 $application->run();
 ?>
