@@ -10,7 +10,7 @@ class Backup extends Application
 {
     private function getBackupPath($directory = null, $storage = 'local')
     {
-        $path = $this->config('backup_path').'/'.($storage ? $storage.'/' : '').$directory;
+        $path = trim_end($this->config('backup_path').'/'.($storage ? $storage.'/' : '').$directory, '/');
 
         return $path;
     }
@@ -311,6 +311,54 @@ class Backup extends Application
         $this->response()->success('<info>Old backups has been removed.</info>')->writeln();
     }
 
+    public function testRemoteServer()
+    {
+        $cmd = '$(ssh -o BatchMode=yes -o ConnectTimeout=5 '.$this->config('remote_user').'@'.$this->config('remote_server').' -i '.$this->getRemoteRSAKeyPath().' exit 2>&1)';
+
+        exec($cmd, $output, $return_var);
+
+        return $return_var == 0;
+    }
+
+    /*
+     * Send local backups data to remote server
+     */
+    public function sendLocalBackupsToRemoteServer()
+    {
+        if ( ! $this->config('backup_remote') )
+            return;
+
+        $remote_server = $this->config('remote_server');
+
+        $this->response()->success('Syncing backups to remote <comment>'.$remote_server.'</comment> server.')->writeln();
+
+        exec('rsync -avzP --delete -e \'ssh -i '.$this->getRemoteRSAKeyPath().'\' '.$this->getBackupPath().'/* '.$this->config('remote_user').'@'.$remote_server.':'.$this->config('remote_path'), $output, $return_var);
+
+        if ( $return_var == 0 )
+            $this->response()->success('<info>All backups has been synced to remote</info> <comment>'.$remote_server.'</comment> <info>server</info>')->writeln();
+        else
+            $this->sendError('Files could not be synced to other server.');
+    }
+
+    /*
+     * Get rsync remote SSH key
+     */
+    public function getRemoteRSAKeyPath()
+    {
+        return $this->config('backup_path').'/.ssh/id_rsa';
+    }
+
+    /*
+     * Save remote server private key
+     */
+    public function setRemoteKey($value)
+    {
+        $key_path = $this->getRemoteRSAKeyPath();
+
+        file_put_contents($key_path, $value);
+        exec('chmod 600 '.$key_path);
+    }
+
     /*
      * Run all types of backups
      */
@@ -341,6 +389,7 @@ class Backup extends Application
         }
 
         $this->removeOldBackups();
+        $this->sendLocalBackupsToRemoteServer();
 
         return $this->response()->success('Full backup has been successfullu performed.');
     }
