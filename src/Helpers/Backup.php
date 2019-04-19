@@ -222,7 +222,7 @@ class Backup extends Application
             $week_before = (new DateTime)->sub(new DateInterval('P1W'));
             $month_before = (new DateTime)->sub(new DateInterval('P1M'));
 
-            //Allow everything from today
+            //Allow everything from last 24 hours
             if ( $date >= $yesterday )
                 $allow[] = $date_dir;
 
@@ -274,7 +274,7 @@ class Backup extends Application
             $yesterday = (new DateTime)->sub(new DateInterval('P1D'));
             $weeks2_before = (new DateTime)->sub(new DateInterval('P2W'));
 
-            //Allow everything from today
+            //Allow everything from last 24 hours
             if ( $date >= $yesterday )
                 $allow[] = $date_dir;
 
@@ -286,6 +286,8 @@ class Backup extends Application
                 $allow[$key] = $date_dir;
             }
         }
+
+        dd($allow);
 
         //Remove uneccessary backups
         foreach (array_diff($backups, array_unique($allow)) as $dir)
@@ -307,6 +309,8 @@ class Backup extends Application
             $this->removeOldDataBackups($storage, 'dirs');
             $this->removeOldDataBackups($storage, 'www');
         }
+
+        $this->response()->success('<info>Old backups has been removed.</info>')->writeln();
     }
 
     /*
@@ -339,7 +343,6 @@ class Backup extends Application
         }
 
         $this->removeOldBackups();
-        $this->response()->success('<info>Old backups has been removed.</info>')->writeln();
 
         return $this->response()->success('Full backup has been successfullu performed.');
     }
