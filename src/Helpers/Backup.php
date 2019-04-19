@@ -339,6 +339,7 @@ class Backup extends Application
         }
 
         $this->removeOldBackups();
+        $this->response()->success('<info>Old backups has been removed.</info>')->writeln();
 
         return $this->response()->success('Full backup has been successfullu performed.');
     }
