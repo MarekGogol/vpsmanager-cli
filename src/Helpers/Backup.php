@@ -271,10 +271,10 @@ class Backup extends Application
         {
             $date = DateTime::createFromFormat('Y-m-d_H-i-s', $date_dir);
 
-            $yesterday = (new DateTime)->sub(new DateInterval('P1D'));
+            $yesterday = (new DateTime)->setTime(0, 0, 0);
             $weeks2_before = (new DateTime)->sub(new DateInterval('P2W'));
 
-            //Allow everything from last 24 hours
+            //Allow everything from today
             if ( $date >= $yesterday )
                 $allow[] = $date_dir;
 
@@ -318,8 +318,6 @@ class Backup extends Application
      */
     public function perform($backup = [])
     {
-        $this->removeOldBackups();
-
         //Backup databases
         if (
             $this->isAllowed($backup, 'databases')
@@ -343,6 +341,8 @@ class Backup extends Application
         ) {
             return $response;
         }
+
+        $this->removeOldBackups();
 
         return $this->response()->success('Full backup has been successfullu performed.');
     }
