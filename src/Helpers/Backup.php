@@ -318,6 +318,8 @@ class Backup extends Application
      */
     public function perform($backup = [])
     {
+        $this->removeOldBackups();
+
         //Backup databases
         if (
             $this->isAllowed($backup, 'databases')
@@ -341,8 +343,6 @@ class Backup extends Application
         ) {
             return $response;
         }
-
-        $this->removeOldBackups();
 
         return $this->response()->success('Full backup has been successfullu performed.');
     }
