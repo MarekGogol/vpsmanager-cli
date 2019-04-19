@@ -287,8 +287,6 @@ class Backup extends Application
             }
         }
 
-        dd($allow);
-
         //Remove uneccessary backups
         foreach (array_diff($backups, array_unique($allow)) as $dir)
             exec('rm -rf "'.$backup_path.'/'.$dir.'"');
