@@ -63,6 +63,19 @@ class Application
         return $this->config;
     }
 
+    public function saveConfig($data)
+    {
+        $path = vpsManagerPath().'/config.php';
+
+        $save = file_put_contents($path, "<?php \n\nreturn " . var_export($data, true) . ';');
+
+        //Change permissions of config just for root
+        exec('chown root:root '.$path);
+        exec('chmod 600 '.$path);
+
+        return $save;
+    }
+
     /*
      * Boot console in vpsManager and check correct permissions
      */

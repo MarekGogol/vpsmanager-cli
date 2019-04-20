@@ -120,7 +120,7 @@ class BackupSetupCommand extends Command
                 $output->writeln('');
         }
 
-        if ( ! file_put_contents(vpsManagerPath().'/config.php', "<?php \n\nreturn " . var_export($config, true) . ';') )
+        if ( ! vpsManager()->saveConfig($config) )
             throw new \Exception('Setup failed. Config could not be saved into '.vpsManagerPath().'/config.php');
 
         //Forced booting config
