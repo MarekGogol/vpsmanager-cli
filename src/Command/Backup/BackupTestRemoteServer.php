@@ -44,7 +44,10 @@ class BackupTestRemoteServer extends Command
             $this->output->writeln('<info>Connection has been successfully established.</info>');
         else {
             $this->output->writeln('<error>Could not connect to remote server.</error>');
-            $this->output->writeln('<info>You can test command manually, maybe you just need accept server key:</info>'."\n".' ssh '.$b->config('remote_user').'@'.$b->config('remote_server').' -i '.$b->getRemoteRSAKeyPath());
+            $this->output->writeln(
+                '<info>You can test command manually, maybe you just need accept server key:</info>'."\n".
+                'ssh '.$b->config('remote_user').'@'.$b->config('remote_server').' -i '.$b->getRemoteRSAKeyPath()
+            );
         }
     }
 }
