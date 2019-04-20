@@ -29,8 +29,6 @@ class Backup extends Application
 
         $this->log('ERROR', $message);
 
-        $this->log[] = $message;
-
         return $this->response();
     }
 
@@ -39,6 +37,8 @@ class Backup extends Application
      */
     private function log($type, $message)
     {
+        $this->log[] = $message;
+
         $text = date('Y-m-d H:i:s').' ['.$type.']'.' - '.$message;
 
         file_put_contents($this->config('backup_path').'/logs.log', $text."\n", FILE_APPEND);
@@ -477,12 +477,24 @@ class Backup extends Application
             $this->sendMail('Error notification', implode('<br>', $this->log));
     }
 
+    public function getFreeDiskSpace()
+    {
+        return round(disk_free_space('/')/1024/1000/1000, 1);
+    }
+
     /*
      * Run all types of backups
      */
     public function perform($backup = [])
     {
         $start = microtime(true);
+
+        //If memory is under 2 gigabytes, send notification
+        if ( ($free_space = $this->getFreeDiskSpace()) <= 2 )
+        {
+            $this->sendError('Available disk space is '.$free_space.'GB. Please expand you disk space.');
+            $this->removeOldBackups();
+        }
 
         //Backup databases
         if ( $this->isAllowed($backup, 'databases') )
@@ -498,9 +510,8 @@ class Backup extends Application
 
         $this->removeOldBackups();
         $this->sendLocalBackupsToRemoteServer();
-        $this->sendNotification();
-
         $this->log('INFO', 'Backup end | DB:'.($this->isAllowed($backup, 'databases') ? 'YES' : 'NO').' | WWW:'.($this->isAllowed($backup, 'www') ? 'YES' : 'NO').' | DIRS:'.($this->isAllowed($backup, 'dirs') ? 'YES' : 'NO').' | '.round((microtime(true)-$start)/60, 1).' Min.');
+        $this->sendNotification();
 
         return $this->response()->success('Full backup has been successfullu performed.');
     }
