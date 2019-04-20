@@ -155,6 +155,16 @@ class Server extends Application
 
         return system('rm -rf '.$web_path) == 0;
     }
+
+    /*
+     * Check if linux extension is installed
+     */
+    public function isInstalledExtension($apt)
+    {
+        exec('dpkg -s '.$apt.' 2>&1', $output, $return_var);
+
+        return $return_var == 0;
+    }
 }
 
 ?>
