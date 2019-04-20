@@ -162,7 +162,7 @@ class Backup extends Application
     {
         $backup_path = $this->createIfNotExists('dirs');
 
-        $directories = explode(';', $this->config('backup_directories'));
+        $directories = array_filter(explode(';', $this->config('backup_directories')));
 
         $errors = [];
 
