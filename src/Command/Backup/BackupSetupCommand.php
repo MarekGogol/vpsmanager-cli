@@ -436,7 +436,7 @@ class BackupSetupCommand extends Command
         //If crontab does not exists already
         if ( strpos($crontab_data, 'vpsmanager backup:run') === false )
         {
-            file_put_contents($crontab_path, $line."\n", FILE_APPEND);
+            @file_put_contents($crontab_path, $line."\n", FILE_APPEND);
             $output->writeln('Crontab has been added at: <comment>4AM</comment>');
         }
 
