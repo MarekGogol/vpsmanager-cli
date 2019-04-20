@@ -517,8 +517,9 @@ class Backup extends Application
 
         $this->removeOldBackups();
         $this->sendLocalBackupsToRemoteServer();
-        $this->log('INFO', 'Backup end | DB:'.($this->isAllowed($backup, 'databases') ? 'YES' : 'NO').' | WWW:'.($this->isAllowed($backup, 'www') ? 'YES' : 'NO').' | DIRS:'.($this->isAllowed($backup, 'dirs') ? 'YES' : 'NO').' | '.round((microtime(true)-$start)/60, 1).' Min.');
         $this->sendNotification();
+
+        $this->log('INFO', 'Backup end | DB:'.($this->isAllowed($backup, 'databases') ? 'YES' : 'NO').' | WWW:'.($this->isAllowed($backup, 'www') ? 'YES' : 'NO').' | DIRS:'.($this->isAllowed($backup, 'dirs') ? 'YES' : 'NO').' | '.round((microtime(true)-$start)/60, 1).' Min.');
 
         return $this->response()->success('Full backup has been successfullu performed.');
     }
