@@ -313,7 +313,7 @@ class Backup extends Application
 
     public function testRemoteServer()
     {
-        $cmd = '$(ssh -o BatchMode=yes -o ConnectTimeout=5 '.$this->config('remote_user').'@'.$this->config('remote_server').' -i '.$this->getRemoteRSAKeyPath().' exit 2>&1)';
+        $cmd = 'ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=5 '.$this->config('remote_user').'@'.$this->config('remote_server').' -i '.$this->getRemoteRSAKeyPath().' -t "exit" 2>&1';
 
         exec($cmd, $output, $return_var);
 

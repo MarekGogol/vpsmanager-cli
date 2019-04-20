@@ -242,18 +242,18 @@ class BackupSetupCommand extends Command
 
         $value = $config = trim_end($helper->ask($input, $output, $question) ?: $default, '/');
 
-        $this->createUserForBackupDirectory();
+        $this->createUserForBackupDirectory($value);
         $this->setBackupDirectoryPermissions($value);
     }
 
     /*
      * Create user which will owns backup directory
      */
-    private function createUserForBackupDirectory()
+    private function createUserForBackupDirectory($value)
     {
         if ( ! vpsManager()->server()->existsUser($this->default_backup_user) )
         {
-            exec('useradd -s /bin/bash -d '.vpsManager()->config('backup_path').' -U '.$this->default_backup_user, $output, $return_var);
+            exec('useradd -s /bin/bash -d '.$value.' -U '.$this->default_backup_user, $output, $return_var);
 
             if ( $return_var != 0 )
                 throw new \Exception('Directory user '.$this->default_backup_user.' could not be created.');
