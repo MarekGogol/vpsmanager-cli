@@ -66,6 +66,10 @@ class BackupSetupCommand extends Command
                 'config_key' => $k = 'email_notifications',
                 'default' => $vm->config($k, true),
             ],
+            'setEmailReceiver' => [
+                'config_key' => $k = 'email_receiver',
+                'default' => $vm->config($k, null),
+            ],
             'setEmailServer' => [
                 'config_key' => $k = 'email_server',
                 'default' => $vm->config($k, null),
@@ -185,6 +189,29 @@ class BackupSetupCommand extends Command
         $value = $config = $helper->ask($input, $output, $question) ?: $default;
 
         $output->writeln('Used SMTP username: <comment>' . $value . '</comment>');
+    }
+
+    private function setEmailReceiver($input, $output, $helper, &$config, $default, $total_config)
+    {
+        if ( $total_config['email_notifications'] == false )
+            return false;
+
+        $output->writeln('<info>Please set your email address:</info>');
+
+        $question = new Question(
+            'Type your email address where you want to receive email notifications'.
+            ($default ? ' or press enter for using default email <comment>'.$default.'</comment>' : '').': '
+        , null);
+        $question->setValidator(function($value) use($default) {
+            if ( ! $default && empty($value) )
+                throw new \Exception('Please fill email address.');
+
+            return $value;
+        });
+
+        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+
+        $output->writeln('Used email address: <comment>' . $value . '</comment>');
     }
 
     private function setEmailPassword($input, $output, $helper, &$config, $default, $total_config)

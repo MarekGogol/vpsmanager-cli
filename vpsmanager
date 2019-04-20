@@ -3,8 +3,9 @@
 require_once 'vendor/autoload.php';
 
 use Gogol\VpsManagerCLI\Command\Backup\BackupPerformCommand;
-use Gogol\VpsManagerCLI\Command\Backup\BackupRemoteTestServer;
 use Gogol\VpsManagerCLI\Command\Backup\BackupSetupCommand;
+use Gogol\VpsManagerCLI\Command\Backup\BackupTestMailServer;
+use Gogol\VpsManagerCLI\Command\Backup\BackupTestRemoteServer;
 use Gogol\VpsManagerCLI\Command\Hosting\HostingCreateCommand;
 use Gogol\VpsManagerCLI\Command\Hosting\HostingRemoveCommand;
 use Gogol\VpsManagerCLI\Command\InstallManagerCommand;
@@ -19,7 +20,8 @@ $application->add(new HostingRemoveCommand());
 $application->add(new SSLCreateCommand());
 $application->add(new BackupSetupCommand());
 $application->add(new BackupPerformCommand());
-$application->add(new BackupRemoteTestServer());
+$application->add(new BackupTestRemoteServer());
+$application->add(new BackupTestMailServer());
 
 $application->run();
 ?>

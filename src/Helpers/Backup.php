@@ -3,11 +3,15 @@
 namespace Gogol\VpsManagerCLI\Helpers;
 
 use Gogol\VpsManagerCLI\Application;
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
 use \DateTime;
 use \DateInterval;
 
 class Backup extends Application
 {
+    private $log = [];
+
     private function getBackupPath($directory = null, $storage = 'local')
     {
         $path = trim_end($this->config('backup_path').'/'.($storage ? $storage.'/' : '').$directory, '/');
@@ -23,7 +27,21 @@ class Backup extends Application
         //Send mail if is in cron
         $this->response()->message('<error>'.$message.'</error>')->writeln();
 
+        $this->log('ERROR', $message);
+
+        $this->log[] = $message;
+
         return $this->response();
+    }
+
+    /*
+     * Save error/message into log
+     */
+    private function log($type, $message)
+    {
+        $text = date('Y-m-d H:i:s').' ['.$type.']'.' - '.$message;
+
+        file_put_contents($this->config('backup_path').'/logs.log', $text."\n", FILE_APPEND);
     }
 
     /*
@@ -336,6 +354,47 @@ class Backup extends Application
         return $return_var == 0;
     }
 
+    public function testMailServer()
+    {
+        // Instantiation and passing `true` enables exceptions
+        return $this->sendMail('Test mail', 'Hello :), your email server is working.');
+    }
+
+    public function sendMail($subject, $message)
+    {
+        $mail = new PHPMailer(true);
+
+        try {
+            $host = explode(':', $this->config('email_server'));
+
+            //Server settings
+            $mail->isSMTP();                                        // Set mailer to use SMTP
+            $mail->Host       = $host[0];                           // Specify main and backup SMTP servers
+            $mail->SMTPAuth   = true;                               // Enable SMTP authentication
+            $mail->Username   = $this->config('email_username');    // SMTP username
+            $mail->Password   = $this->config('email_password');    // SMTP password
+            $mail->SMTPSecure = $host[1] == 25 ? 'tls' : 'ssl';     // Enable TLS encryption, `ssl` also accepted
+            $mail->Port       = $host[1];                           // TCP port to connect to
+
+            //Recipients
+            $mail->setFrom($this->config('email_username'), 'VPS Manager');
+            $mail->addAddress($this->config('email_receiver'));
+
+            // Content
+            $mail->isHTML(true);
+            $mail->Subject = $subject ?: 'Backups - VPS Manager';
+            $mail->Body    = $message;
+            $mail->Body   .= '<br><br>';
+            $mail->Body   .= 'Date: '.date('d.m.Y H:i:s');
+
+            $mail->send();
+
+            return true;
+        } catch (Exception $e) {
+            return $mail->ErrorInfo;
+        }
+    }
+
     /*
      * Get all folders which should be excluded from backup
      */
@@ -403,37 +462,34 @@ class Backup extends Application
         exec('chmod 600 '.$key_path);
     }
 
+    //Send email if notifications are enabled
+    //and any error happens
+    private function sendNotification()
+    {
+        if ( $this->config('email_notifications') && count($this->log) > 0 )
+            $this->sendMail('Error notification', implode('<br>', $this->log));
+    }
+
     /*
      * Run all types of backups
      */
     public function perform($backup = [])
     {
         //Backup databases
-        if (
-            $this->isAllowed($backup, 'databases')
-            && ($response = $this->backupDatabases()->writeln())->isError()
-        ) {
-            return $response;
-        }
+        if ( $this->isAllowed($backup, 'databases') )
+            $this->backupDatabases()->writeln();
 
         //Backup directories
-        if (
-            $this->isAllowed($backup, 'dirs')
-            && ($response = $this->backupDirectories()->writeln())->isError()
-        ) {
-            return $response;
-        }
+        if ( $this->isAllowed($backup, 'dirs') )
+            $this->backupDirectories()->writeln();
 
         //Backup www data
-        if (
-            $this->isAllowed($backup, 'www')
-            && ($response = $this->backupWWWData()->writeln())->isError()
-        ) {
-            return $response;
-        }
+        if ( $this->isAllowed($backup, 'www') )
+            $this->backupWWWData()->writeln();
 
         $this->removeOldBackups();
         $this->sendLocalBackupsToRemoteServer();
+        $this->sendNotification();
 
         return $this->response()->success('Full backup has been successfullu performed.');
     }

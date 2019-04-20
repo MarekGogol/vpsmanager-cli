@@ -12,15 +12,15 @@ use Symfony\Component\Console\Question\ChoiceQuestion;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Console\Question\Question;
 
-class BackupRemoteTestServer extends Command
+class BackupTestMailServer extends Command
 {
     private $input;
     private $output;
 
     protected function configure()
     {
-        $this->setName('backup:remote-test')
-             ->setDescription('Test remote server connection');
+        $this->setName('backup:test-mail')
+             ->setDescription('Test mailserver connection and send test email');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
@@ -33,18 +33,18 @@ class BackupRemoteTestServer extends Command
 
         $output->writeln('');
 
-        $this->testRemoteServer();
+        $this->testMailServer();
     }
 
-    private function testRemoteServer()
+    private function testMailServer()
     {
         $b = vpsManager()->backup();
 
-        if ( $b->testRemoteServer() )
-            $this->output->writeln('<info>Connection has been successfully established.</info>');
+        if ( ($error = $b->testMailServer()) === true )
+            $this->output->writeln('<info>Test email has been successfully sent.</info>');
         else {
-            $this->output->writeln('<error>Could not connect to remote server.</error>');
-            $this->output->writeln('<info>You can test command mannualy:</info> ssh '.$b->config('remote_user').'@'.$b->config('remote_server').' -i '.$b->getRemoteRSAKeyPath());
+            $this->output->writeln('<info>Test message could not be sent. Mailer Error:</info>');
+            $this->output->writeln('<error>'.$error.'</error>');
         }
     }
 }
