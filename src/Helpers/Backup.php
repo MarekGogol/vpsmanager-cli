@@ -170,8 +170,15 @@ class Backup extends Application
         {
             $this->response()->success('Saving and compressing <comment>'.$dir.'</comment> directory.')->writeln();
 
+            //Split commands into directory and other parameters
+            $dir_parts = explode(' ', $dir);
+            $dir = $dir_parts[0];
+
+            //If except commands are available in path
+            $except = count($dir_parts) > 1 ? implode(' ', array_slice($dir_parts, 1)) : null;
+
             //Zip and save directory
-            if ( ! $this->zipDirectory($dir, $backup_path.'/'.$this->getZipName($dir)) )
+            if ( ! $this->zipDirectory($dir, $backup_path.'/'.$this->getZipName($dir), $except) )
                 $errors[] = $dir;
         }
 

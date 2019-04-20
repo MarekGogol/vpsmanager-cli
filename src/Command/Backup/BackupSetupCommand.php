@@ -60,7 +60,7 @@ class BackupSetupCommand extends Command
             ],
             'setBackupDirectories' => [
                 'config_key' => $k = 'backup_directories',
-                'default' => $vm->config($k, '/etc/nginx;/etc/mysql')
+                'default' => $vm->config($k, '/etc/nginx;/etc/mysql --exclude="*/debian.cnf";')
             ],
             'setEmailNotifications' => [
                 'config_key' => $k = 'email_notifications',
