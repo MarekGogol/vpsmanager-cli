@@ -338,7 +338,7 @@ class BackupSetupCommand extends Command
         //If rsa keys does not exists
         if ( ! file_exists($rsa_path) )
         {
-            $this->output->writeln('<info>Generating RSAbackup_path keys into:</info> '.$rsa_dir);
+            $this->output->writeln('<info>Generating RSA keys into:</info> '.$rsa_dir);
             exec('mkdir -p '.$rsa_dir);
             exec('ssh-keygen -t rsa -q -N "" -f '.$rsa_path);
             file_put_contents($rsa_dir.'/authorized_keys', '# Paste here your public key from remote server');
