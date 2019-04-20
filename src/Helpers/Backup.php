@@ -366,7 +366,7 @@ class Backup extends Application
      */
     public function sendLocalBackupsToRemoteServer()
     {
-        if ( ! $this->config('backup_remote') )
+        if ( ! $this->config('remote_backups') )
             return;
 
         $remote_server = $this->config('remote_server');

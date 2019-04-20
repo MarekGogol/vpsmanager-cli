@@ -40,8 +40,11 @@ class Application
         //Boot config params
         $config = vpsManager()->bootConfig();
 
-        return $key ? (array_key_exists($key, $config) ? ($config[$key] ?: $default) : $default)
-               : $config;
+        return $key ? (
+            array_key_exists($key, $config)
+                ? (is_null($config[$key]) ? $default : $config[$key])
+                : $default
+        ) : $config;
     }
 
     /*

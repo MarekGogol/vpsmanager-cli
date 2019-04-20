@@ -40,11 +40,8 @@ class InstallManagerCommand extends Command
 
         $this->setConfig($input, $output, $helper);
 
-        $this->enableSelfSignedSSL();
-
         // $this->generateManagerHosting($input, $output);
 
-        $output->writeln('');
         $output->writeln('<info>Installation of</info> <comment>VPS Manager</comment> <info>has been successfully completed.</info>');
     }
 
@@ -55,41 +52,46 @@ class InstallManagerCommand extends Command
 
     public function setConfig($input, $output, $helper)
     {
-        $config = vpsManager()->config();
+        $vm = vpsManager();
+        $config = $vm->config();
 
         //Set config properties
         foreach ([
             'setNginxPath' => [
-                'config_key' => 'nginx_path',
-                'default' => '/etc/nginx'
+                'config_key' => $k = 'nginx_path',
+                'default' => $vm->config($k, '/etc/nginx')
             ],
             'setPHPPath' => [
-                'config_key' => 'php_path',
-                'default' => '/etc/php'
+                'config_key' => $k = 'php_path',
+                'default' => $vm->config($k, '/etc/php')
             ],
             'setSSLPath' => [
-                'config_key' => 'ssl_path',
-                'default' => '/etc/letsencrypt/live'
+                'config_key' => $k = 'ssl_path',
+                'default' => $vm->config($k, '/etc/letsencrypt/live')
             ],
             'setSSLEmail' => [
-                'config_key' => 'ssl_email',
-                'default' => null,
+                'config_key' => $k = 'ssl_email',
+                'default' => $vm->config($k, null)
             ],
             'setDefaultPHPVersion' => [
-                'config_key' => 'php_version',
-                'default' => '7.2'
+                'config_key' => $k = 'php_version',
+                'default' => $vm->config($k, '7.2')
             ],
             'setWWWPath' => [
-                'config_key' => 'www_path',
-                'default' => '/var/www'
+                'config_key' => $k = 'www_path',
+                'default' => $vm->config($k, '/var/www')
+            ],
+            'enableSelfSignedSSL' => [
+                'config_key' => $k = 'self_signed_ssl',
+                'default' => $vm->config($k, true)
             ],
             // 'setVpsManagerPath' => [
-            //     'config_key' => 'vpsmanager_path',
-            //     'default' => $input->getOption('vpsmanager_path') ?: null,
+            //     'config_key' => $k = 'vpsmanager_path',
+            //     'default' => $vm->config($k, $input->getOption('vpsmanager_path') ?: null)
             // ],
             // 'setHost' => [
-            //     'config_key' => 'host',
-            //     'default' => $input->getOption('host') ?: 'vpsmanager.example.com'
+            //     'config_key' => $k = 'host',
+            //     'default' => $vm->config($k, $input->getOption('host') ?: 'vpsmanager.example.com')
             // ]
         ] as $method => $data)
         {
@@ -170,9 +172,12 @@ class InstallManagerCommand extends Command
         $output->writeln('<info>Please set Email for SSL ceriticates generation.</info>');
 
         //Nginx path
-        $question = new Question('Type email adress for generating SSL certificate via certbot: ', null);
-        $question->setValidator(function($email) {
-            if ( ! isValidEmail($email) )
+        $question = new Question(
+            'Type email adress for generating SSL certificate via certbot'.
+            ($default ? ' or press enter for using default address <comment>'.$default.'</comment>' : '').': '
+        , null);
+        $question->setValidator(function($email) use($default) {
+            if ( !$default && !isValidEmail($email) )
                 throw new \Exception('Please fill valid email address.');
 
             return $email;
@@ -304,11 +309,11 @@ class InstallManagerCommand extends Command
         $output->writeln('<info>'.$response->message.'</info>');
     }
 
-    private function enableSelfSignedSSL()
+    private function enableSelfSignedSSL($input, $output, $helper, &$config, $default)
     {
-        $question = new ConfirmationQuestion('<info>Would you like to allow self signed SSL certificates in NGINX?</info> (y/N) ', true);
+        $question = new ConfirmationQuestion('<info>Would you like to allow self signed SSL certificates in NGINX?</info> (y/N) ', $default);
 
-        if ( ! $this->helper->ask($this->input, $this->output, $question) )
+        if ( !($config = $helper->ask($input, $output, $question)) )
             return;
 
         //Enable self signed certs in sites-available/default
@@ -319,22 +324,22 @@ class InstallManagerCommand extends Command
 
         if ( ! file_exists($path = '/etc/ssl/certs/ssl-cert-snakeoil.pem') )
         {
-            exec($command, $output, $return_var);
+            exec($command, $_output, $return_var);
 
             if ( $return_var == 0 )
-                $this->output->writeln('SSL Snakeoil certificate has been created: '.$path);
+                $output->writeln('SSL Snakeoil certificate has been created: '.$path);
             else
-                return $this->output->writeln('<error>SSL Snakeoil certificate does not exists and could not be created at: '.$path.'</error>'.$generate);
+                return $output->writeln('<error>SSL Snakeoil certificate does not exists and could not be created at: '.$path.'</error>'.$generate);
         }
 
         if ( ! file_exists($path = '/etc/ssl/private/ssl-cert-snakeoil.key') )
         {
-            exec($command, $output, $return_var);
+            exec($command, $_output, $return_var);
 
             if ( $return_var == 0 )
-                $this->output->writeln('SSL Snakeoil certificate has been created: '.$path);
+                $output->writeln('SSL Snakeoil certificate has been created: '.$path);
             else
-                return $this->output->writeln('<error>SSL Snakeoil certificate does not exists and could not be created at: '.$path.'</error>'.$generate);
+                return $output->writeln('<error>SSL Snakeoil certificate does not exists and could not be created at: '.$path.'</error>'.$generate);
         }
     }
 }

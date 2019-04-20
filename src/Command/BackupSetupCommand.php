@@ -79,7 +79,7 @@ class BackupSetupCommand extends Command
                 'default' => $vm->config($k, null),
             ],
             'setRemoteBackups' => [
-                'config_key' => $k = 'backup_remote',
+                'config_key' => $k = 'remote_backups',
                 'default' => $vm->config($k, true),
             ],
             'setRemoteServer' => [
@@ -230,7 +230,7 @@ class BackupSetupCommand extends Command
 
     private function setRemoteServer($input, $output, $helper, &$config, $default, $total_config)
     {
-        if ( $total_config['backup_remote'] == false )
+        if ( $total_config['remote_backups'] == false )
             return false;
 
         $output->writeln('<info>Please set remote server address</info>');
@@ -254,7 +254,7 @@ class BackupSetupCommand extends Command
 
     private function setRemoteBackupLimit($input, $output, $helper, &$config, $default, $total_config)
     {
-        if ( $total_config['backup_remote'] == false )
+        if ( $total_config['remote_backups'] == false )
             return false;
 
         $output->writeln('<info>Please set remote backups limit</info>');
@@ -282,7 +282,7 @@ class BackupSetupCommand extends Command
      */
     private function setRemoteUser($input, $output, $helper, &$config, $default, $total_config)
     {
-        if ( $total_config['backup_remote'] == false )
+        if ( $total_config['remote_backups'] == false )
             return false;
 
         $output->writeln('<info>Please set user of remote server</info>');
@@ -321,7 +321,7 @@ class BackupSetupCommand extends Command
 
     private function setRemoteBackupPath($input, $output, $helper, &$config, $default, $total_config)
     {
-        if ( $total_config['backup_remote'] == false )
+        if ( $total_config['remote_backups'] == false )
             return false;
 
         $output->writeln('<info>Please set backup path in remote server where will be stored all backups of your local resources.</info>');
