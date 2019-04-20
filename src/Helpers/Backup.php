@@ -373,6 +373,7 @@ class Backup extends Application
 
         try {
             $host = explode(':', $this->config('email_server'));
+            $server_name = $this->config('backup_server_name', 'VPS Manager');
 
             //Server settings
             $mail->isSMTP();                                        // Set mailer to use SMTP
@@ -389,10 +390,12 @@ class Backup extends Application
 
             // Content
             $mail->isHTML(true);
-            $mail->Subject = $subject ?: 'Backups - VPS Manager';
+            $mail->Subject = ($subject ?: 'Backups') . ' - '.$server_name;
             $mail->Body    = $message;
             $mail->Body   .= '<br><br>';
-            $mail->Body   .= 'Date: '.date('d.m.Y H:i:s');
+            $mail->Body   .= 'Server: <strong>'.$server_name.'</strong><br>';
+            $mail->Body   .= 'Date: '.date('d.m.Y H:i:s').'<br>';
+            $mail->Body   .= '<br><img src="https://media.giphy.com/media/EFXGvbDPhLoWs/giphy.gif" alt="">';
 
             $mail->send();
 

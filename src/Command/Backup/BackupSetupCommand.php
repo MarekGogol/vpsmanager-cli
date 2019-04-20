@@ -50,6 +50,10 @@ class BackupSetupCommand extends Command
         $config = $vm->config();
 
         $config_data = [
+            'setBackupServerName' => [
+                'config_key' => $k = 'backup_server_name',
+                'default' => $vm->config($k, 'MyVpsServer')
+            ],
             'setBackupPath' => [
                 'config_key' => $k = 'backup_path',
                 'default' => $vm->config($k, '/var/vpsmanager_backups')
@@ -147,6 +151,17 @@ class BackupSetupCommand extends Command
         $value = $config = $helper->ask($input, $output, $question);
 
         $output->writeln('Email notifications: <comment>'.($value ? 'ON' : 'OFF').'</comment>');
+    }
+
+    private function setBackupServerName($input, $output, $helper, &$config, $default, $total_config)
+    {
+        $output->writeln('<info>Please set name of your server:</info>');
+
+        $question = new Question('Set name of your local server or press enter for using default name <comment>'.$default.'</comment>: ', null);
+
+        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+
+        $output->writeln('Used name: <comment>' . $value . '</comment>');
     }
 
     private function setEmailServer($input, $output, $helper, &$config, $default, $total_config)
