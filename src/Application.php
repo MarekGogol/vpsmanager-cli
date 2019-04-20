@@ -35,12 +35,13 @@ class Application
     /*
      * Return config
      */
-    public function config($key = null)
+    public function config($key = null, $default = null)
     {
         //Boot config params
         $config = vpsManager()->bootConfig();
 
-        return $key ? (array_key_exists($key, $config) ? $config[$key] : null) : $config;
+        return $key ? (array_key_exists($key, $config) ? ($config[$key] ?: $default) : $default)
+               : $config;
     }
 
     /*

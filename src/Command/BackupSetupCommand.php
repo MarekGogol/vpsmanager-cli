@@ -46,40 +46,57 @@ class BackupSetupCommand extends Command
 
     public function setConfig($input, $output, $helper)
     {
-        $config = vpsManager()->config();
+        $vm = vpsManager();
+        $config = $vm->config();
 
         $config_data = [
             'setBackupPath' => [
-                'config_key' => 'backup_path',
-                'default' => '/var/vpsmanager_backups'
+                'config_key' => $k = 'backup_path',
+                'default' => $vm->config($k, '/var/vpsmanager_backups')
             ],
             'setWWWPath' => [
-                'config_key' => 'backup_www_path',
-                'default' => '/var/www'
+                'config_key' => $k = 'backup_www_path',
+                'default' => $vm->config($k, '/var/www')
             ],
             'setBackupDirectories' => [
-                'config_key' => 'backup_directories',
-                'default' => '/etc/nginx;/etc/mysql'
+                'config_key' => $k = 'backup_directories',
+                'default' => $vm->config($k, '/etc/nginx;/etc/mysql')
+            ],
+            'setEmailNotifications' => [
+                'config_key' => $k = 'email_notifications',
+                'default' => $vm->config($k, true),
+            ],
+            'setEmailServer' => [
+                'config_key' => $k = 'email_server',
+                'default' => $vm->config($k, null),
+            ],
+            'setEmailUsername' => [
+                'config_key' => $k = 'email_username',
+                'default' => $vm->config($k, null),
+            ],
+            'setEmailPassword' => [
+                'config_key' => $k = 'email_password',
+                'default' => $vm->config($k, null),
             ],
             'setRemoteBackups' => [
-                'config_key' => 'backup_remote',
-                'default' => true,
+                'config_key' => $k = 'backup_remote',
+                'default' => $vm->config($k, true),
             ],
             'setRemoteServer' => [
-                'config_key' => 'remote_server',
-                'default' => null,
+                'config_key' => $k = 'remote_server',
+                'default' => $vm->config($k, null),
             ],
             'setRemoteUser' => [
-                'config_key' => 'remote_user',
-                'default' => $this->default_backup_user,
+                'config_key' => $k = 'remote_user',
+                'default' => $vm->config($k, $this->default_backup_user),
             ],
             'setRemoteBackupPath' => [
-                'config_key' => 'remote_path',
-                'default' => '/var/vpsmanager_backups/remote',
+                'config_key' => $k = 'remote_path',
+                'default' => $vm->config($k, '/var/vpsmanager_backups/remote'),
             ],
             'setRemoteBackupLimit' => [
-                'config_key' => 'remote_backup_limit',
-                'default' => 2,
+                'config_key' => $k = 'remote_backup_limit',
+                'default' => $vm->config($k, 2),
             ],
         ];
 
@@ -115,6 +132,84 @@ class BackupSetupCommand extends Command
         $output->writeln('Remote backups: <comment>'.($value ? 'ON' : 'OFF').'</comment>');
     }
 
+    public function setEmailNotifications($input, $output, $helper, &$config, $default)
+    {
+        $question = new ConfirmationQuestion('<info>Would you like to enable error email notifications? (y/N)</info> ', $default);
+
+        $value = $config = $helper->ask($input, $output, $question);
+
+        $output->writeln('Email notifications: <comment>'.($value ? 'ON' : 'OFF').'</comment>');
+    }
+
+    private function setEmailServer($input, $output, $helper, &$config, $default, $total_config)
+    {
+        if ( $total_config['email_notifications'] == false )
+            return false;
+
+        $output->writeln('<info>Please set SMTP server address:</info>');
+
+        $question = new Question(
+            'Type SMTP of your server in format <comment>(smtp.example.com:465)</comment>'.
+            ($default ? ' or press enter for using default remote <comment>'.$default.'</comment>' : '').': '
+        , null);
+        $question->setValidator(function($value) use($default) {
+            if ( !$default && empty($value) )
+                throw new \Exception('Please fill SMTP address of mailserver.');
+
+            return $value;
+        });
+
+        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+
+        $output->writeln('Used SMTP Server: <comment>' . $value . '</comment>');
+    }
+
+    private function setEmailUsername($input, $output, $helper, &$config, $default, $total_config)
+    {
+        if ( $total_config['email_notifications'] == false )
+            return false;
+
+        $output->writeln('<info>Please set SMTP username:</info>');
+
+        $question = new Question(
+            'Type SMTP username in format <comment>(vpsmanager@example.com)</comment>'.
+            ($default ? ' or press enter for using default username <comment>'.$default.'</comment>' : '').': '
+        , null);
+        $question->setValidator(function($value) use($default) {
+            if ( ! $default && empty($value) )
+                throw new \Exception('Please fill SMTP username of mailserver.');
+
+            return $value;
+        });
+
+        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+
+        $output->writeln('Used SMTP username: <comment>' . $value . '</comment>');
+    }
+
+    private function setEmailPassword($input, $output, $helper, &$config, $default, $total_config)
+    {
+        if ( $total_config['email_notifications'] == false )
+            return false;
+
+        $output->writeln('<info>Please set SMTP password:</info>');
+
+        $question = new Question(
+            'Type SMTP password'.
+            ($default ? ' or press enter for using default password <comment>'.$default.'</comment>' : '').': '
+        , null);
+        $question->setValidator(function($value) use ($default) {
+            if ( ! $default && empty($value) )
+                throw new \Exception('Please fill SMTP password of your account.');
+
+            return $value;
+        });
+
+        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+
+        $output->writeln('Used SMTP password: <comment>' . $value . '</comment>');
+    }
+
     private function setWWWPath($input, $output, $helper, &$config, $default)
     {
         $output->writeln('<info>Please set WWW path of your websites which you want backup.</info>');
@@ -140,9 +235,13 @@ class BackupSetupCommand extends Command
 
         $output->writeln('<info>Please set remote server address</info>');
 
-        $question = new Question('Type IP address or domain name of your server where backup data will be stored: ', null);
-        $question->setValidator(function($value) {
-            if ( empty($value) )
+        $question = new Question(
+            'Type IP address or domain name of your server where backup data will be stored'.
+            ($default ? ' or press enter for using default address <comment>'.$default.'</comment>' : '').': '
+        , null);
+
+        $question->setValidator(function($value) use ($default) {
+            if ( ! $default && empty($value) )
                 throw new \Exception('Please fill valid address of server.');
 
             return $value;
