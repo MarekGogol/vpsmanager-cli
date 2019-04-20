@@ -35,6 +35,9 @@ class BackupPerformCommand extends Command
 
         vpsManager()->bootConsole($output, $input, $this->helper);
 
+        if ( ! vpsManager()->config('backup_path') )
+            throw new \Exception('Please, first start backups configuration with php vpsmanager backup:setup command.');
+
         //If any parameter has been filled, then everything will be backuped
         $any = $input->getOption('databases') === false
             && $input->getOption('dirs') === false

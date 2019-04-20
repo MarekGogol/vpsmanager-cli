@@ -38,7 +38,6 @@ class InstallManagerCommand extends Command
 
         $output->writeln('');
 
-
         $this->setConfig($input, $output, $helper);
 
         $this->enableSelfSignedSSL();
@@ -100,8 +99,8 @@ class InstallManagerCommand extends Command
 
             //Get config inputs
             else {
-                $output->writeln('');
                 $this->{$method}($input, $output, $helper, $config[$data['config_key']], $data['default'], $config);
+                $output->writeln('');
             }
         }
 
@@ -307,7 +306,7 @@ class InstallManagerCommand extends Command
 
     private function enableSelfSignedSSL()
     {
-        $question = new ConfirmationQuestion("\n".'<info>Would you like to allow self signed SSL certificates in NGINX?</info> (y/N) ', true);
+        $question = new ConfirmationQuestion('<info>Would you like to allow self signed SSL certificates in NGINX?</info> (y/N) ', true);
 
         if ( ! $this->helper->ask($this->input, $this->output, $question) )
             return;

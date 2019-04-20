@@ -41,7 +41,7 @@ class BackupSetupCommand extends Command
 
         $this->setConfig($input, $output, $helper);
 
-        $output->writeln("\n".'<info>Backup setup has been successfully completed.</info>');
+        $output->writeln('<info>Backup setup has been successfully completed.</info>');
     }
 
     public function setConfig($input, $output, $helper)
@@ -52,6 +52,10 @@ class BackupSetupCommand extends Command
             'setBackupPath' => [
                 'config_key' => 'backup_path',
                 'default' => '/var/vpsmanager_backups'
+            ],
+            'setWWWPath' => [
+                'config_key' => 'backup_www_path',
+                'default' => '/var/www'
             ],
             'setBackupDirectories' => [
                 'config_key' => 'backup_directories',
@@ -73,14 +77,16 @@ class BackupSetupCommand extends Command
                 'config_key' => 'remote_path',
                 'default' => '/var/vpsmanager_backups/remote',
             ],
+            'setRemoteBackupLimit' => [
+                'config_key' => 'remote_backup_limit',
+                'default' => 2,
+            ],
         ];
 
         //Set config properties
         foreach ($config_data as $method => $data)
         {
-            $output->writeln('');
-
-            $this->{$method}(
+            $prev_config = $this->{$method}(
                 $input,
                 $output,
                 $helper,
@@ -88,6 +94,9 @@ class BackupSetupCommand extends Command
                 $data['default'],
                 $config
             );
+
+            if ( $prev_config !== false )
+                $output->writeln('');
         }
 
         if ( ! file_put_contents(vpsManagerPath().'/config.php', "<?php \n\nreturn " . var_export($config, true) . ';') )
@@ -106,10 +115,28 @@ class BackupSetupCommand extends Command
         $output->writeln('Remote backups: <comment>'.($value ? 'ON' : 'OFF').'</comment>');
     }
 
+    private function setWWWPath($input, $output, $helper, &$config, $default)
+    {
+        $output->writeln('<info>Please set WWW path of your websites which you want backup.</info>');
+
+        //Nginx path
+        $question = new Question('Type new path or press enter for using default <comment>'.$default.'</comment> path: ', null);
+        $question->setValidator(function($path) {
+            if ( $path && ! file_exists($path) )
+                throw new \Exception('Please fill valid existing path.');
+
+            return trim_end($path, '/');
+        });
+
+        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+
+        $output->writeln('Used path: <comment>' . $value . '</comment>');
+    }
+
     private function setRemoteServer($input, $output, $helper, &$config, $default, $total_config)
     {
         if ( $total_config['backup_remote'] == false )
-            return;
+            return false;
 
         $output->writeln('<info>Please set remote server address</info>');
 
@@ -126,13 +153,38 @@ class BackupSetupCommand extends Command
         $output->writeln('Used IP/Domain: <comment>' . $value . '</comment>');
     }
 
+    private function setRemoteBackupLimit($input, $output, $helper, &$config, $default, $total_config)
+    {
+        if ( $total_config['backup_remote'] == false )
+            return false;
+
+        $output->writeln('<info>Please set remote backups limit</info>');
+
+        $question = new Question(
+            'Type how many latest backups from local machine should be stored in remote server.'."\n".
+            'All previous backups from remote server will be deleted.'."\n".
+            'Or press enter for using default <comment>'.$default.'</comment> backups: '
+        , null);
+
+        $question->setValidator(function($value) {
+            if ( $value && $value !== 0 && !is_numeric($value) )
+                throw new \Exception('Please fill valid number of backups.');
+
+            return $value;
+        });
+
+        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+
+        $output->writeln('Latest remote backups: <comment>' . $value . '</comment>');
+    }
+
     /*
      * Set remote user
      */
     private function setRemoteUser($input, $output, $helper, &$config, $default, $total_config)
     {
         if ( $total_config['backup_remote'] == false )
-            return;
+            return false;
 
         $output->writeln('<info>Please set user of remote server</info>');
 
@@ -171,9 +223,9 @@ class BackupSetupCommand extends Command
     private function setRemoteBackupPath($input, $output, $helper, &$config, $default, $total_config)
     {
         if ( $total_config['backup_remote'] == false )
-            return;
+            return false;
 
-        $output->writeln('<info>Please set backup path in remote server where will be stored all backups of your resources.</info>');
+        $output->writeln('<info>Please set backup path in remote server where will be stored all backups of your local resources.</info>');
 
         $question = new Question('Type new path or press enter for using default remote <comment>'.$default.'</comment> path: ', null);
 
@@ -184,7 +236,7 @@ class BackupSetupCommand extends Command
 
     private function setBackupPath($input, $output, $helper, &$config, $default)
     {
-        $output->writeln('<info>Please set backup path where will be stored all backups of your resources.</info>');
+        $output->writeln('<info>Please set backup path where will be stored all local backups of your resources.</info>');
 
         $question = new Question('Type new path or press enter for using default <comment>'.$default.'</comment> path: ', null);
 
@@ -216,14 +268,14 @@ class BackupSetupCommand extends Command
     private function setBackupDirectoryPermissions($path)
     {
         exec('mkdir -p -m 700 '.$path);
-        exec('chown '.$this->default_backup_user.':'.$this->default_backup_user.' -R '.vpsManager()->config('backup_path'));
+        exec('chown '.$this->default_backup_user.':'.$this->default_backup_user.' -R '.$path);
 
         $this->output->writeln('Directory used and permissions changed: <comment>'.$path.'</comment>');
     }
 
     private function setBackupDirectories($input, $output, $helper, &$config, $default)
     {
-        $output->writeln('<info>Please set which directories should be backed up.</info>');
+        $output->writeln('<info>Please set which additional directories should be backed up.</info>');
 
         $question = new Question(
             'Type multiple paths separated with <comment>;</comment> in format <comment>path1;path2;path3</comment>'."\n"

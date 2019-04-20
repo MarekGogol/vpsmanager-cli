@@ -94,7 +94,7 @@ class Backup extends Application
      */
     private function createIfNotExists($directory)
     {
-        $directory = $this->getBackupPath($directory).'/'.date('Y-m-d_H-i-00');
+        $directory = $this->getBackupPath($directory).'/'.date('Y-m-d_H-00-00');
 
         if ( ! file_exists($directory) )
             exec('mkdir -p "'.$directory.'"');
@@ -156,7 +156,7 @@ class Backup extends Application
     {
         $backup_path = $this->createIfNotExists('www');
 
-        $www_path = $this->config('www_path');
+        $www_path = $this->config('backup_www_path');
 
         $directories = $this->getTree($www_path);
 
@@ -321,6 +321,31 @@ class Backup extends Application
     }
 
     /*
+     * Get all folders which should be excluded from backup
+     */
+    private function getExcludedRsyncBackups($backup_path)
+    {
+        $exclude = [];
+
+        foreach ($this->getTree($backup_path) as $dir)
+        {
+            $backups = $this->getTree($backup_path.'/'.$dir);
+
+            //Get last x backups
+            $allowed_backups = array_slice($backups, -2);
+
+            //Build rsync params
+            $exclude_folders = array_map(function($backup) use($dir){
+                return '--exclude \''.$dir.'/'.$backup.'\'';
+            }, array_diff($backups, $allowed_backups));
+
+            $exclude = array_merge($exclude, $exclude_folders);
+        }
+
+        return $exclude;
+    }
+
+    /*
      * Send local backups data to remote server
      */
     public function sendLocalBackupsToRemoteServer()
@@ -332,7 +357,10 @@ class Backup extends Application
 
         $this->response()->success('Syncing backups to remote <comment>'.$remote_server.'</comment> server.')->writeln();
 
-        exec('rsync -avzP --delete -e \'ssh -i '.$this->getRemoteRSAKeyPath().'\' '.$this->getBackupPath().'/* '.$this->config('remote_user').'@'.$remote_server.':'.$this->config('remote_path'), $output, $return_var);
+        $backup_path = $this->getBackupPath();
+        $exclude = $this->getExcludedRsyncBackups($backup_path);
+
+        exec($cmd = 'rsync -avzP --delete --delete-excluded '.implode(' ', $exclude).' -e \'ssh -i '.$this->getRemoteRSAKeyPath().'\' '.$this->getBackupPath().'/* '.$this->config('remote_user').'@'.$remote_server.':'.$this->config('remote_path'), $output, $return_var);
 
         if ( $return_var == 0 )
             $this->response()->success('<info>All backups has been synced to remote</info> <comment>'.$remote_server.'</comment> <info>server</info>')->writeln();

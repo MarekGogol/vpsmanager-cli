@@ -49,7 +49,12 @@ class Application
     public function bootConfig($force = false)
     {
         if ( ! $this->config || $force === true )
-            $this->config = require(vpsManagerPath() . '/config.php');
+        {
+            if ( file_exists($path = vpsManagerPath() . '/config.php') )
+                $this->config = require($path);
+            else
+                $this->config = [];
+        }
 
         return $this->config;
     }
