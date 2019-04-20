@@ -1,4 +1,4 @@
-## VPS Hosting CLI manager for your VPS
+## CLI Hosting manager for your VPS
 
 ### 1. Installation
 
@@ -29,6 +29,18 @@ git pull
 
 ```bash
 sudo php vpsmanager hosting:create
+```
+
+### Remove hosting
+
+1. Removes linux user of hosting
+2. Removes nginx configuration
+3. Removes PHP Pool socket configuration
+4. Removes user/database
+5. Removes web data
+
+```bash
+sudo php vpsmanager hosting:remove
 ```
 
 ### Set up SSL certificates
