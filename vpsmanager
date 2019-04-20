@@ -2,11 +2,11 @@
 <?php
 require_once 'vendor/autoload.php';
 
-use Gogol\VpsManagerCLI\Command\BackupPerformCommand;
-use Gogol\VpsManagerCLI\Command\BackupRemoteTestServer;
-use Gogol\VpsManagerCLI\Command\BackupSetupCommand;
-use Gogol\VpsManagerCLI\Command\HostingCreateCommand;
-use Gogol\VpsManagerCLI\Command\HostingRemoveCommand;
+use Gogol\VpsManagerCLI\Command\Backup\BackupPerformCommand;
+use Gogol\VpsManagerCLI\Command\Backup\BackupRemoteTestServer;
+use Gogol\VpsManagerCLI\Command\Backup\BackupSetupCommand;
+use Gogol\VpsManagerCLI\Command\Hosting\HostingCreateCommand;
+use Gogol\VpsManagerCLI\Command\Hosting\HostingRemoveCommand;
 use Gogol\VpsManagerCLI\Command\InstallManagerCommand;
 use Gogol\VpsManagerCLI\Command\SSLCreateCommand;
 use Symfony\Component\Console\Application;

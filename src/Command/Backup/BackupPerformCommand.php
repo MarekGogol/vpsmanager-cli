@@ -1,6 +1,6 @@
 <?php
 
-namespace Gogol\VpsManagerCLI\Command;
+namespace Gogol\VpsManagerCLI\Command\Backup;
 
 use Gogol\VpsManagerCLI\Nginx\Nginx;
 use Symfony\Component\Console\Command\Command;
