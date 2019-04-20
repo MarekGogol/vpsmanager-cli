@@ -102,6 +102,10 @@ class BackupSetupCommand extends Command
                 'config_key' => $k = 'remote_backup_limit',
                 'default' => $vm->config($k, 2),
             ],
+            'addIntoCrontab' => [
+                'config_key' => $k = 'crontab_add',
+                'default' => $vm->config($k, true),
+            ],
         ];
 
         //Set config properties
@@ -410,5 +414,35 @@ class BackupSetupCommand extends Command
         $value = $config = trim_end($helper->ask($input, $output, $question) ?: $default, '/');
 
         $output->writeln('Used paths: <comment>' . $value . '</comment>');
+    }
+
+    private function addIntoCrontab($input, $output, $helper, &$config, $default)
+    {
+        $question = new ConfirmationQuestion('<info>Would you like to run this backups at</info> <comment>4AM</comment><info>? Crontab will be added. (y/N)</info> ', $default);
+
+        $value = $config = $helper->ask($input, $output, $question);
+
+        $output->writeln('Crontab: <comment>'.($value ? 'ON' : 'OFF').'</comment>');
+
+        $app_path = implode('/', array_slice(explode('/', __DIR__), 0, -3));
+        $line = '0 4 * * * php '.$app_path.'/vpsmanager backup:run';
+
+        if ( $config == false )
+            return $output->writeln('You can add crontab manually later: <info>'.$line.'</info>');
+
+        $crontab_path = '/var/spool/cron/crontabs/root';
+        $crontab_data = file_get_contents($crontab_path);
+
+        //If crontab does not exists already
+        if ( strpos($crontab_data, 'vpsmanager backup:run') === false )
+        {
+            file_put_contents($crontab_path, $line."\n", FILE_APPEND);
+            $output->writeln('Crontab has been added at: <comment>4AM</comment>');
+        }
+
+        //Crontab exists
+        else {
+            $output->writeln('Crontab for backups exists already.');
+        }
     }
 }

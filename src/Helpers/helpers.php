@@ -7,7 +7,7 @@ $vps_manager = null;
 
 function vpsManagerPath()
 {
-    return './src';
+    return __DIR__.'/..';
 }
 
 function vpsManager()

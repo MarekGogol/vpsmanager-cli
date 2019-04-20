@@ -20,7 +20,7 @@ class BackupPerformCommand extends Command
 
     protected function configure()
     {
-        $this->setName('backup:create')
+        $this->setName('backup:run')
              ->setDescription('Backup all databases, websites data, and other files. Also copies data to other server.')
              ->addOption('databases', null, InputOption::VALUE_OPTIONAL, 'Backup all databases', false)
              ->addOption('dirs', null, InputOption::VALUE_OPTIONAL, 'Backup all directories', false)
