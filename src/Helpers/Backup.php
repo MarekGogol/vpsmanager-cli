@@ -475,6 +475,8 @@ class Backup extends Application
      */
     public function perform($backup = [])
     {
+        $start = microtime(true);
+
         //Backup databases
         if ( $this->isAllowed($backup, 'databases') )
             $this->backupDatabases()->writeln();
@@ -490,6 +492,8 @@ class Backup extends Application
         $this->removeOldBackups();
         $this->sendLocalBackupsToRemoteServer();
         $this->sendNotification();
+
+        $this->log('INFO', 'Backup end | DB:'.($this->isAllowed($backup, 'databases') ? 'YES' : 'NO').' | WWW:'.($this->isAllowed($backup, 'www') ? 'YES' : 'NO').' | DIRS:'.($this->isAllowed($backup, 'dirs') ? 'YES' : 'NO').' | '.round((microtime(true)-$start)/60, 1).' Min.');
 
         return $this->response()->success('Full backup has been successfullu performed.');
     }
