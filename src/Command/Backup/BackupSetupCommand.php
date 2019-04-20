@@ -64,7 +64,7 @@ class BackupSetupCommand extends Command
             ],
             'setBackupDirectories' => [
                 'config_key' => $k = 'backup_directories',
-                'default' => $vm->config($k, '/etc/nginx;/etc/mysql --exclude="*/debian.cnf";')
+                'default' => $vm->config($k, '/etc/nginx;/etc/mysql --exclude="*/debian.cnf"')
             ],
             'setEmailNotifications' => [
                 'config_key' => $k = 'email_notifications',
@@ -412,7 +412,8 @@ class BackupSetupCommand extends Command
      */
     private function setBackupDirectoryPermissions($path)
     {
-        exec('mkdir -p -m 700 '.$path);
+        exec('mkdir -p '.$path);
+        exec('chmod 700 -R '.$path);
         exec('chown '.$this->default_backup_user.':'.$this->default_backup_user.' -R '.$path);
 
         $this->output->writeln('Directory used and permissions changed: <comment>'.$path.'</comment>');
@@ -423,8 +424,9 @@ class BackupSetupCommand extends Command
         $output->writeln('<info>Please set which additional directories should be backed up.</info>');
 
         $question = new Question(
-            'Type multiple paths separated with <comment>;</comment> in format <comment>path1;path2;path3</comment>'."\n"
-           .'or press enter for using default <comment>'.$default.'</comment> paths: ', null);
+            'Type multiple paths separated with <comment>;</comment> in format <comment>path1;path2;path3</comment>.'."\n".
+            'If you don\'t want backup any directories, then press <comment>-</comment> and hit enter.'."\n"
+           .'Or press enter for using default <comment>'.$default.'</comment> paths: ', null);
 
         $value = $config = trim_end($helper->ask($input, $output, $question) ?: $default, '/');
 
