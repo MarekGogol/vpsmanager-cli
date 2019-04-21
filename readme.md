@@ -68,7 +68,7 @@ If you need backup all your websites, databases, nginx configurations and many m
 
 ### Backup setup
 
-This command configures backups. Sets everything what you want backup as www directories, custom directories, databases, configures remote backups, generate SSH keys for private backups and set's all backup directories, also set email configuration for notifications.
+This command configures backups. Sets everything what you want backup as www directories, custom directories, databases, configures remote backups, generate SSH keys for remote backups and set's all backup directories, also set email configuration for notifications.
 
 ```bash
 sudo php vpsmanager backup:setup
@@ -87,4 +87,22 @@ sudo php vpsmanager backup:run
 sudo php vpsmanager backup:run --databases #backup only databases
 sudo php vpsmanager backup:run --databases --dirs #backup databases and custom directories
 sudo php vpsmanager backup:run --www #backup just web directories
+```
+
+### Test email nofitications backup
+
+This command tests SMTP configuration. Test will be send to your email address.
+
+```bash
+sudo php vpsmanager backup:test-mail
+```
+
+### Test remote SSH connection for remote backups
+
+This command tests your remote server configuration.
+
+!> In case of error, you just may need run ssh connection manually to accept server key.
+
+```bash
+sudo php vpsmanager backup:test-remote
 ```
