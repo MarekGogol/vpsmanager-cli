@@ -4,7 +4,7 @@ This package can fully manage your WAMP configuration on your VPS.
 - creates new hosting user with directories and correct permissions
 - creates and managing NGINX, PHP configurations and databases for each hosting
 - manages SSL lets encrypt configuration and sets nginx properly
-- you can setup daily/hourly backups for backup everything what you need, from webpages, databases, custom directories...
+- you can setup backups for everything what you need, from webpages, databases, custom directories...
 - supports remote server backups
 
 Everything this is ready in the box, you just need to configure this features by installation commands. Also if you need use just backups, you can setup just backups.
