@@ -5,9 +5,9 @@ This package can fully manage your WAMP configuration on your VPS.
 - creates and managing NGINX, PHP configurations and databases for each hosting
 - manages SSL lets encrypt configuration and sets nginx properly
 - you can setup backups for everything what you need, from webpages, databases, custom directories...
-- supports remote server backups
+- supports remote server backups and email notifications.
 
-Everything this is ready in the box, you just need to configure this features by installation commands. Also if you need use just backups, you can setup just backups.
+Everything is ready in the box, you just need to configure this features by installation commands. Also if you need use just backups, you can setup just backups.
 
 ## 1. Installation
 
@@ -92,7 +92,7 @@ With this command you can simply run backups.
 - In case of default setup, backup will be stored into `/var/vpsmanager_backups/local/{www|dirs|databases}/2019-XX-XX-XX-00-00/`.
 
 ```bash
-sudo php vpsmanager backup:run
+sudo php vpsmanager backup:run # backup everything
 sudo php vpsmanager backup:run --databases #backup only databases
 sudo php vpsmanager backup:run --databases --dirs #backup databases and custom directories
 sudo php vpsmanager backup:run --www #backup just web directories
