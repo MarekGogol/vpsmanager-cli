@@ -1,5 +1,14 @@
 ## CLI Hosting manager for your VPS
 
+This package can fully manage your WAMP configuration on your VPS.
+- creates new hosting user with directories and correct permissions
+- creates and managing NGINX, PHP configurations and databases for each hosting
+- manages SSL lets encrypt configuration and sets nginx properly
+- you can setup daily/hourly backups for backup everything what you need, from webpages, databases, custom directories...
+- supports remote server backups
+
+Everything this is ready in the box, you just need to configure this features by installation commands. Also if you need use just backups, you can setup just backups.
+
 ## 1. Installation
 
 This command first checks all your VPS requirements such as PHP, MySQL, Npm, NodeJS, Composer and downloads all required components for proper wamp configuration in your VPS. When everything will be instaled, then will be initialized configuration of VPS Manager CLI.
