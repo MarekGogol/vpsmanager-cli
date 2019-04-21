@@ -9,6 +9,10 @@ This package can fully manage your WAMP configuration on your VPS.
 
 Everything is ready in the box, you just need to configure this features by installation commands. Also if you need use just backups, you can setup just backups.
 
+Requirements
+- php 7.1+
+
+
 ## 1. Installation
 
 This command first checks all your VPS requirements such as PHP, MySQL, Npm, NodeJS, Composer and downloads all required components for proper wamp configuration in your VPS. When everything will be instaled, then will be initialized configuration of VPS Manager CLI.
@@ -100,7 +104,7 @@ sudo php vpsmanager backup:run --www #backup just web directories
 
 ### Test email nofitications backup
 
-This command tests SMTP configuration. Test will be send to your email address.
+This command tests SMTP configuration. Test email will be send to your email address.
 
 ```bash
 sudo php vpsmanager backup:test-mail
@@ -110,7 +114,7 @@ sudo php vpsmanager backup:test-mail
 
 This command tests your remote server configuration.
 
-!> In case of error, you just may need run ssh connection manually to accept server key.
+> In case of error, you just may need run ssh connection manually to accept server key.
 
 ```bash
 sudo php vpsmanager backup:test-remote
