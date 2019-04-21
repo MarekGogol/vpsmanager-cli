@@ -105,7 +105,7 @@ sudo php vpsmanager backup:run --www #backup just web directories
 You can setup crontab for running this backups daily. Just type `crontab -e` and add following line into code.
 ```bash
 0 4 * * * php /root/vpsmanager/vpsmanager backup:run
-```bash
+```
 
 ### Test email nofitications backup
 
