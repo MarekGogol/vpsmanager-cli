@@ -9,6 +9,8 @@ use Gogol\VpsManagerCLI\Command\Backup\BackupTestRemoteServer;
 use Gogol\VpsManagerCLI\Command\Hosting\HostingCreateCommand;
 use Gogol\VpsManagerCLI\Command\Hosting\HostingRemoveCommand;
 use Gogol\VpsManagerCLI\Command\InstallManagerCommand;
+use Gogol\VpsManagerCLI\Command\Mysql\MysqlCreateCommand;
+use Gogol\VpsManagerCLI\Command\Mysql\MysqlRemoveCommand;
 use Gogol\VpsManagerCLI\Command\SSLCreateCommand;
 use Symfony\Component\Console\Application;
 
@@ -22,6 +24,8 @@ $application->add(new BackupSetupCommand());
 $application->add(new BackupPerformCommand());
 $application->add(new BackupTestRemoteServer());
 $application->add(new BackupTestMailServer());
+$application->add(new MysqlCreateCommand());
+$application->add(new MysqlRemoveCommand());
 
 $application->run();
 ?>

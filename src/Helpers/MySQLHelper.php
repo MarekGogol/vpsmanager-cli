@@ -21,6 +21,14 @@ class MySQLHelper extends Application
         return preg_replace("/[^a-z0-9]+/i", '_', $domain);;
     }
 
+    /*
+     * Check if given db name is valid
+     */
+    public function isValidDBName($name)
+    {
+        return preg_match('/[0-9a-zA-Z$_]+/', $name, $matches) === 1 && $matches[0] == $name;
+    }
+
     /**
      * Create new database and user
      * @param  string $domain
@@ -28,7 +36,7 @@ class MySQLHelper extends Application
      */
     public function createDatabase($domain)
     {
-        if ( ! isValidDomain($domain) )
+        if ( ! ($this->isValidDBName($domain) || isValidDomain($domain) ) )
             return $this->response->wrongDomainName();
 
         $database = $this->dbName($domain);
@@ -53,7 +61,7 @@ class MySQLHelper extends Application
      */
     public function removeDatabaseWithUser($domain)
     {
-        if ( ! isValidDomain($domain) )
+        if ( ! ($this->isValidDBName($domain) || isValidDomain($domain) ) )
             return $this->response()->wrongDomainName();
 
         $database = $this->dbName($domain);
