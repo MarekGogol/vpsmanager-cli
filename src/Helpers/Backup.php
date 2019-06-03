@@ -194,6 +194,48 @@ class Backup extends Application
     }
 
     /*
+     Escape directory from backup ignore file list
+     */
+    private function escapeDirectory($directory)
+    {
+        $directory = preg_replace('/[^a-z\.A-Z\_\-0-9\/]/', "", $directory);
+
+        return $directory;
+    }
+
+    /*
+     * Get www data exclude directories
+     */
+    private function getExcludeDirectories($domain)
+    {
+        $exclude = '-x */\node_modules/\* -x */\vendor/\* -x */\cache/\* -x */\laravel.log';
+
+        $www_path = $this->config('backup_www_path');
+
+        $domain_path = $www_path.'/'.$domain;
+
+        $ignore_file = $domain_path.'/.backups_ignore';
+
+        //Check if ignore file exists, and exclude directories from given file
+        if ( file_exists($ignore_file) )
+        {
+            $ignore = array_filter(explode("\n", file_get_contents($ignore_file)));
+
+            foreach ($ignore as $item)
+            {
+                //Exclude file or firectory
+                if ( is_file($domain_path.'/'.$item) )
+                    $exclude .= ' -x '.$domain.'/'.$this->escapeDirectory($item);
+                else if ( is_dir($domain_path.'/'.$item) )
+                    $exclude .= ' -x '.$domain.'/'.$this->escapeDirectory($item).'/\*';
+            }
+        }
+
+
+        return $exclude;
+    }
+
+    /*
      * Backup all required directories and zip them
      */
     // cd /var/www/html/../ && zip -r /root/backups/2019-04-18_16/www/html.zip html -x */\node_modules/\* -x */\vendor/\* -x */\cache/\* -x */\laravel.log
@@ -215,7 +257,7 @@ class Backup extends Application
             if ( ! $this->zipDirectory(
                 $www_path.'/'.$domain,
                 $backup_path.'/'.$this->getZipName($domain),
-                '-x */\node_modules/\* -x */\vendor/\* -x */\cache/\* -x */\laravel.log'
+                $this->getExcludeDirectories($domain)
             ) )
                 $errors[] = $domain;
         }

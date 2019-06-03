@@ -107,6 +107,12 @@ You can setup crontab for running this backups daily. Just type `crontab -e` and
 0 4 * * * php /root/vpsmanager/vpsmanager backup:run
 ```
 
+If you need exclude folders, subdomains, or files from www backup. You can specify ignore list, in root of your domain in `/var/www/example.com/.backups_ignore` file.
+```
+sub/subdomain1
+web/my-exclude-folder
+```
+
 ### Test email nofitications backup
 
 This command tests SMTP configuration. Test email will be send to your email address.
