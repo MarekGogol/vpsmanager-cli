@@ -206,15 +206,21 @@ class Backup extends Application
     /*
      * Get www data exclude directories
      */
-    private function getExcludeDirectories($domain)
+    private function getExcludeDirectories($domain, $exclude = '')
     {
-        $exclude = '-x */\node_modules/\* -x */\vendor/\* -x */\cache/\* -x */\laravel.log';
+        $exclude_domain_root = ['.config/\*', '.cache/\*', '.npm/\*', '.nano/\*', '.bash_history', '.selected_editor'];
+        $exclude_global_folters = ['node_modules/\*', 'vendor/\*', 'cache/\*', 'laravel.log'];
 
         $www_path = $this->config('backup_www_path');
 
         $domain_path = $www_path.'/'.$domain;
 
         $ignore_file = $domain_path.'/.backups_ignore';
+
+        //Exclude gloval folders
+        foreach ($exclude_global_folters as $item) {
+            $exclude .= ' -x */\\'.$item;
+        }
 
         //Check if ignore file exists, and exclude directories from given file
         if ( file_exists($ignore_file) )
@@ -223,6 +229,8 @@ class Backup extends Application
 
             foreach ($ignore as $item)
             {
+                $item = trim($item, '/');
+
                 //Exclude file or firectory
                 if ( is_file($domain_path.'/'.$item) )
                     $exclude .= ' -x '.$domain.'/'.$this->escapeDirectory($item);
@@ -231,6 +239,9 @@ class Backup extends Application
             }
         }
 
+        //Exclude uneccessary directories in root domain folder
+        foreach ($exclude_domain_root as $item)
+            $exclude .= ' -x '.$domain.'/'.$item;
 
         return $exclude;
     }
