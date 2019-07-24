@@ -129,14 +129,14 @@ class Server extends Application
                 }
 
                 $this->response()->message('Directory created: <comment>'.$path.'</comment>')->writeln();
-            }
 
-            //Change permissions
-            if ( $with_permissions ){
-                $dir_chmod = isset($permissions['chmod']) ? $permissions['chmod'] : $permissions;
-                $dir_user = isset($permissions['user']) ? $permissions['user'] : $user;
-                $dir_group = isset($permissions['group']) ? $permissions['group'] : 'www-data';
-                shell_exec('chmod '.$dir_chmod.' -R '.$path.' && chown -R '.$dir_user.':'.$dir_group.' '.$path);
+                //Change permissions on new created files
+                if ( $with_permissions ){
+                    $dir_chmod = isset($permissions['chmod']) ? $permissions['chmod'] : $permissions;
+                    $dir_user = isset($permissions['user']) ? $permissions['user'] : $user;
+                    $dir_group = isset($permissions['group']) ? $permissions['group'] : 'www-data';
+                    shell_exec('chmod '.$dir_chmod.' -R '.$path.' && chown -R '.$dir_user.':'.$dir_group.' '.$path);
+                }
             }
         }
 
