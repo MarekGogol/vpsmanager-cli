@@ -135,7 +135,7 @@ class Server extends Application
                     $dir_chmod = isset($permissions['chmod']) ? $permissions['chmod'] : $permissions;
                     $dir_user = isset($permissions['user']) ? $permissions['user'] : $user;
                     $dir_group = isset($permissions['group']) ? $permissions['group'] : 'www-data';
-                    shell_exec('chmod '.$dir_chmod.' -R '.$path.' && chown -R '.$dir_user.':'.$dir_group.' '.$path);
+                    shell_exec('chmod '.$dir_chmod.' -R '.$path.' && chmod g+s -R '.$path.' && chown -R '.$dir_user.':'.$dir_group.' '.$path);
                 }
             }
         }
