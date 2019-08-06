@@ -106,7 +106,7 @@ class Server extends Application
             $web_path.'/web/public' => 710,
             $web_path.'/sub' => 710,
             $web_path.'/logs' => ['chmod' => 750, 'user' => 'root', 'group' => $user],
-            $web_path.'/.ssh' => 'chmod' => 710, 'user' => $user, 'group' => $user],
+            $web_path.'/.ssh' => ['chmod' => 710, 'user' => $user, 'group' => $user],
         ];
 
         //Create subdomain
