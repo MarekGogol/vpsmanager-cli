@@ -72,9 +72,9 @@ If you need backup all your websites, databases, nginx configurations and many m
 - Backup databases into separate files
 - Backup all websites from */var/www* (or other directory from configuration)
 - Automatically removes old backups
-    - `Databases:` in 24 hours does not remove any backup. After 24 hours keep 1 backup per day in last month period. After 1 month backups are deleted.
+    - `Databases:` in 24 hours does not remove any backup. After 24 hours keeps 1 backup per day in last month period. After 1 month backups are deleted.
     - `Custom directories:` in 24 hours does not remove any backup, after 24 hours keep 1 backup per one week.
-    - `WWW data:` in 24 hours does not remove any backup, after 24 hours keep 1 backup per one week.
+    - `WWW data:` in 24 hours does not remove any backup, after 24 hours keeps 1 backup from two last mondays.
 - Send all local data to remote server
 - You can set how many lates backups should be stored on remote server. You don't need store all data, you can choose.
 - Also email notifications in case of error

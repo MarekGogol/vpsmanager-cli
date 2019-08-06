@@ -269,8 +269,9 @@ class Backup extends Application
                 $www_path.'/'.$domain,
                 $backup_path.'/'.$this->getZipName($domain),
                 $this->getExcludeDirectories($domain)
-            ) )
+            ) ) {
                 $errors[] = $domain;
+            }
         }
 
         //Log and send all directories which could not be saved
@@ -370,24 +371,25 @@ class Backup extends Application
             $date = DateTime::createFromFormat('Y-m-d_H-i-s', $date_dir);
 
             $yesterday = (new DateTime)->setTime(0, 0, 0);
-            $weeks2_before = (new DateTime)->sub(new DateInterval('P2W'));
+            $weeks2_before = (new DateTime)->setTimestamp(strtotime('Monday this week'))->sub(new DateInterval('P1W'));
 
             //Allow everything from today
             if ( $date >= $yesterday )
                 $allow[] = $date_dir;
 
-            //Allow first one backup per week in year
+            //Allow last 2 backups from last 2 mondays
             if (
-                $date >= $weeks2_before && $date < $yesterday
-                && !array_key_exists($key = 'week-'.$date->format('y-m-W'), $allow)
+                $date >= $weeks2_before && $date->format('D') == 'Mon' && $date < $yesterday
+                && !array_key_exists($key = 'week-'.$date->format('y-m-d'), $allow)
             ) {
                 $allow[$key] = $date_dir;
             }
         }
 
         //Remove uneccessary backups
-        foreach (array_diff($backups, array_unique($allow)) as $dir)
+        foreach (array_diff($backups, array_unique($allow)) as $dir) {
             exec('rm -rf "'.$backup_path.'/'.$dir.'"');
+        }
     }
 
     /*
@@ -402,7 +404,7 @@ class Backup extends Application
         foreach ($storages as $storage)
         {
             $this->removeOldDatabaseBackups($storage);
-            $this->removeOldDataBackups($storage, 'dirs');
+            // $this->removeOldDataBackups($storage, 'dirs');
             $this->removeOldDataBackups($storage, 'www');
         }
 
