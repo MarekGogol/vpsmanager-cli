@@ -34,7 +34,7 @@ class Nginx extends Application
         return $this->getWebPath($domain, $config) . '/logs/'.($filename ?: 'error').'.log';
     }
 
-    public function cloneNginxSettins()
+    public function cloneNginxSettings()
     {
         $nginx_path = $this->config('nginx_path');
 
@@ -42,8 +42,9 @@ class Nginx extends Application
         {
             exec('cp -Rf '.__DIR__.'/../Resources/nginx/vpsmanager '.$nginx_path.'/vpsmanager', $output, $return_var);
             exec('cp -f '.__DIR__.'/../Resources/nginx/nginx.conf '.$nginx_path.'/nginx.conf', $output1, $return_var1);
+            exec('cp -f '.__DIR__.'/../Resources/nginx/conf.d/* '.$nginx_path.'/conf.d/', $output1, $return_var2);
 
-            if ( $return_var == 0 && $return_var == 0 )
+            if ( $return_var == 0 && $return_var1 == 0 && $return_var2 == 0 )
                 $this->response()->success('<info>NGINX configuration files has been successfully copied.</info>')->writeln(null, true);
             else {
                 $this->response()->error(
@@ -73,7 +74,7 @@ class Nginx extends Application
         if ( $this->exists($domain) )
             return $this->response();
 
-        $this->cloneNginxSettins();
+        $this->cloneNginxSettings();
 
         $stub = $this->generateNginxHostStub($domain, $config, $php_version);
 
