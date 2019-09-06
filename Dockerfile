@@ -18,6 +18,6 @@ RUN apt install -y php7.3-fpm && apt install -y php7.3-cli php7.3-fpm php7.3-jso
 #    mvn -q verify site
 WORKDIR /root/vpsmanager
 
-EXPOSE 80 443 3306
+EXPOSE 80 443 21 22 3306
 
 CMD ["/bin/bash"]

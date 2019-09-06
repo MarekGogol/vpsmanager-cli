@@ -4,6 +4,7 @@ namespace Gogol\VpsManagerCLI;
 
 use Gogol\VpsManagerCLI\Helpers\Backup;
 use Gogol\VpsManagerCLI\Helpers\Certbot;
+use Gogol\VpsManagerCLI\Helpers\Chroot;
 use Gogol\VpsManagerCLI\Helpers\Hosting;
 use Gogol\VpsManagerCLI\Helpers\MySQLHelper;
 use Gogol\VpsManagerCLI\Helpers\Nginx;
@@ -153,6 +154,14 @@ class Application
     }
 
     /*
+     * Return hosting helper
+     */
+    public function chroot()
+    {
+        return $this->boot(Chroot::class);
+    }
+
+    /*
      * Return NGINX helper
      */
     public function nginx()
@@ -197,6 +206,22 @@ class Application
         return explode('.', $domain);
     }
 
+    public function getWebDirectory()
+    {
+        return '/data';
+    }
+
+    /*
+     * Return web path
+     */
+    public function getWebRootPath($domain, $config = null)
+    {
+        if ( isset($config['www_path']) )
+            return $config['www_path'];
+
+        return $this->config('www_path') . '/' . $this->server()->toUserFormat($domain);
+    }
+
     /*
      * Return web path
      */
@@ -205,7 +230,7 @@ class Application
         if ( isset($config['www_path']) )
             return $config['www_path'];
 
-        return $this->config('www_path') . '/' . $this->server()->toUserFormat($domain);
+        return $this->config('www_path') . '/' . $this->server()->toUserFormat($domain) . '/' . $this->getWebDirectory();
     }
 
     /*

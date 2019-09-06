@@ -135,6 +135,10 @@ class Hosting extends Application
         if ( ($response = $this->server()->createDomainTree($domain, $config)->writeln())->isError() )
             return $response;
 
+        // Create chroot directory tree
+        if ( ($response = $this->chroot()->createChrootTree($domain, $config)->writeln())->isError() )
+            return $response;
+
         // Create php pool
         if ( ($response = $this->php()->createPool($domain, $config)->writeln())->isError() )
             return $response;
@@ -226,9 +230,9 @@ class Hosting extends Application
         if ( $remove_data === true )
         {
             if ( vpsManager()->server()->deleteDomainTree($domain) )
-                $this->response()->success('<info>Data storage</info> <comment>'.vpsManager()->getWebPath($domain).'</comment> <info>has been deleted.</info>')->writeln();
+                $this->response()->success('<info>Data storage</info> <comment>'.vpsManager()->getWebRootPath($domain).'</comment> <info>has been deleted.</info>')->writeln();
             else
-                $this->response()->message('<error>Data storage '.vpsManager()->getWebPath($domain).' could not be deleted.</error>')->writeln();
+                $this->response()->message('<error>Data storage '.vpsManager()->getWebRootPath($domain).' could not be deleted.</error>')->writeln();
         }
 
         return $this->response()->success('<info>Hosting has been successfully removed.</info>');

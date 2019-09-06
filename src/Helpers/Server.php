@@ -42,7 +42,8 @@ class Server extends Application
         exec('(getent group '.$this->getHostingUserGroup().' || groupadd '.$this->getHostingUserGroup().') 2> /dev/null');
 
         //Create new linux user
-        exec('useradd -s /bin/bash -d '.$web_path.' -U '.$user.' -G '.$this->getHostingUserGroup().' -p $(openssl passwd -1 '.$password.')', $output, $return_var);
+        exec('useradd -s /bin/bash -d '.vpsManager()->getWebDirectory().' -U '.$user.' -G '.$this->getHostingUserGroup().' -p $(openssl passwd -1 '.$password.')', $output, $return_var);
+
         if ( $return_var != 0 )
             return $this->response()->error('User could not be created.');
 
@@ -82,7 +83,7 @@ class Server extends Application
         if ( isset($config['www_path']) )
             return false;
 
-        return file_exists($this->getWebPath($domain, $config));
+        return file_exists($this->getWebRootPath($domain, $config));
     }
 
     /*
@@ -95,18 +96,16 @@ class Server extends Application
         if ( ! isValidDomain($domain) )
             return $this->response()->wrongDomainName();
 
-        $web_path = $this->getWebPath($domain, $config);
-
-        //Check if can change permissions of directory
-        $with_permissions = ! isset($config['no_chmod']);
+        $web_path = $this->getWebRootPath($domain, $config);
 
         $paths = [
-            $web_path => 710,
-            $web_path.'/web' => 710,
-            $web_path.'/web/public' => 710,
-            $web_path.'/sub' => 710,
-            $web_path.'/logs' => ['chmod' => 750, 'user' => 'root', 'group' => $user],
-            $web_path.'/.ssh' => ['chmod' => 710, 'user' => $user, 'group' => $user],
+            $web_path => ['chmod' => 755, 'user' => 'root', 'group' => 'root'],
+            $web_path.$this->getWebDirectory() => 710,
+            $web_path.$this->getWebDirectory().'/web' => 710,
+            $web_path.$this->getWebDirectory().'/web/public' => 710,
+            $web_path.$this->getWebDirectory().'/sub' => 710,
+            $web_path.$this->getWebDirectory().'/logs' => ['chmod' => 750, 'user' => 'root', 'group' => $user],
+            $web_path.$this->getWebDirectory().'/.ssh' => ['chmod' => 710, 'user' => $user, 'group' => $user],
         ];
 
         //Create subdomain
@@ -119,27 +118,12 @@ class Server extends Application
         if ( isset($config['www_path']) )
             $paths = [ $config['www_path'] => 710 ];
 
-        //Create new folders
-        foreach ($paths as $path => $permissions)
-        {
-            if ( ! file_exists($path) ){
-                shell_exec('mkdir '.$path);
-
-                if ( substr($path, -7) == '/public' ){
-                    $this->getStub('hello.php')->replace('{user}', $domain)->save($path . '/index.php');
-                }
-
-                $this->response()->message('Directory created: <comment>'.$path.'</comment>')->writeln();
-
-                //Change permissions on new created files
-                if ( $with_permissions ){
-                    $dir_chmod = isset($permissions['chmod']) ? $permissions['chmod'] : $permissions;
-                    $dir_user = isset($permissions['user']) ? $permissions['user'] : $user;
-                    $dir_group = isset($permissions['group']) ? $permissions['group'] : 'www-data';
-                    shell_exec('chmod '.$dir_chmod.' -R '.$path.' && chmod g+s -R '.$path.' && chown -R '.$dir_user.':'.$dir_group.' '.$path);
-                }
+        createDirectories($paths, $user, $config, function($path, $permissions) use($domain) {
+            //For public directory, copy index
+            if ( substr($path, -7) == '/public' ){
+                $this->getStub('hello.php')->replace('{user}', $domain)->save($path.'/index.php');
             }
-        }
+        });
 
         return $this->response()->success('Directory <info>'.$web_path.'</info> has been successfully setted up.');
     }
@@ -152,7 +136,7 @@ class Server extends Application
         if ( ! isValidDomain($domain) )
             return false;
 
-        $web_path = vpsManager()->getWebPath($domain);
+        $web_path = vpsManager()->getWebRootPath($domain);
 
         return system('rm -rf '.$web_path) == 0;
     }

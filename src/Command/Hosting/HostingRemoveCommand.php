@@ -71,7 +71,7 @@ class HostingRemoveCommand extends Command
     {
         $question = new ConfirmationQuestion(
             '<info>Would you like to permanently delete all storage data?</info>'."\n".
-            'Directory: <comment>'.vpsManager()->getWebpath($domain).'</comment>? (y/N) '
+            'Directory: <comment>'.vpsManager()->getWebRootPath($domain).'</comment>? (y/N) '
         , false);
 
         return $this->helper->ask($this->input, $this->output, $question);
