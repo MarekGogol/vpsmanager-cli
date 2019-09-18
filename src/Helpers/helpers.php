@@ -105,11 +105,19 @@ function createDirectories($paths, $user, $config = [], $callback = null)
 }
 
 /*
+ * Returns parent dir of directory
+ */
+function getParentDir($directory)
+{
+    return implode('/', array_slice(explode('/', $directory), 0, -1));
+}
+
+/*
  * Create parent directory if is missing
  */
 function createParentDirectory($directory)
 {
-    $parentDir = implode('/', array_slice(explode('/', $directory), 0, -1));
+    $parentDir = getParentDir($directory);
 
     //Create missing parent directory
     if ( ! file_exists($parentDir) ) {

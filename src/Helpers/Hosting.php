@@ -117,35 +117,45 @@ class Hosting extends Application
         $config['php_version'] = $this->getParam($config, 'php_version', $this->config('php_version'));
 
         //Check errors
-        if ( ($response = $this->checkErrorsBeforeCreate($domain, $config))->isError() )
+        if ( ($response = $this->checkErrorsBeforeCreate($domain, $config))->isError() ) {
             return $response;
+        }
 
         //Create user
-        if ( ($response = $this->server()->createUser($domain)->writeln(true))->isError() )
+        if ( ($response = $this->server()->createUser($domain, $config)->writeln(true))->isError() ) {
             return $response;
+        }
 
         //Create mysql database
         if ( isset($config['database'])
              && $config['database'] == true
              && ($response = $this->mysql()->createDatabase($domain)->writeln(true))->isError()
-         )
+        ) {
             return $response;
+        }
 
         // Create domain directory tree
-        if ( ($response = $this->server()->createDomainTree($domain, $config)->writeln())->isError() )
+        if ( ($response = $this->server()->createDomainTree($domain, $config)->writeln())->isError() ) {
             return $response;
+        }
 
         // Create chroot directory tree
-        if ( ($response = $this->chroot()->createChrootTree($domain, $config)->writeln())->isError() )
+        if ( isset($config['chroot'])
+             && $config['chroot'] == true
+             && ($response = $this->chroot()->create($domain, $config)->writeln())->isError()
+        ) {
             return $response;
+        }
 
         // Create php pool
-        if ( ($response = $this->php()->createPool($domain, $config)->writeln())->isError() )
+        if ( ($response = $this->php()->createPool($domain, $config)->writeln())->isError() ) {
             return $response;
+        }
 
         //Create nginx host
-        if ( ($response = $this->nginx()->createHost($domain, $config)->writeln())->isError() )
+        if ( ($response = $this->nginx()->createHost($domain, $config)->writeln())->isError() ) {
             return $response;
+        }
 
         //Test and reboot services
         $this->rebootNginx();

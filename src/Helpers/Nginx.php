@@ -91,7 +91,7 @@ class Nginx extends Application
     {
         $www_path = isset($config['www_path'])
                         ? $config['www_path'].'/public'
-                        : ($this->getWebPath($domain).'/web/public');
+                        : ($this->getWebPath($domain, $config).'/web/public');
 
         //Create redirect from non www to www
         $redirect_stub = clone ($stub = $this->getStub('nginx.redirect.conf'));
@@ -111,12 +111,12 @@ class Nginx extends Application
         $stub->replace('{php_sock_name}', $this->php()->getSocketName($domain, $php_version));
         $stub->replace('{error_log_path}', $this->getErrorLogPath($domain, $config));
 
-        $this->addSubdomainSupport($domain, $stub, $host_stub, $redirect_stub, $php_version);
+        $this->addSubdomainSupport($domain, $config, $stub, $host_stub, $redirect_stub, $php_version);
 
         return $stub;
     }
 
-    private function addSubdomainSupport($domain, $stub, $sub_stub, $redirect_stub, $php_version)
+    private function addSubdomainSupport($domain, $config, $stub, $sub_stub, $redirect_stub, $php_version)
     {
         //If is regular hosting, then allow auto subdomains
         if ( isset($config['www_path']) )
@@ -129,10 +129,10 @@ class Nginx extends Application
         $stub->addLine("\n".$redirect_stub);
 
         $sub_stub->replace('{host}', '"~^(?<sub>.+)\.'.str_replace('.', '\.', $first_level_domain).'$"');
-        $sub_stub->replace('{path}', $this->getWebPath($domain).'/sub/$sub/public');
+        $sub_stub->replace('{path}', $this->getWebPath($domain, $config).'/sub/$sub/public');
         $sub_stub->replace('{php_version}', $php_version);
         $sub_stub->replace('{php_sock_name}', $this->php()->getSocketName($domain, $php_version));
-        $sub_stub->replace('{error_log_path}', $this->getErrorLogPath($domain));
+        $sub_stub->replace('{error_log_path}', $this->getErrorLogPath($domain, $config));
 
         $stub->addLine("\n".$sub_stub);
     }

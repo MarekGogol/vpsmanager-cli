@@ -22,7 +22,7 @@ class Server extends Application
     /*
      * Create linux user
      */
-    public function createUser(string $user)
+    public function createUser(string $user, $config = [])
     {
         //Check if is user in valid format
         if ( ! isValidDomain($user) )
@@ -35,14 +35,16 @@ class Server extends Application
             return $this->response();
 
         //Web path
-        $web_path = $this->getWebPath($user);
+        $web_path = $this->getWebPath($user, $config);
 
         $password = getRandomPassword(16);
+
+        $home_dir = isset($config['chroot']) && $config['chroot'] === true ? vpsManager()->getWebDirectory() : $web_path;
 
         exec('(getent group '.$this->getHostingUserGroup().' || groupadd '.$this->getHostingUserGroup().') 2> /dev/null');
 
         //Create new linux user
-        exec('useradd -s /bin/bash -d '.vpsManager()->getWebDirectory().' -U '.$user.' -G '.$this->getHostingUserGroup().' -p $(openssl passwd -1 '.$password.')', $output, $return_var);
+        exec('useradd -s /bin/bash -d '.$home_dir.' -U '.$user.' -G '.$this->getHostingUserGroup().' -p $(openssl passwd -1 '.$password.')', $output, $return_var);
 
         if ( $return_var != 0 )
             return $this->response()->error('User could not be created.');
@@ -96,17 +98,24 @@ class Server extends Application
         if ( ! isValidDomain($domain) )
             return $this->response()->wrongDomainName();
 
-        $web_path = $this->getWebRootPath($domain, $config);
+        $web_root_path = $this->getWebRootPath($domain, $config);
+        $web_path = $this->getWebPath($domain, $config);
 
-        $paths = [
-            $web_path => ['chmod' => 755, 'user' => 'root', 'group' => 'root'],
-            $web_path.$this->getWebDirectory() => 710,
-            $web_path.$this->getWebDirectory().'/web' => 710,
-            $web_path.$this->getWebDirectory().'/web/public' => 710,
-            $web_path.$this->getWebDirectory().'/sub' => 710,
-            $web_path.$this->getWebDirectory().'/logs' => ['chmod' => 750, 'user' => 'root', 'group' => $user],
-            $web_path.$this->getWebDirectory().'/.ssh' => ['chmod' => 710, 'user' => $user, 'group' => $user],
-        ];
+        $paths = [];
+
+        //Add domain root folder for chroot
+        if ( isset($config['chroot']) && $config['chroot'] === true ){
+            $paths[$web_root_path] = ['chmod' => 755, 'user' => 'root', 'group' => 'root'];
+        }
+
+        $paths = array_merge($paths, [
+            $web_path => 710,
+            $web_path.'/web' => 710,
+            $web_path.'/web/public' => 710,
+            $web_path.'/sub' => 710,
+            $web_path.'/logs' => ['chmod' => 750, 'user' => 'root', 'group' => $user],
+            $web_path.'/.ssh' => ['chmod' => 710, 'user' => $user, 'group' => $user],
+        ]);
 
         //Create subdomain
         if ( $sub = $this->getSubdomain($domain) ) {
@@ -137,6 +146,9 @@ class Server extends Application
             return false;
 
         $web_path = vpsManager()->getWebRootPath($domain);
+
+        //If is has chroot, unmount mounted directories
+        vpsManager()->chroot()->remove($domain)->writeln();
 
         return system('rm -rf '.$web_path) == 0;
     }

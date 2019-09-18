@@ -71,7 +71,7 @@ class HostingRemoveCommand extends Command
     {
         $question = new ConfirmationQuestion(
             '<info>Would you like to permanently delete all storage data?</info>'."\n".
-            'Directory: <comment>'.vpsManager()->getWebRootPath($domain).'</comment>? (y/N) '
+            'Directory: <comment>'.vpsManager()->getWebRootPath($domain).'</comment>? (y/N) [n]: '
         , false);
 
         return $this->helper->ask($this->input, $this->output, $question);
@@ -81,7 +81,7 @@ class HostingRemoveCommand extends Command
     {
         $question = new ConfirmationQuestion(
             '<info>Would you like to permanently delete all users\'s mysql data?</info>'."\n".
-            'User / database: <comment>'.vpsManager()->mysql()->dbName($domain).'</comment> (y/N) '
+            'User / database: <comment>'.vpsManager()->mysql()->dbName($domain).'</comment> (y/N) [n]: '
         , false);
 
         return $this->helper->ask($this->input, $this->output, $question);

@@ -38,6 +38,7 @@ class HostingCreateCommand extends Command
 
         $domain = $this->getDomainName();
         $php_version = $this->getPHPVersion();
+        $chroot = $this->getChrootEnabled();
         $database = $this->askForCreatingDatabase();
 
         //Remove all hosting settings
@@ -45,7 +46,7 @@ class HostingCreateCommand extends Command
         if ( $this->isDev() )
             vpsManager()->hosting()->remove($domain, $this->input->getOption('dev') == 2);
 
-        $this->generateManagerHosting($domain, $php_version, $database);
+        $this->generateManagerHosting($domain, $php_version, $database, $chroot);
     }
 
     public function getDomainName()
@@ -74,7 +75,7 @@ class HostingCreateCommand extends Command
         $default = vpsManager()->config('php_version');
 
         //Nginx path
-        $question = new ChoiceQuestion('Set PHP Version of your domain. Default is <comment>'.$default.'</comment>: ', vpsManager()->php()->getVersions(), $default);
+        $question = new ChoiceQuestion('Set PHP Version of your domain. ['.$default.']: ', vpsManager()->php()->getVersions(), $default);
 
         $version = $this->helper->ask($this->input, $this->output, $question) ?: $default;
 
@@ -87,9 +88,16 @@ class HostingCreateCommand extends Command
         }
     }
 
+    public function getChrootEnabled()
+    {
+        $question = new ConfirmationQuestion('Would you like to set chroot environment for this user? (y/N) [N]: ', false);
+
+        return $this->helper->ask($this->input, $this->output, $question);
+    }
+
     public function askForCreatingDatabase()
     {
-        $question = new ConfirmationQuestion('Would you like to create MySql <info>user</info> and <info>database</info> for this domain? (y/N) ', false);
+        $question = new ConfirmationQuestion('Would you like to create MySql <info>user</info> and <info>database</info> for this domain? (y/N) [N]: ', false);
 
         return $this->helper->ask($this->input, $this->output, $question);
     }
@@ -102,13 +110,15 @@ class HostingCreateCommand extends Command
     /*
      * Set host
      */
-    private function generateManagerHosting($domain, $php_version, $database = false)
+    private function generateManagerHosting($domain, $php_version, $database = false, $chroot = false)
     {
         if ( ($response = vpsManager()->hosting()->create($domain, [
             'php_version' => $php_version,
-            'database' => $database
-        ]))->isError() )
+            'database' => $database,
+            'chroot' => $chroot,
+        ]))->isError() ) {
             throw new \Exception($response->message);
+        }
 
         $this->output->writeln('<info>'.$response->message.'</info>');
     }

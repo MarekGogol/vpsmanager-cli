@@ -230,7 +230,9 @@ class Application
         if ( isset($config['www_path']) )
             return $config['www_path'];
 
-        return $this->config('www_path') . '/' . $this->server()->toUserFormat($domain) . '/' . $this->getWebDirectory();
+        return $this->config('www_path')
+               .'/'.$this->server()->toUserFormat($domain)
+               .(isset($config['chroot']) && $config['chroot'] === true ? $this->getWebDirectory($config) : '');
     }
 
     /*
