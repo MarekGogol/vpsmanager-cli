@@ -117,31 +117,45 @@ class Hosting extends Application
         $config['php_version'] = $this->getParam($config, 'php_version', $this->config('php_version'));
 
         //Check errors
-        if ( ($response = $this->checkErrorsBeforeCreate($domain, $config))->isError() )
+        if ( ($response = $this->checkErrorsBeforeCreate($domain, $config))->isError() ) {
             return $response;
+        }
 
         //Create user
-        if ( ($response = $this->server()->createUser($domain)->writeln(true))->isError() )
+        if ( ($response = $this->server()->createUser($domain, $config)->writeln(true))->isError() ) {
             return $response;
+        }
 
         //Create mysql database
         if ( isset($config['database'])
              && $config['database'] == true
              && ($response = $this->mysql()->createDatabase($domain)->writeln(true))->isError()
-         )
+        ) {
             return $response;
+        }
 
         // Create domain directory tree
-        if ( ($response = $this->server()->createDomainTree($domain, $config)->writeln())->isError() )
+        if ( ($response = $this->server()->createDomainTree($domain, $config)->writeln())->isError() ) {
             return $response;
+        }
+
+        // Create chroot directory tree
+        if ( isset($config['chroot'])
+             && $config['chroot'] == true
+             && ($response = $this->chroot()->create($domain, $config)->writeln())->isError()
+        ) {
+            return $response;
+        }
 
         // Create php pool
-        if ( ($response = $this->php()->createPool($domain, $config)->writeln())->isError() )
+        if ( ($response = $this->php()->createPool($domain, $config)->writeln())->isError() ) {
             return $response;
+        }
 
         //Create nginx host
-        if ( ($response = $this->nginx()->createHost($domain, $config)->writeln())->isError() )
+        if ( ($response = $this->nginx()->createHost($domain, $config)->writeln())->isError() ) {
             return $response;
+        }
 
         //Test and reboot services
         $this->rebootNginx();
@@ -226,9 +240,9 @@ class Hosting extends Application
         if ( $remove_data === true )
         {
             if ( vpsManager()->server()->deleteDomainTree($domain) )
-                $this->response()->success('<info>Data storage</info> <comment>'.vpsManager()->getWebPath($domain).'</comment> <info>has been deleted.</info>')->writeln();
+                $this->response()->success('<info>Data storage</info> <comment>'.vpsManager()->getUserDirPath($domain).'</comment> <info>has been deleted.</info>')->writeln();
             else
-                $this->response()->message('<error>Data storage '.vpsManager()->getWebPath($domain).' could not be deleted.</error>')->writeln();
+                $this->response()->message('<error>Data storage '.vpsManager()->getUserDirPath($domain).' could not be deleted.</error>')->writeln();
         }
 
         return $this->response()->success('<info>Hosting has been successfully removed.</info>');

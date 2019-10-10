@@ -12,6 +12,8 @@ class Backup extends Application
 {
     private $log = [];
 
+    private $ignoreFile = '.backups_ignore';
+
     private function getBackupPath($directory = null, $storage = 'local')
     {
         $path = trim_end($this->config('backup_path').'/'.($storage ? $storage.'/' : '').$directory, '/');
@@ -211,19 +213,21 @@ class Backup extends Application
         $exclude_domain_root = ['.config/\*', '.cache/\*', '.local/\*', '.npm/\*', '.nano/\*', '.gnupg/\*', '.bash_history', '.selected_editor'];
         $exclude_global_folters = ['node_modules/\*', 'vendor/\*', 'cache/\*', 'laravel.log'];
 
-        $www_path = $this->config('backup_www_path');
+        $domain_path = $this->getUserDirPath($domain);
 
-        $domain_path = $www_path.'/'.$domain;
-
-        $ignore_file = $domain_path.'/.backups_ignore';
+        $dataDir = $this->getWebDirectory();
 
         //Exclude gloval folders
         foreach ($exclude_global_folters as $item) {
             $exclude .= ' -x */\\'.$item;
         }
 
+        $isWebDirWithData = file_exists($domain_path.$dataDir);
+        $webDir = $isWebDirWithData ? $domain_path.$dataDir : $domain_path;
+        $relativePath = ($isWebDirWithData ? trim($dataDir, '/') : $domain);
+
         //Check if ignore file exists, and exclude directories from given file
-        if ( file_exists($ignore_file) )
+        if ( file_exists($ignore_file = $webDir.'/'.$this->ignoreFile) )
         {
             $ignore = array_filter(explode("\n", file_get_contents($ignore_file)));
 
@@ -232,16 +236,16 @@ class Backup extends Application
                 $item = trim($item, '/');
 
                 //Exclude file or firectory
-                if ( is_file($domain_path.'/'.$item) )
-                    $exclude .= ' -x '.$domain.'/'.$this->escapeDirectory($item);
-                else if ( is_dir($domain_path.'/'.$item) )
-                    $exclude .= ' -x '.$domain.'/'.$this->escapeDirectory($item).'/\*';
+                if ( is_file($webDir.'/'.$item) )
+                    $exclude .= ' -x '.$relativePath.'/'.$this->escapeDirectory($item);
+                else if ( is_dir($webDir.'/'.$item) )
+                    $exclude .= ' -x '.$relativePath.'/'.$this->escapeDirectory($item).'/\*';
             }
         }
 
         //Exclude uneccessary directories in root domain folder
         foreach ($exclude_domain_root as $item)
-            $exclude .= ' -x '.$domain.'/'.$item;
+            $exclude .= ' -x '.$relativePath.'/'.$item;
 
         return $exclude;
     }
@@ -264,9 +268,15 @@ class Backup extends Application
         {
             $this->response()->success('Saving and compressing <comment>'.$domain.'</comment> domain.')->writeln();
 
+            $webPath = $www_path.'/'.$domain;
+
+            //If is new directory structure, then copy all files from data folder
+            if ( file_exists($dataWebpath = $webPath.$this->getWebDirectory()) )
+                $webPath = $dataWebpath;
+
             //Zip and save directory
             if ( ! $this->zipDirectory(
-                $www_path.'/'.$domain,
+                $webPath,
                 $backup_path.'/'.$this->getZipName($domain),
                 $this->getExcludeDirectories($domain)
             ) ) {
@@ -404,7 +414,7 @@ class Backup extends Application
         foreach ($storages as $storage)
         {
             $this->removeOldDatabaseBackups($storage);
-            // $this->removeOldDataBackups($storage, 'dirs');
+            $this->removeOldDataBackups($storage, 'dirs');
             $this->removeOldDataBackups($storage, 'www');
         }
 

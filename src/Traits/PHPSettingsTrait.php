@@ -24,7 +24,7 @@ trait PHPSettingsTrait
 
     private function buildOpenBaseDirs($domain, $config)
     {
-        $paths = [$this->getWebPath($domain, $config), '/tmp'];
+        $paths = [$this->getUserDirPath($domain, $config), '/tmp'];
 
         if ( isset($config['open_basedir']) && $config['open_basedir'] )
         {

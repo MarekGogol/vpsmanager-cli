@@ -1,4 +1,5 @@
 docker run -it \
             -p 80:80 \
+            -p 22:22 \
             -v /path-to-vpsmanager:/root/vpsmanager \
             vpsmanager /bin/bash
