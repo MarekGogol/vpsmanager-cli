@@ -7,6 +7,8 @@ RUN apt-get install -y curl
 RUN apt install -y gcc
 RUN apt install -y libpng-dev
 RUN apt install -y make
+RUN apt install -y rsync
+RUN apt install -y zip
 RUN apt install -y ssh
 RUN apt install -y nano
 RUN apt install -y nginx
