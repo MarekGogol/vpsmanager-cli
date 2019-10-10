@@ -10,6 +10,7 @@ use Gogol\VpsManagerCLI\Helpers\MySQLHelper;
 use Gogol\VpsManagerCLI\Helpers\Nginx;
 use Gogol\VpsManagerCLI\Helpers\PHP;
 use Gogol\VpsManagerCLI\Helpers\Response;
+use Gogol\VpsManagerCLI\Helpers\SSH;
 use Gogol\VpsManagerCLI\Helpers\Server;
 use Gogol\VpsManagerCLI\Helpers\Stub;
 
@@ -167,6 +168,14 @@ class Application
     public function nginx()
     {
         return $this->boot(Nginx::class);
+    }
+
+    /*
+     * Return ssh helper
+     */
+    public function ssh()
+    {
+        return $this->boot(SSH::class);
     }
 
     /*

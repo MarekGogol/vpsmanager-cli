@@ -41,7 +41,7 @@ class Server extends Application
 
         $home_dir = isset($config['chroot']) && $config['chroot'] === true ? vpsManager()->getWebDirectory() : $web_path;
 
-        exec('(getent group '.$this->getHostingUserGroup().' || groupadd '.$this->getHostingUserGroup().') 2> /dev/null');
+        $this->createGroupIfNotExists($this->getHostingUserGroup());
 
         //Create new linux user
         exec('useradd -s /bin/bash -d '.$home_dir.' -U '.$user.' -G '.$this->getHostingUserGroup().' -p $(openssl passwd -1 '.$password.')', $output, $return_var);
@@ -55,6 +55,16 @@ class Server extends Application
                         'User: <comment>'.$user.'</comment>'."\n".
                         'Password: <comment>'.$password.'</comment>'
                    );
+    }
+
+    public function createGroupIfNotExists($group)
+    {
+        exec('(getent group '.$group.' || groupadd '.$group.') 2> /dev/null');
+    }
+
+    public function changeHomeDir($user, $dir)
+    {
+        exec('usermod -d '.$dir.' '.$user);
     }
 
     /*

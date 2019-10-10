@@ -6,6 +6,8 @@ use Gogol\VpsManagerCLI\Application;
 
 class Chroot extends Application
 {
+    protected $chrootGroup = 'vpsmanager_chroot_user';
+
     /*
      * Create directory tree for working chroot
      */
@@ -19,9 +21,19 @@ class Chroot extends Application
         $web_root_path = $this->getWebRootPath($domain, $config);
         $web_path = $this->getWebPath($domain, $config);
 
+        //Set chroot permissions of root directory
+        exec('chown root:root '.$web_root_path.' && chmod 755 '.$web_root_path);
+
+        $this->server()->createGroupIfNotExists($this->chrootGroup);
+
+        //Add chroot group for specific user
+        exec('usermod -a -G '.$this->chrootGroup.' '.$user.' 2> /dev/null');
+
+        //Change user homedir directory
+        $this->server()->changeHomeDir($user, '/data');
+
         //Move all old data to
         if ( $move_web_data === true ) {
-
             //Dont move files when data directory exists already
             if ( ! file_exists($web_path) )
             {
@@ -70,6 +82,7 @@ class Chroot extends Application
         $this->addChrootExtension($web_root_path, '/usr/bin/wget', true);
         $this->addChrootExtension($web_root_path, '/usr/bin/openssl', true);
         $this->addChrootExtension($web_root_path, '/usr/share/openssh');
+        $this->addChrootExtension($web_root_path, '/usr/bin/whoami', true);
 
         //Set up clear command and terminal info
         $this->addChrootExtension($web_root_path, '/lib/terminfo');
@@ -109,7 +122,31 @@ class Chroot extends Application
         //Allow npm + nodejs
         $this->addNodeJs($web_root_path);
 
+        //Add chroot restriction into sshd_config
+        $this->addChrootGroupIntoSSH();
+
         return $this->response()->success('Chroot for directory <info>'.$web_root_path.'</info> has been successfully setted up.');
+    }
+
+    /*
+     * Add chroot restriction into sshd_config
+     */
+    public function addChrootGroupIntoSSH(){
+        $file = '/etc/ssh/sshd_config';
+
+        $data = file_get_contents($file);
+
+        $section = "\n
+Match Group ".$this->chrootGroup."
+    ChrootDirectory /var/www/%u\n";
+
+        //If section does not exists
+        if ( strpos($data, $this->chrootGroup) === false ) {
+            file_put_contents($file, $section, FILE_APPEND);
+
+            //Restart ssh after sshd_config modification
+            $this->ssh()->rebootSSH();
+        }
     }
 
     /*
@@ -146,6 +183,9 @@ class Chroot extends Application
         //Move web data from data to web dir
         if ( $moveWebdata === true )
         {
+            //Set chroot permissions of root directory
+            exec('chown '.$user.':www-data '.$web_root_path.' && chmod 710 '.$web_root_path);
+
             if ( file_exists($web_root_path.'/data') ) {
                 exec('cd '.$web_root_path.'/data && find . -name . -o -exec sh -c \'mv -- "$@" "$0"\' ../ {} + -type d -prune', $output, $return_var0);
 
@@ -156,12 +196,18 @@ class Chroot extends Application
 
                 //Check if directories has been successfully moved.
                 if ( $return_var0 === 0 && isset($return_var1) && $return_var1 == 0 ) {
-                    $this->response()->success('Web data has been successfully moved from <info>/data</info> into root domain directory.')->writeln();
+                    $this->response()->success('Web data has been successfully moved from <info>'.$web_root_path.'/data</info> into root domain directory <info>'.$web_root_path.'</info>.')->writeln();
                 } else {
                     $this->response()->message('<error>Web data could not be moved from</error> <info>/data</info> <error>into root domain directory.</error>')->writeln();
                 }
             }
         }
+
+        //Remove group from user
+        exec('deluser '.$user.' '.$this->chrootGroup.' 2> /dev/null', $output);
+
+        //Change user homedir directory
+        $this->server()->changeHomeDir($user, $web_root_path);
 
         return $this->response()->success('Chroot directories has been successfully removed.');
     }
@@ -260,6 +306,7 @@ class Chroot extends Application
             'www-data',
             $user,
             $this->server()->getHostingUserGroup(),
+            $this->chrootGroup,
         ];
 
         exec('cat /etc/group | grep "'.implode('\|', $allowGroupNames).'" >> '.$web_root_path.'/etc/group', $output);
