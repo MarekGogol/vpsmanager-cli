@@ -156,6 +156,10 @@ Match Group ".$this->chrootGroup."
 
         //If section does not exists
         if ( strpos($data, $this->chrootGroup) === false ) {
+            //Set default mode as internal-sftp for working both sftp ans ssh
+            $data = str_replace("Subsystem\tsftp\t/usr/lib/openssh/sftp-server", "Subsystem\tsftp\tinternal-sftp", $data);
+
+            file_put_contents($file, $data);
             file_put_contents($file, $section, FILE_APPEND);
 
             //Restart ssh after sshd_config modification
