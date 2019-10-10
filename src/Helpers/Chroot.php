@@ -18,11 +18,13 @@ class Chroot extends Application
         if ( ! isValidDomain($domain) )
             return $this->response()->wrongDomainName();
 
-        $web_root_path = $this->getWebRootPath($domain, $config);
+        $userDir = $this->getUserDirPath($domain, $config);
         $web_path = $this->getWebPath($domain, $config);
 
+        $this->response()->success('Setting chroot directory for <info>'.$userDir.'</info>')->writeln();
+
         //Set chroot permissions of root directory
-        exec('chown root:root '.$web_root_path.' && chmod 755 '.$web_root_path);
+        exec('chown root:root '.$userDir.' && chmod 755 '.$userDir);
 
         $this->server()->createGroupIfNotExists($this->chrootGroup);
 
@@ -32,100 +34,112 @@ class Chroot extends Application
         //Change user homedir directory
         $this->server()->changeHomeDir($user, '/data');
 
-        //Move all old data to
-        if ( $move_web_data === true ) {
-            //Dont move files when data directory exists already
-            if ( ! file_exists($web_path) )
-            {
-                $webDir = trim($this->getWebDirectory(), '/');
+        $this->disableLoginMessage($web_path);
 
-                createDirectories([
-                    $web_path => 710,
-                ], $user);
+        //Move all old web data into user/data folder
+        //Dont move files when data directory exists already
+        if ( $move_web_data === true && ! file_exists($web_path) ) {
+            $webDir = trim($this->getWebDirectory(), '/');
 
-                exec('cd '.$web_root_path.'; find . -maxdepth 1 ! -name '.$webDir.' ! -name . -exec mv "{}" '.$webDir.' \;');
-            }
+            createDirectories([
+                $web_path => 710,
+            ], $user);
+
+            exec('cd '.$userDir.'; find . -maxdepth 1 ! -name '.$webDir.' ! -name . -exec mv "{}" '.$webDir.' \;');
+
+            $this->response()->success('All web data moved from <info>'.$userDir.'</info> to <info>'.$userDir.'/'.$webDir.'</info>')->writeln();
         }
 
-        $this->response()->success('Setting chroot directory for <info>'.$web_root_path.'</info>...')->writeln();
-
         //Clone bashrc
-        // exec('cp -Rf '.__DIR__.'/../Resources/user/.bash_profile '.$web_root_path.'/data');
+        // exec('cp -Rf '.__DIR__.'/../Resources/user/.bash_profile '.$userDir.'/data');
 
         createDirectories([
-            $web_root_path.'/tmp' => ['user' => $domain, 'group' => $domain, 'chmod' => 700],
-            $web_root_path.'/proc' => ['user' => 'root', 'group' => 'root', 'chmod' => 710],
-            $web_root_path.'/dev/null' => ['mknod' => [666, 'c 1 3']],
-            $web_root_path.'/dev/tty' => ['mknod' => [666, 'c 5 0']],
-            $web_root_path.'/dev/random' => ['mknod' => [444, 'c 1 8']],
-            $web_root_path.'/dev/urandom' => ['mknod' => [444, 'c 1 1']],
-            $web_root_path.'/usr/include' => ['user' => 'root', 'group' => 'root', 'chmod' => 755], //we need chmood 755, because libpng needs to read files from include
-            $web_root_path.'/usr/lib/x86_64-linux-gnu' => ['user' => 'root', 'group' => 'root', 'chmod' => 755], //we need chmood 755, because libpng needs to read files from include
-            $web_root_path.'/usr/local' => ['user' => 'root', 'group' => 'root', 'chmod' => 777], //we need chmood 755, because libpng needs to read files from include
-        ], $user);
+            $userDir.'/tmp' => ['user' => $domain, 'group' => $domain, 'chmod' => 700],
+            $userDir.'/proc' => ['user' => 'root', 'group' => 'root', 'chmod' => 710],
+            $userDir.'/dev/null' => ['mknod' => [666, 'c 1 3']],
+            $userDir.'/dev/tty' => ['mknod' => [666, 'c 5 0']],
+            $userDir.'/dev/random' => ['mknod' => [444, 'c 1 8']],
+            $userDir.'/dev/urandom' => ['mknod' => [444, 'c 1 1']],
+            $userDir.'/usr/include' => ['user' => 'root', 'group' => 'root', 'chmod' => 755], //we need chmood 755, because libpng needs to read files from include
+            $userDir.'/usr/lib/x86_64-linux-gnu' => ['user' => 'root', 'group' => 'root', 'chmod' => 755], //we need chmood 755, because libpng needs to read files from include
+            $userDir.'/usr/local' => ['user' => 'root', 'group' => 'root', 'chmod' => 777], //we need chmood 755, because libpng needs to read files from include
+        ], $user, null, null, false);
 
         //Allow regularcommands
-        $this->addChrootExtension($web_root_path, '/bin/bash', true);
-        $this->addChrootExtension($web_root_path, '/etc/bash.bashrc');
-        $this->addChrootExtension($web_root_path, '/bin/sh', true);
-        $this->addChrootExtension($web_root_path, '/bin/dash', true);
-        $this->addChrootExtension($web_root_path, '/bin/ls', true);
-        $this->addChrootExtension($web_root_path, '/bin/rm', true);
-        $this->addChrootExtension($web_root_path, '/bin/cp', true);
-        $this->addChrootExtension($web_root_path, '/bin/mkdir', true);
-        $this->addChrootExtension($web_root_path, '/bin/chown', true);
-        $this->addChrootExtension($web_root_path, '/bin/chmod', true);
-        $this->addChrootExtension($web_root_path, '/bin/cat', true);
-        $this->addChrootExtension($web_root_path, '/bin/nano', true);
-        $this->addChrootExtension($web_root_path, '/usr/bin/id', true);
-        $this->addChrootExtension($web_root_path, '/usr/bin/groups', true);
-        $this->addChrootExtension($web_root_path, '/usr/bin/wget', true);
-        $this->addChrootExtension($web_root_path, '/usr/bin/openssl', true);
-        $this->addChrootExtension($web_root_path, '/usr/share/openssh');
-        $this->addChrootExtension($web_root_path, '/usr/bin/whoami', true);
+        $this->addChrootExtension($userDir, '/bin/bash', true);
+        $this->addChrootExtension($userDir, '/etc/bash.bashrc');
+        $this->addChrootExtension($userDir, '/bin/sh', true);
+        $this->addChrootExtension($userDir, '/bin/dash', true);
+        $this->addChrootExtension($userDir, '/bin/ls', true);
+        $this->addChrootExtension($userDir, '/bin/rm', true);
+        $this->addChrootExtension($userDir, '/bin/cp', true);
+        $this->addChrootExtension($userDir, '/bin/mkdir', true);
+        $this->addChrootExtension($userDir, '/bin/chown', true);
+        $this->addChrootExtension($userDir, '/bin/chmod', true);
+        $this->addChrootExtension($userDir, '/bin/cat', true);
+        $this->addChrootExtension($userDir, '/bin/nano', true);
+        $this->addChrootExtension($userDir, '/usr/bin/id', true);
+        $this->addChrootExtension($userDir, '/usr/bin/groups', true);
+        $this->addChrootExtension($userDir, '/usr/bin/wget', true);
+        $this->addChrootExtension($userDir, '/usr/bin/openssl', true);
+        $this->addChrootExtension($userDir, '/usr/share/openssh');
+        $this->addChrootExtension($userDir, '/usr/bin/whoami', true);
 
         //Set up clear command and terminal info
-        $this->addChrootExtension($web_root_path, '/lib/terminfo');
-        $this->addChrootExtension($web_root_path, '/usr/bin/clear', true);
+        $this->addChrootExtension($userDir, '/lib/terminfo');
+        $this->addChrootExtension($userDir, '/usr/bin/clear', true);
 
         //Allow ssh command
-        $this->addChrootExtension($web_root_path, '/usr/bin/ssh', true);
-        $this->addChrootExtension($web_root_path, '/usr/bin/ssh-keygen', true);
+        $this->addChrootExtension($userDir, '/usr/bin/ssh', true);
+        $this->addChrootExtension($userDir, '/usr/bin/ssh-keygen', true);
 
         //Fix ssl certificates for https,ssh etc...
-        // $this->addChrootExtension($web_root_path, '/etc/ssl/certs/ca-certificates.crt');
-        $this->addChrootExtension($web_root_path, '/etc/ssl/certs');
-        $this->addChrootExtension($web_root_path, '/etc/ca-certificates.conf');
-        $this->addChrootExtension($web_root_path, '/etc/ca-certificates');
-        $this->addChrootExtension($web_root_path, '/usr/share/ca-certificates');
-        $this->addChrootExtension($web_root_path, '/usr/lib/ssl');
-        $this->addChrootExtension($web_root_path, '/usr/share/ca-certificates');
+        // $this->addChrootExtension($userDir, '/etc/ssl/certs/ca-certificates.crt');
+        $this->addChrootExtension($userDir, '/etc/ssl/certs');
+        $this->addChrootExtension($userDir, '/etc/ca-certificates.conf');
+        $this->addChrootExtension($userDir, '/etc/ca-certificates');
+        $this->addChrootExtension($userDir, '/usr/share/ca-certificates');
+        $this->addChrootExtension($userDir, '/usr/lib/ssl');
+        $this->addChrootExtension($userDir, '/usr/share/ca-certificates');
 
         //Gix groups names and user names support
-        $this->fixGroupNames($user, $web_root_path);
+        $this->fixGroupNames($user, $userDir);
 
         //Fix dns resolving, also required for proper git working
-        $this->fixDNSResolving($web_root_path);
+        $this->fixDNSResolving($userDir);
 
         //Add git command
-        $this->fixGitSupport($web_root_path);
+        $this->fixGitSupport($userDir);
 
         //Allow timezone (for composer support etc..)
-        $this->addChrootExtension($web_root_path, '/usr/share/zoneinfo');
+        $this->addChrootExtension($userDir, '/usr/share/zoneinfo');
 
         //Allow php support in chroot
-        $this->addPhpChrootSupport($web_root_path);
+        $this->addPhpChrootSupport($userDir);
 
         //Allow composer support in chroot
-        $this->addComposerSupport($web_root_path);
+        $this->addComposerSupport($userDir);
 
         //Allow npm + nodejs
-        $this->addNodeJs($web_root_path);
+        $this->addNodeJs($userDir);
 
         //Add chroot restriction into sshd_config
         $this->addChrootGroupIntoSSH();
 
-        return $this->response()->success('Chroot for directory <info>'.$web_root_path.'</info> has been successfully setted up.');
+        return $this->response()->success('Chroot for directory <info>'.$userDir.'</info> has been successfully setted up.');
+    }
+
+    public function getNologinFile($web_path)
+    {
+        return $web_path.'/.hushlogin';
+    }
+
+    public function disableLoginMessage($web_path)
+    {
+        $file = $this->getNologinFile($web_path);
+
+        //Creat hushlogin to hide message
+        @file_put_contents($file, '');
     }
 
     /*
@@ -152,62 +166,46 @@ Match Group ".$this->chrootGroup."
     /*
      * Remove all chroot directories except data
      */
-    public function remove($domain, $moveWebdata = false)
+    public function remove($domain)
     {
         $user = $this->toUserFormat($domain);
 
         if ( ! isValidDomain($domain) )
             return $this->response()->wrongDomainName();
 
-        $web_root_path = $this->getWebRootPath($domain);
+        $userDir = $this->getUserDirPath($domain);
+        $webDir = $this->getWebPath($domain);
 
         //Check if is chroot environment
-        if ( ! file_exists($web_root_path.'/data') ) {
+        if ( ! file_exists($userDir.'/etc') ) {
             return $this->response()->error('<error>This is not chroot environment.</error>');
         }
 
         //Unmount directories
         foreach (['proc'] as $dir) {
-            if ( file_exists($web_root_path.'/'.$dir) ) {
-                exec('umount '.$web_root_path.'/'.$dir, $output);
+            if ( file_exists($userDir.'/'.$dir) ) {
+                exec('umount '.$userDir.'/'.$dir, $output);
             }
         }
 
         //Remove all chroot directories
         foreach (['bin', 'dev', 'etc', 'lib', 'lib64', 'proc', 'tmp', 'usr'] as $dir) {
-            if ( file_exists($web_root_path.'/'.$dir) ) {
-                exec('rm -rf '.$web_root_path.'/'.$dir, $output);
+            if ( file_exists($userDir.'/'.$dir) ) {
+                exec('rm -rf '.$userDir.'/'.$dir, $output);
             }
         }
 
-        //Move web data from data to web dir
-        if ( $moveWebdata === true )
-        {
-            //Set chroot permissions of root directory
-            exec('chown '.$user.':www-data '.$web_root_path.' && chmod 710 '.$web_root_path);
-
-            if ( file_exists($web_root_path.'/data') ) {
-                exec('cd '.$web_root_path.'/data && find . -name . -o -exec sh -c \'mv -- "$@" "$0"\' ../ {} + -type d -prune', $output, $return_var0);
-
-                //If data has been successfuly moved
-                if ( $return_var0 === 0 ){
-                    exec('rm -rf '.$web_root_path.'/data', $output, $return_var1);
-                }
-
-                //Check if directories has been successfully moved.
-                if ( $return_var0 === 0 && isset($return_var1) && $return_var1 == 0 ) {
-                    $this->response()->success('Web data has been successfully moved from <info>'.$web_root_path.'/data</info> into root domain directory <info>'.$web_root_path.'</info>.')->writeln();
-                } else {
-                    $this->response()->message('<error>Web data could not be moved from</error> <info>/data</info> <error>into root domain directory.</error>')->writeln();
-                }
-            }
-        }
+        //Set chroot permissions of root directory
+        exec('chown '.$user.':www-data '.$userDir.' && chmod 710 '.$userDir);
 
         //Remove group from user
         exec('deluser '.$user.' '.$this->chrootGroup.' 2> /dev/null', $output);
 
         //Change user homedir directory
-        $this->server()->changeHomeDir($user, $web_root_path);
+        $this->server()->changeHomeDir($user, $webDir);
+
+        //Remove file that disables login message
+        @unlink($this->getNologinFile($webDir));
 
         return $this->response()->success('Chroot directories has been successfully removed.');
     }
@@ -217,89 +215,89 @@ Match Group ".$this->chrootGroup."
      * which needs gcc/make and many more...
      * see pngquant-bin/lib/install.js
      */
-    public function addNodeJs($web_root_path)
+    public function addNodeJs($userDir)
     {
         //Add nodejs
-        $this->addChrootExtension($web_root_path, '/usr/bin/node', true);
+        $this->addChrootExtension($userDir, '/usr/bin/node', true);
 
         //Add npm command
-        $this->addChrootExtension($web_root_path, '/usr/lib/node_modules/npm');
-        exec('ln -s -f /usr/lib/node_modules/npm/bin/npm-cli.js '.$web_root_path.'/usr/bin/npm', $output);
+        $this->addChrootExtension($userDir, '/usr/lib/node_modules/npm');
+        exec('ln -s -f /usr/lib/node_modules/npm/bin/npm-cli.js '.$userDir.'/usr/bin/npm', $output);
 
         //Add cpp+ libraries support
-        $this->addChrootExtension($web_root_path, '/usr/include');
+        $this->addChrootExtension($userDir, '/usr/include');
 
         //Allow libpng/pnguant support
-        $this->addChrootExtension($web_root_path, '/usr/bin/pngquant');
+        $this->addChrootExtension($userDir, '/usr/bin/pngquant');
 
         //Added required commands for proper npm workflow
-        $this->addChrootExtension($web_root_path, '/usr/bin/env');
-        $this->addChrootExtension($web_root_path, '/usr/bin/ar');
-        $this->addChrootExtension($web_root_path, '/usr/bin/find', true);
-        $this->addChrootExtension($web_root_path, '/bin/uname', true);
-        $this->addChrootExtension($web_root_path, '/bin/grep', true);
-        $this->addChrootExtension($web_root_path, '/usr/bin/install', true);
-        $this->addChrootExtension($web_root_path, '/usr/bin/as', true);
-        $this->addChrootExtension($web_root_path, '/usr/bin/make', true);
+        $this->addChrootExtension($userDir, '/usr/bin/env');
+        $this->addChrootExtension($userDir, '/usr/bin/ar');
+        $this->addChrootExtension($userDir, '/usr/bin/find', true);
+        $this->addChrootExtension($userDir, '/bin/uname', true);
+        $this->addChrootExtension($userDir, '/bin/grep', true);
+        $this->addChrootExtension($userDir, '/usr/bin/install', true);
+        $this->addChrootExtension($userDir, '/usr/bin/as', true);
+        $this->addChrootExtension($userDir, '/usr/bin/make', true);
 
         //Allow all required libraries for npm packages
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/libpng16.a');
-        $this->addChrootExtension($web_root_path, '/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2');
-        $this->addChrootExtension($web_root_path, '/lib/x86_64-linux-gnu/libmvec.so.1');
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/libz.so');
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/Scrt1.o');
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/crti.o');
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/libisl.so.19');
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/libmpc.so.3');
-        // $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/libmpfr.so');
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/crtn.o');
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/libc.so');
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/libc_nonshared.a');
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/libm.a');
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/libm-2.27.a');
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/libm.so');
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/libmvec.so');
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/libmvec.a');
-        $this->addChrootExtension($web_root_path, '/usr/lib/x86_64-linux-gnu/libmvec_nonshared.a');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libpng16.a');
+        $this->addChrootExtension($userDir, '/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2');
+        $this->addChrootExtension($userDir, '/lib/x86_64-linux-gnu/libmvec.so.1');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libz.so');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/Scrt1.o');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/crti.o');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libisl.so.19');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libmpc.so.3');
+        // $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libmpfr.so');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/crtn.o');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libc.so');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libc_nonshared.a');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libm.a');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libm-2.27.a');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libm.so');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libmvec.so');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libmvec.a');
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libmvec_nonshared.a');
 
         //Allow gcc
-        $this->allowGcc($web_root_path);
+        $this->allowGcc($userDir);
 
         //If proc is not mounted
-        if ( ! file_exists($web_root_path.'/proc/cpuinfo') ) {
-            exec('mount --bind /proc '.$web_root_path.'/proc', $output);
+        if ( ! file_exists($userDir.'/proc/cpuinfo') ) {
+            exec('mount --bind /proc '.$userDir.'/proc', $output);
         }
     }
 
-    public function allowGcc($web_root_path)
+    public function allowGcc($userDir)
     {
-        $this->addChrootExtension($web_root_path, '/usr/bin/gcc', true);
-        $this->addChrootExtension($web_root_path, '/usr/bin/gcc-7', true);
-        $this->addChrootExtension($web_root_path, '/usr/lib/gcc');
-        $this->addChrootExtension($web_root_path, '/usr/lib/gcc/x86_64-linux-gnu/7.4.0/cc1', true);
-        $this->addChrootExtension($web_root_path, '/usr/lib/gcc/x86_64-linux-gnu/7.4.0/collect2', true);
+        $this->addChrootExtension($userDir, '/usr/bin/gcc', true);
+        $this->addChrootExtension($userDir, '/usr/bin/gcc-7', true);
+        $this->addChrootExtension($userDir, '/usr/lib/gcc');
+        $this->addChrootExtension($userDir, '/usr/lib/gcc/x86_64-linux-gnu/7.4.0/cc1', true);
+        $this->addChrootExtension($userDir, '/usr/lib/gcc/x86_64-linux-gnu/7.4.0/collect2', true);
 
         //Allow ldd
-        $this->addChrootExtension($web_root_path, '/usr/bin/ld', true);
-        $this->addChrootExtension($web_root_path, '/usr/bin/ld.gold', true);
-        $this->addChrootExtension($web_root_path, '/usr/bin/ld.bfd', true);
+        $this->addChrootExtension($userDir, '/usr/bin/ld', true);
+        $this->addChrootExtension($userDir, '/usr/bin/ld.gold', true);
+        $this->addChrootExtension($userDir, '/usr/bin/ld.bfd', true);
 
         // $gcc = glob('/usr/lib/gcc/x86_64-linux-gnu/**/**/**');
 
         // foreach ($gcc as $path) {
-        //     $this->addChrootExtension($web_root_path, $path, true);
+        //     $this->addChrootExtension($userDir, $path, true);
         // }
     }
 
-    public function addComposerSupport($web_root_path)
+    public function addComposerSupport($userDir)
     {
-        $this->addChrootExtension($web_root_path, '/usr/bin/composer', true);
-        $this->addChrootExtension($web_root_path, '/usr/share/doc/composer');
+        $this->addChrootExtension($userDir, '/usr/bin/composer', true);
+        $this->addChrootExtension($userDir, '/usr/share/doc/composer');
     }
 
-    public function fixGroupNames($user, $web_root_path)
+    public function fixGroupNames($user, $userDir)
     {
-        $this->addChrootExtension($web_root_path, '/lib/x86_64-linux-gnu/libnss_files.so.2');
+        $this->addChrootExtension($userDir, '/lib/x86_64-linux-gnu/libnss_files.so.2');
 
         $allowGroupNames = [
             'root',
@@ -309,36 +307,36 @@ Match Group ".$this->chrootGroup."
             $this->chrootGroup,
         ];
 
-        exec('cat /etc/group | grep "'.implode('\|', $allowGroupNames).'" >> '.$web_root_path.'/etc/group', $output);
-        exec('cat /etc/passwd | grep "'.implode('\|', $allowGroupNames).'" >> '.$web_root_path.'/etc/passwd', $output);
+        exec('cat /etc/group | grep "'.implode('\|', $allowGroupNames).'" >> '.$userDir.'/etc/group', $output);
+        exec('cat /etc/passwd | grep "'.implode('\|', $allowGroupNames).'" >> '.$userDir.'/etc/passwd', $output);
     }
 
-    public function fixGitSupport($web_root_path)
+    public function fixGitSupport($userDir)
     {
-        $this->addChrootExtension($web_root_path, '/usr/bin/git', true);
-        $this->addChrootExtension($web_root_path, '/usr/share/git-core');
-        $this->addChrootExtension($web_root_path, '/usr/lib/git-core');
+        $this->addChrootExtension($userDir, '/usr/bin/git', true);
+        $this->addChrootExtension($userDir, '/usr/share/git-core');
+        $this->addChrootExtension($userDir, '/usr/lib/git-core');
 
         //Allow https for git clone
-        $this->addChrootExtension($web_root_path, '/usr/lib/git-core/git-remote-https', true);
+        $this->addChrootExtension($userDir, '/usr/lib/git-core/git-remote-https', true);
 
         //Install all git extensions
         // foreach (array_slice(scandir($gitStoreExt = '/usr/lib/git-core'), 2) as $extension) {
-        //     $this->addChrootExtension($web_root_path, $gitStoreExt.'/'.$extension, true);
+        //     $this->addChrootExtension($userDir, $gitStoreExt.'/'.$extension, true);
         // }
     }
 
-    public function fixDNSResolving($web_root_path)
+    public function fixDNSResolving($userDir)
     {
-        $this->addChrootExtension($web_root_path, '/lib/x86_64-linux-gnu/libnss_dns.so.2', true);
-        $this->addChrootExtension($web_root_path, '/etc/resolv.conf', true);
+        $this->addChrootExtension($userDir, '/lib/x86_64-linux-gnu/libnss_dns.so.2', true);
+        $this->addChrootExtension($userDir, '/etc/resolv.conf', true);
     }
 
-    public function addPhpChrootSupport($web_root_path)
+    public function addPhpChrootSupport($userDir)
     {
         //Allow all php versions
-        $this->addChrootExtension($web_root_path, '/usr/bin/php', true);
-        $this->addChrootExtension($web_root_path, '/usr/share/php');
+        $this->addChrootExtension($userDir, '/usr/bin/php', true);
+        $this->addChrootExtension($userDir, '/usr/share/php');
 
         //Allow all php aliases on system
         foreach ($this->php()->getVersions() as $phpVersion) {
@@ -347,9 +345,9 @@ Match Group ".$this->chrootGroup."
                 continue;
             }
 
-            $this->addChrootExtension($web_root_path, '/etc/php/'.$phpVersion.'/cli');
-            $this->addChrootExtension($web_root_path, '/etc/php/'.$phpVersion.'/mods-available');
-            $this->addChrootExtension($web_root_path, '/usr/bin/php'.$phpVersion, true);
+            $this->addChrootExtension($userDir, '/etc/php/'.$phpVersion.'/cli');
+            $this->addChrootExtension($userDir, '/etc/php/'.$phpVersion.'/mods-available');
+            $this->addChrootExtension($userDir, '/usr/bin/php'.$phpVersion, true);
         }
 
         //Install all php extensions dependencies
@@ -360,37 +358,37 @@ Match Group ".$this->chrootGroup."
             }
 
             foreach (array_slice(scandir($phpExtPath = '/usr/lib/php/'.$phpV), 2) as $extension) {
-                $this->addChrootExtension($web_root_path, $phpExtPath.'/'.$extension, true);
+                $this->addChrootExtension($userDir, $phpExtPath.'/'.$extension, true);
             }
         }
 
         //Allow primary php alias
-        $this->addChrootExtension($web_root_path, '/etc/alternatives/php', true);
+        $this->addChrootExtension($userDir, '/etc/alternatives/php', true);
     }
 
     /*
      * Copy linux extension
      */
-    public function addChrootExtension($web_root_path, $extension, $withDependencies = false)
+    public function addChrootExtension($userDir, $extension, $withDependencies = false)
     {
-        createParentDirectory($web_root_path.'/'.$extension);
+        createParentDirectory($userDir.'/'.$extension);
 
         if ( is_dir($extension) ) {
-            exec('cp -raL '.$extension.' '.$web_root_path.'/'.getParentDir($extension), $output);
+            exec('cp -raL '.$extension.' '.$userDir.'/'.getParentDir($extension), $output);
         }
 
         else {
             //Copy extension
-            exec('cp -raL '.$extension.' '.$web_root_path.'/'.$extension, $output);
+            exec('cp -raL '.$extension.' '.$userDir.'/'.$extension, $output);
 
             if ( $withDependencies === true )
             {
                 exec('ldd "'.$extension.'" | grep -o \'\(\/.*\s\)\'', $dependencies);
 
                 foreach ($dependencies as $dependency) {
-                    createParentDirectory($web_root_path.$dependency);
+                    createParentDirectory($userDir.$dependency);
 
-                    exec('cp -rL '.$dependency.' '.$web_root_path.$dependency);
+                    exec('cp -rL '.$dependency.' '.$userDir.$dependency);
                 }
             }
         }

@@ -64,7 +64,7 @@ class Server extends Application
 
     public function changeHomeDir($user, $dir)
     {
-        exec('usermod -d '.$dir.' '.$user);
+        exec('usermod -d '.$dir.' '.$user.' 2> /dev/null');
     }
 
     /*
@@ -95,7 +95,7 @@ class Server extends Application
         if ( isset($config['www_path']) )
             return false;
 
-        return file_exists($this->getWebRootPath($domain, $config));
+        return file_exists($this->getUserDirPath($domain, $config));
     }
 
     /*
@@ -108,14 +108,16 @@ class Server extends Application
         if ( ! isValidDomain($domain) )
             return $this->response()->wrongDomainName();
 
-        $web_root_path = $this->getWebRootPath($domain, $config);
+        $userDir = $this->getUserDirPath($domain, $config);
         $web_path = $this->getWebPath($domain, $config);
 
         $paths = [];
 
         //Add domain root folder for chroot
         if ( isset($config['chroot']) && $config['chroot'] === true ){
-            $paths[$web_root_path] = ['chmod' => 755, 'user' => 'root', 'group' => 'root'];
+            $paths[$userDir] = ['chmod' => 755, 'user' => 'root', 'group' => 'root'];
+        } else {
+            $paths[$userDir] = 710;
         }
 
         $paths = array_merge($paths, [
@@ -155,7 +157,7 @@ class Server extends Application
         if ( ! isValidDomain($domain) )
             return false;
 
-        $web_path = vpsManager()->getWebRootPath($domain);
+        $web_path = vpsManager()->getUserDirPath($domain);
 
         //If is has chroot, unmount mounted directories
         vpsManager()->chroot()->remove($domain)->writeln();

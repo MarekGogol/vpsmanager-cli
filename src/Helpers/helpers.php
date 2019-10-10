@@ -71,7 +71,7 @@ function checkPermissions()
 /*
  * Create given folders with permissions
  */
-function createDirectories($paths, $user, $config = [], $callback = null)
+function createDirectories($paths, $user, $config = [], $callback = null, $message = true)
 {
     foreach ($paths as $path => $permissions)
     {
@@ -98,7 +98,10 @@ function createDirectories($paths, $user, $config = [], $callback = null)
                     $dir_group = isset($permissions['group']) ? $permissions['group'] : 'www-data';
                     shell_exec('chmod '.$dir_chmod.' -R '.$path.' && chmod g+s -R '.$path.' && chown -R '.$dir_user.':'.$dir_group.' '.$path);
                 }
-                vpsManager()->response()->message('Directory created: <comment>'.$path.'</comment>')->writeln();
+
+                if ( $message == true ) {
+                    vpsManager()->response()->message('Directory created: <comment>'.$path.'</comment>')->writeln();
+                }
             }
         }
     }

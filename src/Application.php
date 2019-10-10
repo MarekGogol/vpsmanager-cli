@@ -223,7 +223,7 @@ class Application
     /*
      * Return web path
      */
-    public function getWebRootPath($domain, $config = null)
+    public function getUserDirPath($domain, $config = null)
     {
         if ( isset($config['www_path']) )
             return $config['www_path'];
@@ -241,7 +241,7 @@ class Application
 
         return $this->config('www_path')
                .'/'.$this->server()->toUserFormat($domain)
-               .(isset($config['chroot']) && $config['chroot'] === true ? $this->getWebDirectory($config) : '');
+               .$this->getWebDirectory($config);
     }
 
     /*
