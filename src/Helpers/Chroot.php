@@ -59,7 +59,7 @@ class Chroot extends Application
             $userDir.'/dev/null' => ['mknod' => [666, 'c 1 3']],
             $userDir.'/dev/tty' => ['mknod' => [666, 'c 5 0']],
             $userDir.'/dev/random' => ['mknod' => [444, 'c 1 8']],
-            $userDir.'/dev/urandom' => ['mknod' => [444, 'c 1 1']],
+            $userDir.'/dev/urandom' => ['mknod' => [444, 'c 1 9']],
             $userDir.'/usr/include' => ['user' => 'root', 'group' => 'root', 'chmod' => 755], //we need chmood 755, because libpng needs to read files from include
             $userDir.'/usr/lib/x86_64-linux-gnu' => ['user' => 'root', 'group' => 'root', 'chmod' => 755], //we need chmood 755, because libpng needs to read files from include
             $userDir.'/usr/local' => ['user' => 'root', 'group' => 'root', 'chmod' => 777], //we need chmood 755, because libpng needs to read files from include
