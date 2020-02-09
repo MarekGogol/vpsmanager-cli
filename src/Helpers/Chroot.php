@@ -3,6 +3,7 @@
 namespace Gogol\VpsManagerCLI\Helpers;
 
 use Gogol\VpsManagerCLI\Application;
+use Gogol\VpsManagerCLI\Helpers\Stub;
 
 class Chroot extends Application
 {
@@ -67,7 +68,6 @@ class Chroot extends Application
 
         //Allow regularcommands
         $this->addChrootExtension($userDir, '/bin/bash', true);
-        $this->addChrootExtension($userDir, '/etc/bash.bashrc');
         $this->addChrootExtension($userDir, '/bin/sh', true);
         $this->addChrootExtension($userDir, '/bin/dash', true);
         $this->addChrootExtension($userDir, '/bin/ls', true);
@@ -84,6 +84,10 @@ class Chroot extends Application
         $this->addChrootExtension($userDir, '/usr/bin/openssl', true);
         $this->addChrootExtension($userDir, '/usr/share/openssh');
         $this->addChrootExtension($userDir, '/usr/bin/whoami', true);
+
+        //Fix username and hostname in terminal after login in chroot env
+        $this->addChrootExtension($userDir, '/etc/bash.bashrc');
+        $this->addChrootExtension($userDir, '/etc/profile');
 
         //Set up clear command and terminal info
         $this->addChrootExtension($userDir, '/lib/terminfo');
@@ -129,6 +133,9 @@ class Chroot extends Application
         return $this->response()->success('Chroot for directory <info>'.$userDir.'</info> has been successfully setted up.');
     }
 
+    /**
+     * Disable login message
+     */
     public function getNologinFile($web_path)
     {
         return $web_path.'/.hushlogin';
@@ -152,7 +159,9 @@ class Chroot extends Application
 
         $section = "\n
 Match Group ".$this->chrootGroup."
-    ChrootDirectory /var/www/%u\n";
+    ChrootDirectory /var/www/%u
+    AuthorizedKeysFile /var/www/%u/data/.ssh/authorized_keys
+    Banner /etc/ssh/vpsmanager_banner.txt\n";
 
         //If section does not exists
         if ( strpos($data, $this->chrootGroup) === false ) {
@@ -164,6 +173,16 @@ Match Group ".$this->chrootGroup."
 
             //Restart ssh after sshd_config modification
             $this->ssh()->rebootSSH();
+        }
+
+
+        //Add banner if does not exists
+        $sysBannerPath = '/etc/ssh/vpsmanager_banner.txt';
+
+        if ( !file_exists($sysBannerPath) || 1){
+            $bannerPath = (new Stub)->getStubPath('banner.txt');
+
+            exec('cp -r '.$bannerPath.' '.$sysBannerPath);
         }
     }
 

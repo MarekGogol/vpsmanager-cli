@@ -19,12 +19,17 @@ class Stub extends Application
             $this->load($name);
     }
 
+    public function getStubPath($name)
+    {
+        return __DIR__ . '/../Stub/' . $name;
+    }
+
     /*
      * Load content of stub
      */
     public function load($name)
     {
-        $this->content = file_get_contents(__DIR__ . '/../Stub/' . $name);
+        $this->content = file_get_contents($this->getStubPath($name));
 
         return $this;
     }
