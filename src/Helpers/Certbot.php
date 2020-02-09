@@ -114,11 +114,18 @@ class Certbot extends Application
         if ( $this->nginx()->getSection('HTTPS host for subdomain '.$domain, $nginx_conf) )
             return $nginx_conf;
 
+        $webPath = $this->getWebPath($domain);
+
+        //If /data path does not exists, use default user dir path
+        if ( ! file_exists($webPath) ) {
+            $webPath = $this->getUserDirPath($domain);
+        }
+
         $stub = $this->getStub('nginx.template.conf');
         $stub->addLineBefore('# HTTPS host for subdomain '.$domain);
         $stub->replace('{host}', $domain);
-        $stub->replace('{path}', $this->getWebPath($domain).'/sub/'.$this->getSubdomain($domain).'/public');
-        $stub->replace('{error_log_path}', $this->nginx()->getErrorLogPath($domain));
+        $stub->replace('{path}', $webPath.'/sub/'.$this->getSubdomain($domain).'/public');
+        $stub->replace('{error_log_path}', $this->nginx()->getErrorLogPath($domain, ['www_path' => $webPath]));
         $stub->replace('listen 80;', 'listen 443 ssl http2;');
         $stub->replace('listen [::]:80;', 'listen [::]:443 ssl http2;'.$this->getSSLPaths($cert_name));
 
