@@ -8,6 +8,7 @@ use Gogol\VpsManagerCLI\Command\Backup\BackupTestMailServer;
 use Gogol\VpsManagerCLI\Command\Backup\BackupTestRemoteServer;
 use Gogol\VpsManagerCLI\Command\Chroot\ChrootCreateCommand;
 use Gogol\VpsManagerCLI\Command\Chroot\ChrootRemoveCommand;
+use Gogol\VpsManagerCLI\Command\Chroot\ChrootUpdateCommand;
 use Gogol\VpsManagerCLI\Command\Hosting\HostingCreateCommand;
 use Gogol\VpsManagerCLI\Command\Hosting\HostingRemoveCommand;
 use Gogol\VpsManagerCLI\Command\InstallManagerCommand;
@@ -29,6 +30,7 @@ $application->add(new BackupTestMailServer());
 $application->add(new MysqlCreateCommand());
 $application->add(new MysqlRemoveCommand());
 $application->add(new ChrootCreateCommand());
+$application->add(new ChrootUpdateCommand());
 $application->add(new ChrootRemoveCommand());
 
 $application->run();

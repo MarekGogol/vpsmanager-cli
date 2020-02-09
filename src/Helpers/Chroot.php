@@ -179,11 +179,21 @@ Match Group ".$this->chrootGroup."
         //Add banner if does not exists
         $sysBannerPath = '/etc/ssh/vpsmanager_banner.txt';
 
-        if ( !file_exists($sysBannerPath) || 1){
+        if ( !file_exists($sysBannerPath) ){
             $bannerPath = (new Stub)->getStubPath('banner.txt');
 
             exec('cp -r '.$bannerPath.' '.$sysBannerPath);
         }
+    }
+
+    /*
+     * Check if given directory is chroot
+     */
+    public function isChroot($userDir)
+    {
+        return file_exists($userDir.'/etc/passwd')
+            && file_exists($userDir.'/data')
+            && file_exists($userDir.'/lib');
     }
 
     /*
@@ -200,7 +210,7 @@ Match Group ".$this->chrootGroup."
         $webDir = $this->getWebPath($domain);
 
         //Check if is chroot environment
-        if ( ! file_exists($userDir.'/etc') ) {
+        if ( ! $this->isChroot($userDir) ) {
             return $this->response()->error('<error>This is not chroot environment.</error>');
         }
 
@@ -330,8 +340,8 @@ Match Group ".$this->chrootGroup."
             $this->chrootGroup,
         ];
 
-        exec('cat /etc/group | grep "'.implode('\|', $allowGroupNames).'" >> '.$userDir.'/etc/group', $output);
-        exec('cat /etc/passwd | grep "'.implode('\|', $allowGroupNames).'" >> '.$userDir.'/etc/passwd', $output);
+        exec('rm -rf '.$userDir.'/etc/group && cat /etc/group | grep "'.implode('\|', $allowGroupNames).'" >> '.$userDir.'/etc/group', $output);
+        exec('rm -rf '.$userDir.'/etc/passwd && cat /etc/passwd | grep "'.implode('\|', $allowGroupNames).'" >> '.$userDir.'/etc/passwd', $output);
     }
 
     public function fixGitSupport($userDir)
@@ -415,6 +425,37 @@ Match Group ".$this->chrootGroup."
                 }
             }
         }
+    }
+
+    /**
+     * Update all chroot directoriess
+     *
+     * @return  [type]
+     */
+    public function update()
+    {
+        $wwwPath = vpsManager()->config('www_path');
+        $domains = scandir($wwwPath);
+
+        foreach ($domains as $domain) {
+            $userPath = $wwwPath.'/'.$domain;
+
+            //If is not chroot directory
+            if (
+                !is_dir($userPath)
+                || in_array($domain, ['.', '..'])
+                || !isValidDomain($domain)
+                || ! $this->isChroot($userPath)
+            ) {
+                continue;
+            }
+
+            $this->create($domain, [
+                'chroot' => true
+            ]);
+        }
+
+        return $this->response()->success('All chroot directories has been updated.');
     }
 }
 
