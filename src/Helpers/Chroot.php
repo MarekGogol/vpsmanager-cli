@@ -89,6 +89,10 @@ class Chroot extends Application
         $this->addChrootExtension($userDir, '/etc/bash.bashrc');
         $this->addChrootExtension($userDir, '/etc/profile');
 
+        //Nano settings
+        $this->addChrootExtension($userDir, '/etc/nanorc');
+        $this->addChrootExtension($userDir, '/usr/share/nano');
+
         //Set up clear command and terminal info
         $this->addChrootExtension($userDir, '/lib/terminfo');
         $this->addChrootExtension($userDir, '/usr/bin/clear', true);
