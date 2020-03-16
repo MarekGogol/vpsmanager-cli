@@ -87,6 +87,22 @@ else
     fi
 fi
 
+dpkg -s php7.4-cli &> /dev/null
+PHP74=$?
+if [ $PHP74 -eq 0 ]; then
+    echo -e "\e[32mPHP 7.4 version installed.\e[0m"
+else
+    read -p 'Do you want to install PHP 7.4? [Y/n]:' answer
+    answer=${answer:Y}
+
+    if [[ $answer =~ [Yy] ]]; then
+        apt install -y software-properties-common
+        add_ppa_if_not_exists ondrej/php
+        apt install -y php7.4-fpm && apt install -y php7.4-cli php7.4-fpm php7.4-soap php7.4-json php7.4-pdo php7.4-mysql php7.4-zip php7.4-gd php7.4-mbstring php7.4-curl php7.4-xml php7.4-bcmath php7.4-json
+        service php7.3-fpm start
+    fi
+fi
+
 # Check if mysql is installed
 dpkg -s python-certbot-nginx &> /dev/null
 IS_CERTBOT=$?
