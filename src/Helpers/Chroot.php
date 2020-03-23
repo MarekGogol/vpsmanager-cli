@@ -378,7 +378,7 @@ Match Group ".$this->chrootGroup."
         //Allow all php aliases on system
         foreach ($this->php()->getVersions() as $phpVersion) {
             //If php version is not installed
-            if ( ! file_exists('/etc/php/'.$phpVersion) ){
+            if ( ! file_exists('/etc/php/'.$phpVersion.'/fpm') ){
                 continue;
             }
 
