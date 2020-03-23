@@ -308,11 +308,18 @@ Match Group ".$this->chrootGroup."
 
     public function allowGcc($userDir)
     {
+        exec('gcc --version', $gccVersion);
+
+        // $gccVersion = explode(' ', @explode("\n", $gccVersion)[0]);
+        $gccVersion = @explode(" ", @$gccVersion[0]);
+        $gccVersion = end($gccVersion);
+
+        // $gccVersion =
         $this->addChrootExtension($userDir, '/usr/bin/gcc', true);
         $this->addChrootExtension($userDir, '/usr/bin/gcc-7', true);
         $this->addChrootExtension($userDir, '/usr/lib/gcc');
-        $this->addChrootExtension($userDir, '/usr/lib/gcc/x86_64-linux-gnu/7.4.0/cc1', true);
-        $this->addChrootExtension($userDir, '/usr/lib/gcc/x86_64-linux-gnu/7.4.0/collect2', true);
+        $this->addChrootExtension($userDir, '/usr/lib/gcc/x86_64-linux-gnu/'.$gccVersion.'/cc1', true);
+        $this->addChrootExtension($userDir, '/usr/lib/gcc/x86_64-linux-gnu/'.$gccVersion.'/collect2', true);
 
         //Allow ldd
         $this->addChrootExtension($userDir, '/usr/bin/ld', true);
