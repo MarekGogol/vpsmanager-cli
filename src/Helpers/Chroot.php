@@ -388,13 +388,19 @@ Match Group ".$this->chrootGroup."
         }
 
         //Install all php extensions dependencies
-        foreach (['20170718', '20180731'] as $phpV) {
-            //If phpversion is not installed
-            if ( ! file_exists($phpExtPath = '/usr/lib/php/'.$phpV) ) {
+        $phpUsrDir = '/usr/lib/php/';
+        foreach (scandir($phpUsrDir) as $phpV) {
+            //If phpversion is not installed,
+            //install all versions into chroot
+            if (
+                strlen($phpV) != 8
+                || !is_numeric($phpV)
+                || ! file_exists($phpExtPath = $phpUsrDir.$phpV)
+            ) {
                 continue;
             }
 
-            foreach (array_slice(scandir($phpExtPath = '/usr/lib/php/'.$phpV), 2) as $extension) {
+            foreach (array_slice(scandir($phpExtPath = $phpUsrDir.$phpV), 2) as $extension) {
                 $this->addChrootExtension($userDir, $phpExtPath.'/'.$extension, true);
             }
         }

@@ -7,6 +7,11 @@ fi
 
 apt-get update
 
+apt install -y ssl-cert
+apt install -y gcc
+apt install -y libpng-dev
+apt install -y make
+
 echo " "
 
 add_ppa_if_not_exists() {
@@ -50,7 +55,7 @@ else
     if [[ $answer =~ [Yy] ]]; then
         apt install -y software-properties-common
         add_ppa_if_not_exists ondrej/php
-        apt install -y php7.1-fpm && apt install -y php7.1-cli php7.1-fpm php7.1-soap php7.1-json php7.1-pdo php7.1-mysql php7.1-zip php7.1-gd php7.1-mbstring php7.1-curl php7.1-xml php7.1-bcmath php7.1-json
+        apt install -y php7.1-fpm && apt install -y php7.1-cli php7.1-fpm php7.1-soap php7.1-pdo php7.1-mysql php7.1-zip php7.1-gd php7.1-mbstring php7.1-curl php7.1-xml php7.1-bcmath php7.1-json php7.1-redis
         service php7.1-fpm start
     fi
 fi
@@ -66,7 +71,7 @@ else
     if [[ $answer =~ [Yy] ]]; then
         apt install -y software-properties-common
         add_ppa_if_not_exists ondrej/php
-        apt install -y php7.2-fpm && apt install -y php7.2-cli php7.2-fpm php7.2-soap php7.2-json php7.2-pdo php7.2-mysql php7.2-zip php7.2-gd php7.2-mbstring php7.2-curl php7.2-xml php7.2-bcmath php7.2-json
+        apt install -y php7.2-fpm && apt install -y php7.2-cli php7.2-fpm php7.2-soap php7.2-pdo php7.2-mysql php7.2-zip php7.2-gd php7.2-mbstring php7.2-curl php7.2-xml php7.2-bcmath php7.2-json php7.2-redis
         service php7.2-fpm start
     fi
 fi
@@ -82,7 +87,7 @@ else
     if [[ $answer =~ [Yy] ]]; then
         apt install -y software-properties-common
         add_ppa_if_not_exists ondrej/php
-        apt install -y php7.3-fpm && apt install -y php7.3-cli php7.3-fpm php7.3-soap php7.3-json php7.3-pdo php7.3-mysql php7.3-zip php7.3-gd php7.3-mbstring php7.3-curl php7.3-xml php7.3-bcmath php7.3-json
+        apt install -y php7.3-fpm && apt install -y php7.3-cli php7.3-fpm php7.3-soap php7.3-pdo php7.3-mysql php7.3-zip php7.3-gd php7.3-mbstring php7.3-curl php7.3-xml php7.3-bcmath php7.3-json php7.3-redis
         service php7.3-fpm start
     fi
 fi
@@ -98,7 +103,7 @@ else
     if [[ $answer =~ [Yy] ]]; then
         apt install -y software-properties-common
         add_ppa_if_not_exists ondrej/php
-        apt install -y php7.4-fpm && apt install -y php7.4-cli php7.4-fpm php7.4-soap php7.4-json php7.4-pdo php7.4-mysql php7.4-zip php7.4-gd php7.4-mbstring php7.4-curl php7.4-xml php7.4-bcmath php7.4-json
+        apt install -y php7.4-fpm && apt install -y php7.4-cli php7.4-fpm php7.4-soap php7.4-pdo php7.4-mysql php7.4-zip php7.4-gd php7.4-mbstring php7.4-curl php7.4-xml php7.4-bcmath php7.4-json php7.4-redis
         service php7.3-fpm start
     fi
 fi
