@@ -78,6 +78,7 @@ class Chroot extends Application
         $this->addChrootExtension($userDir, '/bin/chmod', true);
         $this->addChrootExtension($userDir, '/bin/cat', true);
         $this->addChrootExtension($userDir, '/bin/nano', true);
+        $this->addChrootExtension($userDir, '/bin/mv', true);
         $this->addChrootExtension($userDir, '/usr/bin/id', true);
         $this->addChrootExtension($userDir, '/usr/bin/groups', true);
         $this->addChrootExtension($userDir, '/usr/bin/wget', true);
