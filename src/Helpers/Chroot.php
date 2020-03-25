@@ -276,6 +276,7 @@ Match Group ".$this->chrootGroup."
         $this->addChrootExtension($userDir, '/usr/bin/install', true);
         $this->addChrootExtension($userDir, '/usr/bin/as', true);
         $this->addChrootExtension($userDir, '/usr/bin/make', true);
+        $this->addChrootExtension($userDir, '/usr/bin/unzip', true);
 
         //Allow all required libraries for npm packages
         $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libpng16.a');
