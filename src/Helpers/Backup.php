@@ -67,7 +67,10 @@ class Backup extends Application
      */
     private function testMysql()
     {
-        exec('mysql -uroot -e "show databases;" -s --skip-column-names', $output, $return_var);
+        $user = $this->config('mysql_user', 'root');
+        $pass = $this->config('mysql_pass', '');
+
+        exec('mysql -u'.$user.' -p"'.$pass.'" -e "show databases;" -s --skip-column-names', $output, $return_var);
 
         return [
             'result' => $return_var == 0,
