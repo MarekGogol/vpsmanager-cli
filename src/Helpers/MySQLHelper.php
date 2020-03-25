@@ -55,6 +55,31 @@ class MySQLHelper extends Application
     }
 
     /**
+     * Reset database user password
+     * @param  string $domain
+     * @return response
+     */
+    public function resetPasswordDatabase($domain)
+    {
+        if ( ! ($this->isValidDBName($domain) || isValidDomain($domain) ) )
+            return $this->response->wrongDomainName();
+
+        $database = $this->dbName($domain);
+        $password = getRandomPassword();
+
+        //Check if db exists
+        if ( !$this->connect()->select_db($database) ){
+            return $this->response()->success('User and database <comment>'.$database.'</comment> does not exists.');
+        }
+
+        $this->connect()->query("ALTER USER '$database'@'localhost' IDENTIFIED BY '$password'");
+        $this->connect()->query('flush privileges');
+
+        return $this->response()
+                    ->success("<info>MySQL password has been successfuly changed.</info>\nDatabase\User: <comment>$database</comment>\nPassword: <comment>$password</comment>");
+    }
+
+    /**
      * Delete database and user
      * @param  string $domain
      * @return response

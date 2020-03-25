@@ -14,6 +14,7 @@ use Gogol\VpsManagerCLI\Command\Hosting\HostingRemoveCommand;
 use Gogol\VpsManagerCLI\Command\InstallManagerCommand;
 use Gogol\VpsManagerCLI\Command\Mysql\MysqlCreateCommand;
 use Gogol\VpsManagerCLI\Command\Mysql\MysqlRemoveCommand;
+use Gogol\VpsManagerCLI\Command\Mysql\MysqlResetPasswordCommand;
 use Gogol\VpsManagerCLI\Command\SSLCreateCommand;
 use Symfony\Component\Console\Application;
 
@@ -28,6 +29,7 @@ $application->add(new BackupPerformCommand());
 $application->add(new BackupTestRemoteServer());
 $application->add(new BackupTestMailServer());
 $application->add(new MysqlCreateCommand());
+$application->add(new MysqlResetPasswordCommand());
 $application->add(new MysqlRemoveCommand());
 $application->add(new ChrootCreateCommand());
 $application->add(new ChrootUpdateCommand());

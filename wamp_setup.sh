@@ -7,10 +7,20 @@ fi
 
 apt-get update
 
+# Install required packages
 apt install -y ssl-cert
 apt install -y gcc
 apt install -y libpng-dev
 apt install -y make
+
+# Install locales
+locale-gen SK_SK
+locale-gen SK_SK.UTF-8
+locale-gen cs_CZ
+locale-gen cs_CZ.UTF-8
+locale-gen de_DE
+locale-gen de_DE.UTF-8
+update-locale
 
 echo " "
 
@@ -147,7 +157,28 @@ IS_MYSQL=$?
 if [ $IS_MYSQL -eq 0 ]; then
     echo -e "\e[32mMySQL is installed\e[0m"
 else
-    read -p 'Do you want to install MySQL? [Y/n]:' answer
+    read -p 'Do you want to install MySQL 8.0? [Y/n]:' answer
+    answer=${answer:Y}
+
+    if [[ $answer =~ [Yy] ]]; then
+        wget -c https://dev.mysql.com/get/mysql-apt-config_0.8.15-1_all.deb
+        dpkg -i mysql-apt-config_0.8.15-1_all.deb
+        rm mysql-apt-config_0.8.15-1_all.deb
+        apt-get update
+
+        apt install mysql-server
+        service mysql start
+        mysql_secure_installation
+    fi
+fi
+
+# Check if mysql is installed
+dpkg -s mysql-server &> /dev/null
+IS_MYSQL=$?
+if [ $IS_MYSQL -eq 0 ]; then
+    echo -e "\e[32mMySQL is installed\e[0m"
+else
+    read -p 'Do you want to install MySQL 5.7? [Y/n]:' answer
     answer=${answer:Y}
 
     if [[ $answer =~ [Yy] ]]; then
