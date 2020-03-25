@@ -84,6 +84,7 @@ class Chroot extends Application
         $this->addChrootExtension($userDir, '/usr/bin/openssl', true);
         $this->addChrootExtension($userDir, '/usr/share/openssh');
         $this->addChrootExtension($userDir, '/usr/bin/whoami', true);
+        $this->addChrootExtension($userDir, '/usr/bin/unzip', true);
 
         //Fix username and hostname in terminal after login in chroot env
         $this->addChrootExtension($userDir, '/etc/bash.bashrc');
@@ -276,7 +277,6 @@ Match Group ".$this->chrootGroup."
         $this->addChrootExtension($userDir, '/usr/bin/install', true);
         $this->addChrootExtension($userDir, '/usr/bin/as', true);
         $this->addChrootExtension($userDir, '/usr/bin/make', true);
-        $this->addChrootExtension($userDir, '/usr/bin/unzip', true);
 
         //Allow all required libraries for npm packages
         $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/libpng16.a');
