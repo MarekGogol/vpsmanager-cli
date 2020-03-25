@@ -85,6 +85,14 @@ class InstallManagerCommand extends Command
                 'config_key' => $k = 'self_signed_ssl',
                 'default' => $vm->config($k, true)
             ],
+            'setMysqlUser' => [
+                'config_key' => $k = 'mysql_user',
+                'default' => $vm->config($k, 'root')
+            ],
+            'setMysqlPassword' => [
+                'config_key' => $k = 'mysql_pass',
+                'default' => $vm->config($k, '')
+            ],
             // 'setVpsManagerPath' => [
             //     'config_key' => $k = 'vpsmanager_path',
             //     'default' => $vm->config($k, $input->getOption('vpsmanager_path') ?: null)
@@ -245,6 +253,37 @@ class InstallManagerCommand extends Command
         $value = $config = $helper->ask($input, $output, $question) ?: $default;
 
         $output->writeln('Used path: <comment>' . $value . '</comment>');
+    }
+
+    private function setMysqlUser($input, $output, $helper, &$config, $default)
+    {
+        $output->writeln('<info>Please set MYSQL root user name for future mysql modifications.</info>');
+
+        //Nginx path
+        $question = new Question('Type mysql root user name <comment>'.$default.'</comment>: ', null);
+
+        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+
+        $output->writeln('Used username: <comment>' . $value . '</comment>');
+    }
+
+    private function setMysqlPassword($input, $output, $helper, &$config, $default)
+    {
+        $output->writeln('<info>Please set MYSQL password for future mysql modifications.</info>');
+
+        //Nginx path
+        $question = new Question('Type mysql root password <comment>'.$default.'</comment>: ', null);
+        $question->setValidator(function($pass) use ($default) {
+            if ( !$pass && ! $default ){
+                throw new \Exception('Please fill valid password.');
+            }
+
+            return $pass;
+        });
+
+        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+
+        $output->writeln('Used password: <comment>' . $value . '</comment>');
     }
 
     private function setHost($input, $output, $helper, &$config, $default)

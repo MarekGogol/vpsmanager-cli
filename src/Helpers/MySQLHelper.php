@@ -10,10 +10,11 @@ class MySQLHelper extends Application
 
     public function connect()
     {
-        if ( $this->mysqli )
+        if ( $this->mysqli ) {
             return $this->mysqli;
+        }
 
-        return $this->mysqli = new \mysqli("localhost", "root", null);
+        return $this->mysqli = new \mysqli('localhost', $this->config('mysql_user', 'root'), $this->config('mysql_pass', null));
     }
 
     public function dbName($domain)
