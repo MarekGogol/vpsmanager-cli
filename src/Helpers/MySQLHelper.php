@@ -47,9 +47,7 @@ class MySQLHelper extends Application
             return $this->response()->success('User and database <comment>'.$database.'</comment> already exists.');
 
         $this->connect()->query('CREATE DATABASE IF NOT EXISTS `'.$database.'` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
-        $this->connect()->query('CREATE USER `'.$database.'`@`localhost` IDENTIFIED BY \''.$password.'\'');
-        $this->connect()->query('GRANT ALL PRIVILEGES ON `'.$database.'`.* TO `'.$database.'`@`localhost`');
-        // $this->connect()->query('GRANT ALL PRIVILEGES ON `'.$database.'`.* to `'.$database.'`@`localhost` identified by \''.$password.'\'');
+        $this->connect()->query('GRANT ALL PRIVILEGES ON `'.$database.'`.* to `'.$database.'`@`localhost` identified by \''.$password.'\'');
         $this->connect()->query('flush privileges');
 
         return $this->response()
