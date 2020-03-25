@@ -91,13 +91,16 @@ class Backup extends Application
         //Get just databases which should be backed up
         $backup_databases = array_diff($test_result['databases'], $does_not_backup);
 
+        $dbUser = $this->config('mysql_user', 'root');
+        $dbPass = $this->config('mysql_pass', '');
+
         //Backup databases
         foreach ($backup_databases as $database)
         {
             $filename = $backup_path.'/'.$database.'.sql.gz';
 
             $this->response()->success('Saving and compressing <comment>'.$database.'</comment> database.')->writeln();
-            exec('(mysqldump -uroot '.$database.' || rm -f "'.$filename.'") | gzip > "'.$filename.'"', $output, $return_var);
+            exec('(mysqldump -u'.$dbUser.' -p"'.$dbPass.'" '.$database.' || rm -f "'.$filename.'") | gzip > "'.$filename.'"', $output, $return_var);
         }
 
         //Check if is available at least one backup
