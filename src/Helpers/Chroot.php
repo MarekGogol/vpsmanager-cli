@@ -384,6 +384,10 @@ Match Group ".$this->chrootGroup."
         $this->addChrootExtension($userDir, '/usr/bin/php', true);
         $this->addChrootExtension($userDir, '/usr/share/php');
 
+        //Allow php iconv
+        $this->addChrootExtension($userDir, '/usr/bin/iconv', true);
+
+
         //Allow all php aliases on system
         foreach ($this->php()->getVersions() as $phpVersion) {
             //If php version is not installed

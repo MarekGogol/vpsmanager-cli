@@ -14,8 +14,8 @@ apt install -y libpng-dev
 apt install -y make
 
 # Install locales
-locale-gen SK_SK
-locale-gen SK_SK.UTF-8
+locale-gen sk_SK
+locale-gen sk_SK.UTF-8
 locale-gen cs_CZ
 locale-gen cs_CZ.UTF-8
 locale-gen de_DE
