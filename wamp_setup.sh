@@ -11,6 +11,7 @@ apt-get update
 apt install -y ssl-cert
 apt install -y gcc
 apt install -y libpng-dev
+apt install -y pngquant
 apt install -y make
 
 # Install locales

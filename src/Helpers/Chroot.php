@@ -386,7 +386,7 @@ Match Group ".$this->chrootGroup."
 
         //Allow php iconv
         $this->addChrootExtension($userDir, '/usr/bin/iconv', true);
-
+        $this->addChrootExtension($userDir, '/usr/lib/x86_64-linux-gnu/gconv');
 
         //Allow all php aliases on system
         foreach ($this->php()->getVersions() as $phpVersion) {
