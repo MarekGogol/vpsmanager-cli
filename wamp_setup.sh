@@ -11,7 +11,6 @@ apt-get update
 apt install -y ssl-cert
 apt install -y gcc
 apt install -y libpng-dev
-apt install -y pngquant
 apt install -y make
 
 # Install locales
@@ -201,4 +200,17 @@ else
     if [[ $answer =~ [Yy] ]]; then
         apt install -y composer
     fi
+fi
+
+#Image iptimalization
+read -p 'Do you want to install Image optimalization libraries? [Y/n]:' answer
+answer=${answer:Y}
+
+if [[ $answer =~ [Yy] ]]; then
+    apt-get install jpegoptim
+    apt-get install optipng
+    apt-get install pngquant
+    apt-get install gifsicle
+    apt-get install webp
+    npm install -g svgo
 fi
