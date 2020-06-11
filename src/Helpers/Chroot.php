@@ -4,6 +4,7 @@ namespace Gogol\VpsManagerCLI\Helpers;
 
 use Gogol\VpsManagerCLI\Application;
 use Gogol\VpsManagerCLI\Helpers\Stub;
+use Symfony\Component\Console\Question\ChoiceQuestion;
 
 class Chroot extends Application
 {
@@ -71,8 +72,10 @@ class Chroot extends Application
         $this->addChrootExtension($userDir, '/bin/sh', true);
         $this->addChrootExtension($userDir, '/bin/dash', true);
         $this->addChrootExtension($userDir, '/bin/ls', true);
+        $this->addChrootExtension($userDir, '/bin/ln', true);
         $this->addChrootExtension($userDir, '/bin/rm', true);
         $this->addChrootExtension($userDir, '/bin/cp', true);
+        $this->addChrootExtension($userDir, '/bin/which', true);
         $this->addChrootExtension($userDir, '/bin/mkdir', true);
         $this->addChrootExtension($userDir, '/bin/chown', true);
         $this->addChrootExtension($userDir, '/bin/chmod', true);
@@ -86,6 +89,7 @@ class Chroot extends Application
         $this->addChrootExtension($userDir, '/usr/share/openssh');
         $this->addChrootExtension($userDir, '/usr/bin/whoami', true);
         $this->addChrootExtension($userDir, '/usr/bin/unzip', true);
+        $this->addChrootExtension($userDir, '/usr/bin/zip', true);
 
         //Fix username and hostname in terminal after login in chroot env
         $this->addChrootExtension($userDir, '/etc/bash.bashrc');
@@ -125,7 +129,7 @@ class Chroot extends Application
         $this->addChrootExtension($userDir, '/usr/share/zoneinfo');
 
         //Allow php support in chroot
-        $this->addPhpChrootSupport($userDir);
+        $this->addPhpChrootSupport($userDir, @$config['php_version']);
 
         //Allow composer support in chroot
         $this->addComposerSupport($userDir);
@@ -378,7 +382,7 @@ Match Group ".$this->chrootGroup."
         $this->addChrootExtension($userDir, '/etc/resolv.conf', true);
     }
 
-    public function addPhpChrootSupport($userDir)
+    public function addPhpChrootSupport($userDir, $usePhpCliVersion = null)
     {
         //Allow all php versions
         $this->addChrootExtension($userDir, '/usr/bin/php', true);
@@ -420,6 +424,10 @@ Match Group ".$this->chrootGroup."
 
         //Allow primary php alias
         $this->addChrootExtension($userDir, '/etc/alternatives/php', true);
+
+        if ( $usePhpCliVersion ) {
+            exec('cp -rf '.$userDir.'/usr/bin/php'.$usePhpCliVersion.' '.$userDir.'/usr/bin/php', $output);
+        }
     }
 
     /*

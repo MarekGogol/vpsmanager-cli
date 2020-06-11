@@ -104,6 +104,14 @@ class Application
     }
 
     /*
+     * Get console output
+     */
+    public function getInput()
+    {
+        return $this->input;
+    }
+
+    /*
      * Return stub
      */
     public function getStub($name)

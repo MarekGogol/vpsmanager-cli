@@ -37,9 +37,28 @@ class ChrootCreateCommand extends Command
         $domain = $this->getDomainName();
 
         if ( ($response = vpsManager()->chroot()->create($domain, [
-            'chroot' => true
+            'chroot' => true,
+            'php_version' => $this->getPHPVersion()
         ], true)->writeln())->isError() ) {
             return $response;
+        }
+    }
+
+    public function getPHPVersion()
+    {
+        $default = vpsManager()->config('php_version');
+
+        //Nginx path
+        $question = new ChoiceQuestion('Set PHP CLI Version of your domain. ['.$default.']: ', vpsManager()->php()->getVersions(), $default);
+
+        $version = $this->helper->ask($this->input, $this->output, $question) ?: $default;
+
+        //Check if is PHP Version installed
+        if ( ($php = vpsManager()->php())->isInstalled($version) )
+        {
+            return $version;
+        } else {
+            throw new \Exception('Required PHP Version is not installed.');
         }
     }
 
