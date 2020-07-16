@@ -492,7 +492,7 @@ class Backup extends Application
             $backups = $this->getTree($backup_path.'/'.$dir);
 
             //Get last x backups
-            $allowed_backups = array_slice($backups, -2);
+            $allowed_backups = array_slice($backups, -$this->config('remote_backup_limit'));
 
             //Build rsync params
             $exclude_folders = array_map(function($backup) use($dir){
