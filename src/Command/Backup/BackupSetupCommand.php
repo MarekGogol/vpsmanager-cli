@@ -64,7 +64,13 @@ class BackupSetupCommand extends Command
             ],
             'setBackupDirectories' => [
                 'config_key' => $k = 'backup_directories',
-                'default' => $vm->config($k, '/etc/nginx;/etc/mysql --exclude="*/debian.cnf"')
+                'default' => $vm->config($k, implode(';', [
+                    '/etc/nginx',
+                    '/etc/php',
+                    '/etc/mysql --exclude="*/debian.cnf"',
+                    '/etc/ssh/sshd_config',
+                    '/var/spool/cron/crontabs',
+                ]))
             ],
             'setEmailNotifications' => [
                 'config_key' => $k = 'email_notifications',
@@ -100,7 +106,7 @@ class BackupSetupCommand extends Command
             ],
             'setRemoteBackupPath' => [
                 'config_key' => $k = 'remote_path',
-                'default' => $vm->config($k, '/var/vpsmanager_backups/remote'),
+                'default' => $vm->config($k, '/var/vpsmanager_backups/remote/'.$config['backup_server_name']),
             ],
             'setRemoteBackupLimit' => [
                 'config_key' => $k = 'remote_backup_limit',
@@ -372,7 +378,7 @@ class BackupSetupCommand extends Command
 
         $output->writeln('<info>Please set backup path in remote server where will be stored all backups of your local resources.</info>');
 
-        $question = new Question('Type new path or press enter for using default remote <comment>'.$default.'</comment> path: ', null);
+        $question = new Question('Type new path or press enter for using default remote <comment>'.$default.'</comment> destination path: ', null);
 
         $value = $config = $helper->ask($input, $output, $question) ?: $default;
 

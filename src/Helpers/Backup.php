@@ -520,6 +520,12 @@ class Backup extends Application
         $backup_path = $this->getBackupPath();
         $exclude = $this->getExcludedRsyncBackups($backup_path);
 
+        //If ssh key does not exists
+        if ( !file_exists($this->getRemoteRSAKeyPath()) ){
+            $this->sendError('SSH Key for authentication with remove server does not exists.');
+            return;
+        }
+
         exec($cmd = 'rsync -avzP --delete --delete-excluded '.implode(' ', $exclude).' -e \'ssh -o StrictHostKeyChecking=no -i '.$this->getRemoteRSAKeyPath().'\' '.$this->getBackupPath().'/* '.$this->config('remote_user').'@'.$remote_server.':'.$this->config('remote_path'), $output, $return_var);
 
         if ( $return_var == 0 )
