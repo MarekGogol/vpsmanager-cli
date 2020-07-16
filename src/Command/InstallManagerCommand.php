@@ -55,6 +55,8 @@ class InstallManagerCommand extends Command
         $vm = vpsManager();
         $config = $vm->config();
 
+        $this->createCommandShortcut();
+
         //Set config properties
         foreach ([
             'setNginxPath' => [
@@ -114,11 +116,26 @@ class InstallManagerCommand extends Command
             }
         }
 
-        if ( ! vpsManager()->saveConfig($config) )
+        if ( ! vpsManager()->saveConfig($config) ){
             throw new \Exception('Installation failed. Config could not be saved into '.vpsManagerPath().'/config.php');
+        }
 
         //Forced booting config
         vpsManager()->bootConfig(true);
+    }
+
+    private function createCommandShortcut()
+    {
+        $bashrcFile = trim(shell_exec('cd ~ && pwd')).'/.bashrc';
+
+        $vpsmanagerCLIPath = realpath(__DIR__.'/../../vpsmanager');
+
+        $command = 'alias vpsmanager="php '.$vpsmanagerCLIPath.'"';
+
+        //If command alias has not been setls
+        if ( !file_exists($bashrcFile) || strpos(file_get_contents($bashrcFile), $command) === false ) {
+            @file_put_contents($bashrcFile, "#VPS Manager shortcut command\n$command\n", FILE_APPEND);
+        }
     }
 
     private function setNginxPath($input, $output, $helper, &$config, $default)
