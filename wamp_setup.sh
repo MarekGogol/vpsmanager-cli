@@ -20,6 +20,10 @@ locale-gen cs_CZ
 locale-gen cs_CZ.UTF-8
 locale-gen de_DE
 locale-gen de_DE.UTF-8
+locale-gen pl_PL
+locale-gen pl_PL.UTF-8
+locale-gen ru_UA
+locale-gen ru_UA.UTF-8
 update-locale
 
 echo " "

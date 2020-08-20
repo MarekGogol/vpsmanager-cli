@@ -216,7 +216,7 @@ class Backup extends Application
      */
     private function getExcludeDirectories($domain, $exclude = '')
     {
-        $exclude_domain_root = ['.config/\*', '.cache/\*', '.local/\*', '.npm/\*', '.nano/\*', '.gnupg/\*', '.bash_history', '.selected_editor'];
+        $exclude_domain_root = ['.config/\*', '.cache/\*', '.local/\*', '.npm/\*', '.pm2/\*', '.nano/\*', '.gnupg/\*', '.bash_history', '.selected_editor'];
         $exclude_global_folters = ['node_modules/\*', 'vendor/\*', 'cache/\*', 'laravel.log'];
 
         $domain_path = $this->getUserDirPath($domain);
