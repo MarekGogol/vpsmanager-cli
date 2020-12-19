@@ -442,7 +442,7 @@ Match Group ".$this->chrootGroup."
             exec('cp -raL '.$extension.' '.$userDir.'/'.getParentDir($extension), $output);
         }
 
-        else {
+        else if ( file_exists($extension) ) {
             //Copy extension
             exec('cp -raL '.$extension.' '.$userDir.'/'.$extension, $output);
 
