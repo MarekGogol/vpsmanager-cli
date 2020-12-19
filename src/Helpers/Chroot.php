@@ -342,6 +342,7 @@ Match Group ".$this->chrootGroup."
     public function addComposerSupport($userDir)
     {
         $this->addChrootExtension($userDir, '/usr/bin/composer', true);
+        $this->addChrootExtension($userDir, '/usr/local/bin/composer', true);
         $this->addChrootExtension($userDir, '/usr/share/doc/composer');
     }
 
