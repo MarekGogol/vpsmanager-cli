@@ -264,6 +264,10 @@ Match Group ".$this->chrootGroup."
         $this->addChrootExtension($userDir, '/usr/bin/node', true);
         $this->addChrootExtension($userDir, '/usr/local/bin/node', true);
 
+        //npx
+        $this->addChrootExtension($userDir, '/usr/bin/npx', true);
+        $this->addChrootExtension($userDir, '/usr/local/bin/npx', true);
+
         //Add npm command
         $this->addChrootExtension($userDir, '/usr/lib/node_modules/npm');
         exec('ln -s -f /usr/lib/node_modules/npm/bin/npm-cli.js '.$userDir.'/usr/bin/npm', $output);
