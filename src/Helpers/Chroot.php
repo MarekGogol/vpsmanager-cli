@@ -262,6 +262,7 @@ Match Group ".$this->chrootGroup."
     {
         //Add nodejs
         $this->addChrootExtension($userDir, '/usr/bin/node', true);
+        $this->addChrootExtension($userDir, '/usr/local/bin/node', true);
 
         //Add npm command
         $this->addChrootExtension($userDir, '/usr/lib/node_modules/npm');
