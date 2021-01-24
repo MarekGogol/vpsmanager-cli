@@ -270,7 +270,10 @@ Match Group ".$this->chrootGroup."
 
         //Add npm command
         $this->addChrootExtension($userDir, '/usr/lib/node_modules/npm');
+        $this->addChrootExtension($userDir, '/usr/local/lib/node_modules/npm');
+
         exec('ln -s -f /usr/lib/node_modules/npm/bin/npm-cli.js '.$userDir.'/usr/bin/npm', $output);
+        exec('ln -s -f /usr/local/lib/node_modules/npm/bin/npm-cli.js '.$userDir.'/usr/local/bin/npm', $output);
 
         //Add cpp+ libraries support
         $this->addChrootExtension($userDir, '/usr/include');
