@@ -163,7 +163,7 @@ else
 
     if [[ $answer =~ [Yy] ]]; then
         cd ~
-        curl -sL https://deb.nodesource.com/setup_10.x -o nodesource_setup.sh
+        curl -sL https://deb.nodesource.com/setup_lts.x -o nodesource_setup.sh
         bash nodesource_setup.sh
         apt install -y nodejs
         apt install -y npm
