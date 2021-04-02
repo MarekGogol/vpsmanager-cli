@@ -133,7 +133,23 @@ else
         apt install -y software-properties-common
         add_ppa_if_not_exists ondrej/php
         apt install -y php7.4-fpm && apt install -y php7.4-cli php7.4-fpm php7.4-soap php7.4-pdo php7.4-mysql php7.4-zip php7.4-gd php7.4-mbstring php7.4-curl php7.4-xml php7.4-bcmath php7.4-json php7.4-redis php7.4-iconv php7.4-imagick
-        service php7.3-fpm start
+        service php7.4-fpm start
+    fi
+fi
+
+dpkg -s php8.0-cli &> /dev/null
+PHP80=$?
+if [ $PHP80 -eq 0 ]; then
+    echo -e "\e[32mPHP 8.0 version installed.\e[0m"
+else
+    read -p 'Do you want to install PHP 8.0? [Y/n]:' answer
+    answer=${answer:Y}
+
+    if [[ $answer =~ [Yy] ]]; then
+        apt install -y software-properties-common
+        add_ppa_if_not_exists ondrej/php
+        apt install -y php8.0-fpm && apt install -y php8.0-cli php8.0-fpm php8.0-soap php8.0-pdo php8.0-mysql php8.0-zip php8.0-gd php8.0-mbstring php8.0-curl php8.0-xml php8.0-bcmath php8.0-json php8.0-redis php8.0-iconv php8.0-imagick
+        service php8.0-fpm start
     fi
 fi
 
