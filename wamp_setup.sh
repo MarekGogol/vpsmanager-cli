@@ -148,7 +148,7 @@ else
     if [[ $answer =~ [Yy] ]]; then
         apt install -y software-properties-common
         add_ppa_if_not_exists ondrej/php
-        apt install -y php8.0-fpm && apt install -y php8.0-cli php8.0-fpm php8.0-soap php8.0-pdo php8.0-mysql php8.0-zip php8.0-gd php8.0-mbstring php8.0-curl php8.0-xml php8.0-bcmath php8.0-json php8.0-redis php8.0-iconv php8.0-imagick
+        apt install -y php8.0-fpm && apt install -y php8.0-cli php8.0-fpm php8.0-soap php8.0-mysql php8.0-zip php8.0-gd php8.0-mbstring php8.0-curl php8.0-xml php8.0-bcmath php8.0-redis php8.0-common php8.0-imagick
         service php8.0-fpm start
     fi
 fi
