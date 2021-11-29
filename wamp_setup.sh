@@ -6,6 +6,7 @@ if [ "$EUID" -ne 0 ]
 fi
 
 apt-get update
+apt-get upgrade
 
 # Install required packages
 apt install -y ssl-cert
