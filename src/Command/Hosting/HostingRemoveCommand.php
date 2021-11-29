@@ -41,6 +41,8 @@ class HostingRemoveCommand extends Command
 
         $output->writeln('');
         $this->removeHosting($domain, $delete_data, $delete_mysql);
+
+        return Command::SUCCESS;
     }
 
     public function getDomainName()

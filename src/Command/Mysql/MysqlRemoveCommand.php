@@ -40,6 +40,8 @@ class MysqlRemoveCommand extends Command
         $response = vpsManager()->mysql()->removeDatabaseWithUser($db);
 
         $this->output->writeln('<info>'.$response->message.'</info>');
+
+        return Command::SUCCESS;
     }
 
     public function getDBName()

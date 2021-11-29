@@ -54,5 +54,7 @@ class BackupPerformCommand extends Command
             throw new \Exception($response->message);
 
         $this->output->writeln('<info>'.$response->message.'</info>');
+
+        return Command::SUCCESS;
     }
 }

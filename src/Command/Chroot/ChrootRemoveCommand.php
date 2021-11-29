@@ -37,6 +37,8 @@ class ChrootRemoveCommand extends Command
         $domain = $this->getDomainName();
 
         vpsManager()->chroot()->remove($domain)->writeln(null, true);
+
+        return Command::SUCCESS;
     }
 
     public function getDomainName()

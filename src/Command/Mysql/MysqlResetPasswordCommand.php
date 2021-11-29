@@ -40,6 +40,8 @@ class MysqlResetPasswordCommand extends Command
         $response = vpsManager()->mysql()->resetPasswordDatabase($db);
 
         $this->output->writeln('<info>'.$response->message.'</info>');
+
+        return Command::SUCCESS;
     }
 
     public function getDBName()

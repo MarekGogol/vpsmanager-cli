@@ -42,6 +42,8 @@ class ChrootCreateCommand extends Command
         ], true)->writeln())->isError() ) {
             return $response;
         }
+
+        return Command::SUCCESS;
     }
 
     public function getPHPVersion()

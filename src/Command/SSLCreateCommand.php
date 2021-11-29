@@ -37,6 +37,8 @@ class SSLCreateCommand extends Command
         $domain = $this->getDomainName();
         $output->writeln('');
         $delete_data = $this->setUpSSL($domain);
+
+        return Command::SUCCESS;
     }
 
     public function getDomainName()

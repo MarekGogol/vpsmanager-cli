@@ -34,6 +34,8 @@ class BackupTestRemoteServer extends Command
         $output->writeln('');
 
         $this->testRemoteServer();
+
+        return Command::SUCCESS;
     }
 
     private function testRemoteServer()

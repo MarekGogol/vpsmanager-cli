@@ -42,6 +42,8 @@ class BackupSetupCommand extends Command
         $this->setConfig($input, $output, $helper);
 
         $output->writeln('<info>Backup setup has been successfully completed.</info>');
+
+        return Command::SUCCESS;
     }
 
     public function setConfig($input, $output, $helper)

@@ -40,6 +40,8 @@ class MysqlCreateCommand extends Command
         $response = vpsManager()->mysql()->createDatabase($db);
 
         $this->output->writeln('<info>'.$response->message.'</info>');
+
+        return Command::SUCCESS;
     }
 
     public function getDBName()

@@ -34,6 +34,8 @@ class BackupTestMailServer extends Command
         $output->writeln('');
 
         $this->testMailServer();
+
+        return Command::SUCCESS;
     }
 
     private function testMailServer()

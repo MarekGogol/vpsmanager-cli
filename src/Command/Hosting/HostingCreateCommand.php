@@ -47,6 +47,8 @@ class HostingCreateCommand extends Command
             vpsManager()->hosting()->remove($domain, $this->input->getOption('dev') == 2);
 
         $this->generateManagerHosting($domain, $php_version, $database, $chroot);
+
+        return Command::SUCCESS;
     }
 
     public function getDomainName()

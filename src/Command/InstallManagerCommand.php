@@ -43,6 +43,8 @@ class InstallManagerCommand extends Command
         // $this->generateManagerHosting($input, $output);
 
         $output->writeln('<info>Installation of</info> <comment>VPS Manager</comment> <info>has been successfully completed.</info>');
+
+        return Command::SUCCESS;
     }
 
     public function isDev()

@@ -33,5 +33,7 @@ class ChrootUpdateCommand extends Command
         vpsManager()->bootConsole($output, $input, $this->helper);
 
         vpsManager()->chroot()->update()->writeln(null, true);
+
+        return Command::SUCCESS;
     }
 }
