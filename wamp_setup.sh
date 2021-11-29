@@ -155,7 +155,7 @@ else
 fi
 
 # Check if mysql is installed
-dpkg -s python-certbot-nginx &> /dev/null
+dpkg -s python3-certbot-nginx &> /dev/null
 IS_CERTBOT=$?
 if [ $IS_CERTBOT -eq 0 ]; then
     echo -e "\e[32mCerbot is installed\e[0m"
@@ -164,7 +164,6 @@ else
     answer=${answer:Y}
 
     if [[ $answer =~ [Yy] ]]; then
-        add_ppa_if_not_exists certbot/certbot
         apt install -y certbot python3-certbot-nginx
     fi
 fi
