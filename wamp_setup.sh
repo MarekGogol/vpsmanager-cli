@@ -165,7 +165,7 @@ else
 
     if [[ $answer =~ [Yy] ]]; then
         add_ppa_if_not_exists certbot/certbot
-        apt install -y python-certbot-nginx
+        apt install -y certbot python3-certbot-apache
     fi
 fi
 
