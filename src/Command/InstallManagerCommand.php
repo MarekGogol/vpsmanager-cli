@@ -79,7 +79,7 @@ class InstallManagerCommand extends Command
             ],
             'setDefaultPHPVersion' => [
                 'config_key' => $k = 'php_version',
-                'default' => $vm->config($k, '7.2')
+                'default' => $vm->config($k, '8.0')
             ],
             'setWWWPath' => [
                 'config_key' => $k = 'www_path',

@@ -13,6 +13,7 @@ apt install -y ssl-cert
 apt install -y gcc
 apt install -y libpng-dev
 apt install -y make
+apt install -y software-properties-common
 
 # Install locales
 locale-gen sk_SK
@@ -83,7 +84,6 @@ else
     answer=${answer:Y}
 
     if [[ $answer =~ [Yy] ]]; then
-        apt install -y software-properties-common
         add_ppa_if_not_exists ondrej/php
         apt install -y php7.1-fpm && apt install -y php7.1-cli php7.1-fpm php7.1-soap php7.1-pdo php7.1-mysql php7.1-zip php7.1-gd php7.1-mbstring php7.1-curl php7.1-xml php7.1-bcmath php7.1-json php7.1-redis php7.1-iconv php7.1-imagick
         service php7.1-fpm start
@@ -99,7 +99,6 @@ else
     answer=${answer:Y}
 
     if [[ $answer =~ [Yy] ]]; then
-        apt install -y software-properties-common
         add_ppa_if_not_exists ondrej/php
         apt install -y php7.2-fpm && apt install -y php7.2-cli php7.2-fpm php7.2-soap php7.2-pdo php7.2-mysql php7.2-zip php7.2-gd php7.2-mbstring php7.2-curl php7.2-xml php7.2-bcmath php7.2-json php7.2-redis php7.2-iconv php7.2-imagick
         service php7.2-fpm start
@@ -115,7 +114,6 @@ else
     answer=${answer:Y}
 
     if [[ $answer =~ [Yy] ]]; then
-        apt install -y software-properties-common
         add_ppa_if_not_exists ondrej/php
         apt install -y php7.3-fpm && apt install -y php7.3-cli php7.3-fpm php7.3-soap php7.3-pdo php7.3-mysql php7.3-zip php7.3-gd php7.3-mbstring php7.3-curl php7.3-xml php7.3-bcmath php7.3-json php7.3-redis php7.3-iconv php7.3-imagick
         service php7.3-fpm start
@@ -131,7 +129,6 @@ else
     answer=${answer:Y}
 
     if [[ $answer =~ [Yy] ]]; then
-        apt install -y software-properties-common
         add_ppa_if_not_exists ondrej/php
         apt install -y php7.4-fpm && apt install -y php7.4-cli php7.4-fpm php7.4-soap php7.4-pdo php7.4-mysql php7.4-zip php7.4-gd php7.4-mbstring php7.4-curl php7.4-xml php7.4-bcmath php7.4-json php7.4-redis php7.4-iconv php7.4-imagick
         service php7.4-fpm start
@@ -147,7 +144,6 @@ else
     answer=${answer:Y}
 
     if [[ $answer =~ [Yy] ]]; then
-        apt install -y software-properties-common
         add_ppa_if_not_exists ondrej/php
         apt install -y php8.0-fpm && apt install -y php8.0-cli php8.0-fpm php8.0-soap php8.0-mysql php8.0-zip php8.0-gd php8.0-mbstring php8.0-curl php8.0-xml php8.0-bcmath php8.0-redis php8.0-common php8.0-imagick
         service php8.0-fpm start
@@ -233,7 +229,8 @@ else
     answer=${answer:Y}
 
     if [[ $answer =~ [Yy] ]]; then
-        apt install -y composer
+        curl -sS https://getcomposer.org/installer -o /tmp/composer-setup.php
+        php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
     fi
 fi
 
