@@ -9,6 +9,8 @@ apt-get update
 apt-get upgrade
 
 # Install required packages
+apt install -y zip
+apt install -y unzip
 apt install -y ssl-cert
 apt install -y gcc
 apt install -y libpng-dev
