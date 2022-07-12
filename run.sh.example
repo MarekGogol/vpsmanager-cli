@@ -1,4 +1,10 @@
-docker run -it \
+#1. build: docker build . -t vpsmanager
+#2. run
+#3. docker exec -it vpsmanager /bin/bash
+docker run --cap-add=sys_admin --security-opt label:disable \
+            -it \
+            -d \
+            --name vpsmanager \
             -p 80:80 \
             -p 22:22 \
             -v /path-to-vpsmanager:/root/vpsmanager \
