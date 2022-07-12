@@ -14,9 +14,16 @@ class Backup extends Application
 
     private $ignoreFile = '.backups_ignore';
 
+    private $date;
+
     public function now()
     {
         // return Carbon::createFromFormat('d.m.Y', '11.07.2022'); //testing
+
+        if ( $this->date ){
+            return clone $this->date;
+        }
+
         return Carbon::now();
     }
 
@@ -88,6 +95,10 @@ class Backup extends Application
     {
         if ( ! ($test_result = $this->testMysql())['result'] )
             return $this->sendError('Could not connect to database.');
+
+        if ( $this->hasEnoughtSpace(['databases'], 'Could not backup databases.') === false ){
+            return $this->response();
+        }
 
         //Where store backup
         $backup_path = $this->createIfNotExists('databases');
@@ -175,6 +186,10 @@ class Backup extends Application
     public function backupDirectories()
     {
         $backup_path = $this->createIfNotExists('dirs');
+
+        if ( $this->hasEnoughtSpace(['dirs'], 'Could not backup server directories.') === false ){
+            return $this->response();
+        }
 
         //If we dont want backup any directories
         if ( ($backup_directories = $this->config('backup_directories')) == '-' )
@@ -269,6 +284,10 @@ class Backup extends Application
     public function backupWWWData()
     {
         $backup_path = $this->createIfNotExists('www');
+
+        if ( $this->hasEnoughtSpace(['www'], 'Could not backup WWWW directories.') === false ){
+            return $this->response();
+        }
 
         $www_path = $this->config('backup_www_path');
 
@@ -383,9 +402,13 @@ class Backup extends Application
                 unset($backups[$key]);
         }
 
+        $allow = [];
+
         //In every case of date does not delete last backup. Because if backups stops
         //you will have last backup...
-        $allow = array_slice($backups, -1);
+        if ( $latestBackupFile = array_slice($backups, -1)[0] ?? null ){
+            $allow['today'] = $latestBackupFile;
+        }
 
         //Delete uneccessary backups
         foreach ($backups as $date_dir)
@@ -395,9 +418,9 @@ class Backup extends Application
             $yesterday = $this->now()->setTime(0, 0, 0);
             $weeks2_before = $this->now()->startOf('week')->addWeeks(-1);
 
-            //Allow everything from today
+            //Allow latest everything from today
             if ( $date >= $yesterday )
-                $allow[] = $date_dir;
+                $allow['today'] = $date_dir;
 
             //Allow last 2 backups from last 2 mondays
             if (
@@ -408,8 +431,15 @@ class Backup extends Application
             }
         }
 
+
+        //Allow only x newest backups
+        $latestBackups = array_values($allow);
+        asort($latestBackups);
+        $latestBackups = array_values($latestBackups);
+        $whitelistedBackups = array_slice($latestBackups, -$this->config('backup_www_max_limit', 2));
+
         //Remove uneccessary backups
-        foreach (array_diff($backups, array_unique($allow)) as $dir) {
+        foreach (array_diff($backups, array_unique($whitelistedBackups)) as $dir) {
             exec('rm -rf "'.$backup_path.'/'.$dir.'"');
         }
     }
@@ -567,9 +597,9 @@ class Backup extends Application
             $this->sendMail('Error notification', implode('<br>', $this->log));
     }
 
-    public function getFreeDiskSpace()
+    public function getFreeDiskSpace($path = '/')
     {
-        return round(disk_free_space('/')/1024/1000/1000, 1);
+        return round(disk_free_space($path)/1000000, 1);
     }
 
     /*
@@ -577,14 +607,11 @@ class Backup extends Application
      */
     public function perform($backup = [])
     {
-        $start = microtime(true);
+        $this->date = $backup['date'] ?? $this->now();
 
-        //If memory is under 2 gigabytes, send notification
-        if ( ($free_space = $this->getFreeDiskSpace()) <= 2 )
-        {
-            $this->sendError('Available disk space is '.$free_space.'GB. Please expand you disk space.');
-            $this->removeOldBackups();
-        }
+        $this->response()->success('<info>Performing backup for '.$this->now()->format('d.m.Y H:i').'.</info>')->writeln();
+
+        $start = microtime(true);
 
         //Backup databases
         if ( $this->isAllowed($backup, 'databases') )
@@ -605,6 +632,55 @@ class Backup extends Application
         $this->log('INFO', 'Backup end | DB:'.($this->isAllowed($backup, 'databases') ? 'YES' : 'NO').' | WWW:'.($this->isAllowed($backup, 'www') ? 'YES' : 'NO').' | DIRS:'.($this->isAllowed($backup, 'dirs') ? 'YES' : 'NO').' | '.round((microtime(true)-$start)/60, 1).' Min.');
 
         return $this->response()->success('Full backup has been successfullu performed.');
+    }
+
+    private function getLatestTotalBackupSize($sumDirectories)
+    {
+        $totalSum = 0;
+
+        foreach ($sumDirectories as $directory) {
+            $backupPath = $this->getBackupPath($directory);
+
+            if ( file_exists($backupPath) == false ){
+                continue;
+            }
+
+            $files = $this->getTree($backupPath);
+
+            if ( count($files) == 0 ){
+                continue;
+            }
+
+            asort($files);
+            if ( !($latestBackup = array_reverse(array_slice($files, -1))[0] ?? null) ){
+                continue;
+            }
+
+            $latestBackupPath = $backupPath.'/'.$latestBackup;
+
+            $totalSum += round(getDirectorySize($latestBackupPath) / 1000000);
+        }
+
+        return $totalSum;
+    }
+
+    private function hasEnoughtSpace($sumDirectories, $error)
+    {
+        $latestBackupSize = $this->getLatestTotalBackupSize($sumDirectories);
+
+        $freeSpace = $this->getFreeDiskSpace();
+
+        //We need have at least 5gb buffer for backups.
+        $buffer = 2000;
+
+        //If memory is under 2 gigabytes, send notification
+        if ( $freeSpace <= ($latestBackupSize + $buffer) ) {
+            $this->sendError($error.' Because disk space is lower than previous backup '.$latestBackupSize.'MB. Actual disk space is '.$freeSpace.'MB. Please expand you disk space at least above '.$buffer.'MB by latest backup.');
+
+            return false;
+        }
+
+        return true;
     }
 }
 ?>

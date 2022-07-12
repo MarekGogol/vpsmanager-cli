@@ -64,6 +64,10 @@ class BackupSetupCommand extends Command
                 'config_key' => $k = 'backup_www_path',
                 'default' => $vm->config($k, '/var/www')
             ],
+            'setMaxWWWBackups' => [
+                'config_key' => $k = 'backup_www_max_limit',
+                'default' => $vm->config($k, 2),
+            ],
             'setBackupDirectories' => [
                 'config_key' => $k = 'backup_directories',
                 'default' => $vm->config($k, implode(';', [
@@ -304,6 +308,19 @@ class BackupSetupCommand extends Command
         $value = $config = $helper->ask($input, $output, $question) ?: $default;
 
         $output->writeln('Used IP/Domain: <comment>' . $value . '</comment>');
+    }
+
+
+    public function setMaxWWWBackups($input, $output, $helper, &$config, $default)
+    {
+        $question = new Question(
+            '<info>How many backups would you like to archive? (0-3)</info> '."\n".
+            'Or press enter for using default <comment>'.$default.'</comment> backups: '
+        , null);
+
+        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+
+        $output->writeln('Max WWW Backups: <comment>'.$value.'</comment>');
     }
 
     private function setRemoteBackupLimit($input, $output, $helper, &$config, $default, $total_config)
