@@ -2,17 +2,23 @@
 
 namespace Gogol\VpsManagerCLI\Helpers;
 
+use Carbon\Carbon;
 use Gogol\VpsManagerCLI\Application;
-use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
+use PHPMailer\PHPMailer\PHPMailer;
 use \DateTime;
-use \DateInterval;
 
 class Backup extends Application
 {
     private $log = [];
 
     private $ignoreFile = '.backups_ignore';
+
+    public function now()
+    {
+        // return Carbon::createFromFormat('d.m.Y', '11.07.2022'); //testing
+        return Carbon::now();
+    }
 
     private function getBackupPath($directory = null, $storage = 'local')
     {
@@ -41,7 +47,7 @@ class Backup extends Application
     {
         $this->log[] = $message;
 
-        $text = date('Y-m-d H:i:s').' ['.$type.']'.' - '.$message;
+        $text = $this->now()->format('Y-m-d H:i:s').' ['.$type.']'.' - '.$message;
 
         file_put_contents($this->config('backup_path').'/logs.log', $text."\n", FILE_APPEND);
     }
@@ -136,7 +142,7 @@ class Backup extends Application
      */
     private function createIfNotExists($directory)
     {
-        $directory = $this->getBackupPath($directory).'/'.date('Y-m-d_H-00-00');
+        $directory = $this->getBackupPath($directory).'/'.$this->now()->format('Y-m-d_H-00-00');
 
         if ( ! file_exists($directory) )
             exec('mkdir -p "'.$directory.'"');
@@ -333,9 +339,9 @@ class Backup extends Application
         {
             $date = DateTime::createFromFormat('Y-m-d_H-i-s', $date_dir);
 
-            $yesterday = (new DateTime)->sub(new DateInterval('P1D'));
-            $week_before = (new DateTime)->sub(new DateInterval('P1W'));
-            $month_before = (new DateTime)->sub(new DateInterval('P1M'));
+            $yesterday = $this->now()->addDays(-1);
+            $week_before = $this->now()->addWeeks(-1);
+            $month_before = $this->now()->addMonths(-1);
 
             //Allow everything from last 24 hours
             if ( $date >= $yesterday )
@@ -386,8 +392,8 @@ class Backup extends Application
         {
             $date = DateTime::createFromFormat('Y-m-d_H-i-s', $date_dir);
 
-            $yesterday = (new DateTime)->setTime(0, 0, 0);
-            $weeks2_before = (new DateTime)->setTimestamp(strtotime('Monday this week'))->sub(new DateInterval('P1W'));
+            $yesterday = $this->now()->setTime(0, 0, 0);
+            $weeks2_before = $this->now()->startOf('week')->addWeeks(-1);
 
             //Allow everything from today
             if ( $date >= $yesterday )
