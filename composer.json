@@ -7,7 +7,7 @@
         "symfony/console": "^4.2|^5.0",
         "symfony/var-dumper": "^4.2|^5.0",
         "phpmailer/phpmailer": "^6.0",
-        "nesbot/carbon": "^2.59"
+        "nesbot/carbon": "^2.61"
     },
     "authors": [
         {
