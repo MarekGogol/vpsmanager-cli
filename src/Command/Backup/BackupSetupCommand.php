@@ -395,7 +395,7 @@ class BackupSetupCommand extends Command
         if ( $total_config['remote_backups'] == false )
             return false;
 
-        $default = $default ?: '/var/vpsmanager_backups/remote/'.$config['backup_server_name'];
+        $default = $default ?: '/var/vpsmanager_backups/remote/'.$total_config['backup_server_name'];
 
         $output->writeln('<info>Please set backup path in remote server where will be stored all backups of your local resources.</info>');
 
