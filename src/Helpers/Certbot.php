@@ -100,7 +100,7 @@ class Certbot extends Application
         $stub->addLineBefore('# Redirect to https for subdomain '.$domain);
 
         $stub->replace('server_name {from-host};', "listen 80;\n    listen [::]:80;\n\n".'    server_name '.$domain.';');
-        $stub->replace('return 301 $scheme://{to-host}$request_uri;', 'return 301 https://'.$domain.'$request_uri;');
+        $stub->replace('return 301 $scheme://{to-host}$request_uri;', 'return 301 https://$server_name$request_uri;');
 
         return $nginx_conf . "\n\n" . $stub;
     }

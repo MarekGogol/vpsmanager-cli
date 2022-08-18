@@ -95,7 +95,7 @@ else
     fi
 fi
 
-# Check if mysql is installed
+# Check if certbot is installed
 dpkg -s python3-certbot-nginx &> /dev/null
 IS_CERTBOT=$?
 if [ $IS_CERTBOT -eq 0 ]; then
@@ -109,7 +109,7 @@ else
     fi
 fi
 
-# Check if mysql is installed
+# Check if nodejs is installed
 dpkg -s nodejs &> /dev/null
 IS_CERTBOT=$?
 if [ $IS_CERTBOT -eq 0 ]; then
@@ -140,6 +140,7 @@ else
         wget -c https://dev.mysql.com/get/mysql-apt-config_0.8.15-1_all.deb
         dpkg -i mysql-apt-config_0.8.15-1_all.deb
         rm mysql-apt-config_0.8.15-1_all.deb
+        apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 467B942D3A79BD29
         apt-get update
 
         apt install mysql-server
