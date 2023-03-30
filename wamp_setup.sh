@@ -95,6 +95,21 @@ else
     fi
 fi
 
+dpkg -s php8.2-cli &> /dev/null
+PHP82=$?
+if [ $PHP82 -eq 0 ]; then
+    echo -e "\e[32mPHP 8.2 version installed.\e[0m"
+else
+    read -p 'Do you want to install PHP 8.2? [Y/n]:' answer
+    answer=${answer:Y}
+
+    if [[ $answer =~ [Yy] ]]; then
+        add_ppa_if_not_exists ondrej/php
+        apt install -y php8.2-fpm && apt install -y php8.2-cli php8.2-fpm php8.2-soap php8.2-mysql php8.2-zip php8.2-gd php8.2-mbstring php8.2-curl php8.2-xml php8.2-bcmath php8.2-redis php8.2-common php8.2-imagick php8.2-intl
+        service php8.2-fpm start
+    fi
+fi
+
 # Check if certbot is installed
 dpkg -s python3-certbot-nginx &> /dev/null
 IS_CERTBOT=$?
