@@ -251,7 +251,7 @@ class InstallManagerCommand extends Command
                 $output->writeln('<error>PHP symlink could not be updated on path ' . $php->getPhpBinPath($version) . '</error>');
             }
         } else {
-            throw new \Exception('Required PHP Version is not installed.');
+            $output->writeln('<error>Please set default PHP version.</error>');
         }
     }
 
