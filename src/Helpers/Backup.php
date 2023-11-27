@@ -85,7 +85,7 @@ class Backup extends Application
         $user = $this->config('mysql_user', 'root');
         $pass = $this->config('mysql_pass', '');
 
-        exec('mysql -u' . $user . ' -p"' . $pass . '" -e "show databases;" -s --skip-column-names', $output, $return_var);
+        exec('mysql -u' . $user . ' '.($pass ? '-p "'.$pass.'"' : '').' -e "show databases;" -s --skip-column-names', $output, $return_var);
 
         return [
             'result' => $return_var == 0,
@@ -111,8 +111,8 @@ class Backup extends Application
         //Get just databases which should be backed up
         $backup_databases = array_diff($test_result['databases'], $does_not_backup);
 
-        $dbUser = $this->config('mysql_user', 'root');
-        $dbPass = $this->config('mysql_pass', '');
+        $user = $this->config('mysql_user', 'root');
+        $pass = $this->config('mysql_pass', '');
 
         //Backup databases
         foreach ($backup_databases as $database) {
@@ -121,7 +121,7 @@ class Backup extends Application
             $this->response()
                 ->success('Saving and compressing <comment>' . $database . '</comment> database.')
                 ->writeln();
-            exec('(mysqldump -u' . $dbUser . ' -p"' . $dbPass . '" ' . $database . ' || rm -f "' . $filename . '") | gzip > "' . $filename . '"', $output, $return_var);
+            exec('(mysqldump -u' . $user . ' '.($pass ? '-p "'.$pass.'"' : '').' ' $database . ' || rm -f "' . $filename . '") | gzip > "' . $filename . '"', $output, $return_var);
         }
 
         //Check if is available at least one backup

@@ -80,7 +80,7 @@ class InstallManagerCommand extends Command
                 ],
                 'setSSLEmail' => [
                     'config_key' => ($k = 'ssl_email'),
-                    'default' => $vm->config($k, null),
+                    'default' => $vm->config($k, 'noreply@marekgogol.sk'),
                 ],
                 'setDefaultPHPVersion' => [
                     'config_key' => ($k = 'php_version'),
@@ -217,13 +217,6 @@ class InstallManagerCommand extends Command
             'Type email adress for generating SSL certificate via certbot' . ($default ? ' or press enter for using default address <comment>' . $default . '</comment>' : '') . ': ',
             null,
         );
-        $question->setValidator(function ($email) use ($default) {
-            if (!$default && !isValidEmail($email)) {
-                throw new \Exception('Please fill valid email address.');
-            }
-
-            return $email;
-        });
 
         $value = $config = $helper->ask($input, $output, $question) ?: $default;
 
