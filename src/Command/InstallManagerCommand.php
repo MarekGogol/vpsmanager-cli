@@ -311,13 +311,6 @@ class InstallManagerCommand extends Command
 
         //Nginx path
         $question = new Question('Type mysql root password <comment>' . $default . '</comment>: ', null);
-        $question->setValidator(function ($pass) use ($default) {
-            if (!$pass && !$default) {
-                throw new \Exception('Please fill valid password.');
-            }
-
-            return $pass;
-        });
 
         $value = $config = $helper->ask($input, $output, $question) ?: $default;
 
