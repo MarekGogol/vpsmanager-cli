@@ -1,0 +1,23 @@
+{
+    "name": "cli",
+    "version": "1.0.0",
+    "description": "This package can fully manage your WAMP configuration on your VPS. - creates new hosting user with directories and correct permissions - creates and managing NGINX, PHP configurations and databases for each hosting - manages SSL lets encrypt configuration and sets nginx properly - you can setup backups for everything what you need, from webpages, databases, custom directories... - supports remote server backups and email notifications.",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/MarekGogol/vpsmanager-cli.git"
+    },
+    "author": "",
+    "license": "ISC",
+    "bugs": {
+        "url": "https://github.com/MarekGogol/vpsmanager-cli/issues"
+    },
+    "homepage": "https://github.com/MarekGogol/vpsmanager-cli#readme",
+    "dependencies": {
+        "@prettier/plugin-php": "^0.21.0",
+        "prettier": "^3.1.0"
+    }
+}

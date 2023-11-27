@@ -69,12 +69,15 @@ class Response
      */
     public function writeln($separator = false, $with_error = false)
     {
-        if ( ! $this->message || ($this->isError() && $with_error === false) )
+        if (!$this->message || ($this->isError() && $with_error === false)) {
             return $this;
+        }
 
-        $separator = ($separator ? "\n" : null);
+        $separator = $separator ? "\n" : null;
 
-        vpsManager()->getOutput()->writeln($this->message.$separator);
+        vpsManager()
+            ->getOutput()
+            ->writeln($this->message . $separator);
 
         return $this;
     }

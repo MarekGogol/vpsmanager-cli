@@ -19,8 +19,7 @@ class BackupTestMailServer extends Command
 
     protected function configure()
     {
-        $this->setName('backup:test-mail')
-             ->setDescription('Test mailserver connection and send test email');
+        $this->setName('backup:test-mail')->setDescription('Test mailserver connection and send test email');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
@@ -42,11 +41,11 @@ class BackupTestMailServer extends Command
     {
         $b = vpsManager()->backup();
 
-        if ( ($error = $b->testMailServer()) === true )
+        if (($error = $b->testMailServer()) === true) {
             $this->output->writeln('<info>Test email has been successfully sent.</info>');
-        else {
+        } else {
             $this->output->writeln('<info>Test message could not be sent. Mailer Error:</info>');
-            $this->output->writeln('<error>'.$error.'</error>');
+            $this->output->writeln('<error>' . $error . '</error>');
         }
     }
 }

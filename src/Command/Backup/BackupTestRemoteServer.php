@@ -19,8 +19,7 @@ class BackupTestRemoteServer extends Command
 
     protected function configure()
     {
-        $this->setName('backup:test-remote')
-             ->setDescription('Test remote server connection');
+        $this->setName('backup:test-remote')->setDescription('Test remote server connection');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
@@ -42,13 +41,20 @@ class BackupTestRemoteServer extends Command
     {
         $b = vpsManager()->backup();
 
-        if ( $b->testRemoteServer() )
+        if ($b->testRemoteServer()) {
             $this->output->writeln('<info>Connection has been successfully established.</info>');
-        else {
+        } else {
             $this->output->writeln('<error>Could not connect to remote server.</error>');
             $this->output->writeln(
-                '<info>You can test command manually, maybe you just need accept server key:</info>'."\n".
-                '<comment>ssh '.$b->config('remote_user').'@'.$b->config('remote_server').' -i '.$b->getRemoteRSAKeyPath().'</comment>'
+                '<info>You can test command manually, maybe you just need accept server key:</info>' .
+                    "\n" .
+                    '<comment>ssh ' .
+                    $b->config('remote_user') .
+                    '@' .
+                    $b->config('remote_server') .
+                    ' -i ' .
+                    $b->getRemoteRSAKeyPath() .
+                    '</comment>',
             );
         }
     }

@@ -1,0 +1,19 @@
+{
+    "phpVersion": "8.2",
+    "auto_format_on_save": true,
+    "tabWidth": 4,
+    "semi":     true,
+    "singleQuote": true,
+    "printWidth": 150,
+    "trailingComma": "es5",
+    "htmlWhitespaceSensitivity": "ignore",
+    "overrides": [
+        {
+            "files": "src/**/*.php",
+            "options": {
+                "printWidth": 200
+            }
+        }
+    ],
+    "plugins": ["@prettier/plugin-php"]
+}

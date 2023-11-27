@@ -15,8 +15,9 @@ class Stub extends Application
 
     public function __construct($name = null)
     {
-        if ($name)
+        if ($name) {
             $this->load($name);
+        }
     }
 
     public function getStubPath($name)
@@ -53,14 +54,14 @@ class Stub extends Application
 
     public function addLine($line)
     {
-        $this->content .= "\n".$line;
+        $this->content .= "\n" . $line;
 
         return $this;
     }
 
     public function addLineBefore($line)
     {
-        $this->content = $line."\n".$this->content;
+        $this->content = $line . "\n" . $this->content;
 
         return $this;
     }

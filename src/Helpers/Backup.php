@@ -20,7 +20,7 @@ class Backup extends Application
     {
         // return Carbon::createFromFormat('d.m.Y', '11.07.2022'); //testing
 
-        if ( $this->date ){
+        if ($this->date) {
             return clone $this->date;
         }
 
@@ -29,7 +29,7 @@ class Backup extends Application
 
     private function getBackupPath($directory = null, $storage = 'local')
     {
-        $path = trim_end($this->config('backup_path').'/'.($storage ? $storage.'/' : '').$directory, '/');
+        $path = trim_end($this->config('backup_path') . '/' . ($storage ? $storage . '/' : '') . $directory, '/');
 
         return $path;
     }
@@ -40,7 +40,9 @@ class Backup extends Application
     private function sendError($message)
     {
         //Send mail if is in cron
-        $this->response()->message('<error>'.$message.'</error>')->writeln();
+        $this->response()
+            ->message('<error>' . $message . '</error>')
+            ->writeln();
 
         $this->log('ERROR', $message);
 
@@ -54,9 +56,9 @@ class Backup extends Application
     {
         $this->log[] = $message;
 
-        $text = $this->now()->format('Y-m-d H:i:s').' ['.$type.']'.' - '.$message;
+        $text = $this->now()->format('Y-m-d H:i:s') . ' [' . $type . ']' . ' - ' . $message;
 
-        file_put_contents($this->config('backup_path').'/logs.log', $text."\n", FILE_APPEND);
+        file_put_contents($this->config('backup_path') . '/logs.log', $text . "\n", FILE_APPEND);
     }
 
     /*
@@ -66,10 +68,10 @@ class Backup extends Application
     {
         $missing = [];
 
-        foreach (['zip', 'rsync'] as $apt)
-        {
-            if ( ! $this->server()->isInstalledExtension($apt) )
+        foreach (['zip', 'rsync'] as $apt) {
+            if (!$this->server()->isInstalledExtension($apt)) {
                 $missing[] = $apt;
+            }
         }
 
         return $missing;
@@ -83,7 +85,7 @@ class Backup extends Application
         $user = $this->config('mysql_user', 'root');
         $pass = $this->config('mysql_pass', '');
 
-        exec('mysql -u'.$user.' -p"'.$pass.'" -e "show databases;" -s --skip-column-names', $output, $return_var);
+        exec('mysql -u' . $user . ' -p"' . $pass . '" -e "show databases;" -s --skip-column-names', $output, $return_var);
 
         return [
             'result' => $return_var == 0,
@@ -93,10 +95,11 @@ class Backup extends Application
 
     public function backupDatabases()
     {
-        if ( ! ($test_result = $this->testMysql())['result'] )
+        if (!($test_result = $this->testMysql())['result']) {
             return $this->sendError('Could not connect to database.');
+        }
 
-        if ( $this->hasEnoughtSpace(['databases'], 'Could not backup databases.') === false ){
+        if ($this->hasEnoughtSpace(['databases'], 'Could not backup databases.') === false) {
             return $this->response();
         }
 
@@ -112,25 +115,27 @@ class Backup extends Application
         $dbPass = $this->config('mysql_pass', '');
 
         //Backup databases
-        foreach ($backup_databases as $database)
-        {
-            $filename = $backup_path.'/'.$database.'.sql.gz';
+        foreach ($backup_databases as $database) {
+            $filename = $backup_path . '/' . $database . '.sql.gz';
 
-            $this->response()->success('Saving and compressing <comment>'.$database.'</comment> database.')->writeln();
-            exec('(mysqldump -u'.$dbUser.' -p"'.$dbPass.'" '.$database.' || rm -f "'.$filename.'") | gzip > "'.$filename.'"', $output, $return_var);
+            $this->response()
+                ->success('Saving and compressing <comment>' . $database . '</comment> database.')
+                ->writeln();
+            exec('(mysqldump -u' . $dbUser . ' -p"' . $dbPass . '" ' . $database . ' || rm -f "' . $filename . '") | gzip > "' . $filename . '"', $output, $return_var);
         }
 
         //Check if is available at least one backup
         $backed_up = $this->getTree($backup_path);
 
         //Get just databases without unnecessary ones...
-        $all_databases = array_map(function($item){
+        $all_databases = array_map(function ($item) {
             return $item . '.sql.gz';
         }, $backup_databases);
 
         //Compane if some databases are missing from backup
-        if ( count($missing = array_diff($all_databases, $backed_up)) > 0 )
-            return $this->sendError('Databases could not be backed up: '.implode(' ', $missing));
+        if (count($missing = array_diff($all_databases, $backed_up)) > 0) {
+            return $this->sendError('Databases could not be backed up: ' . implode(' ', $missing));
+        }
 
         return $this->response()->success('<info>Databases has been successfully backed up.</info>');
     }
@@ -143,7 +148,7 @@ class Backup extends Application
         $path = explode('/', $dir);
         $directory = end($path);
 
-        exec('cd '.$dir.'/../ && zip -r '.$where.' '.$directory.' '.$except, $output, $return_var);
+        exec('cd ' . $dir . '/../ && zip -r ' . $where . ' ' . $directory . ' ' . $except, $output, $return_var);
 
         return $return_var == 0;
     }
@@ -153,10 +158,11 @@ class Backup extends Application
      */
     private function createIfNotExists($directory)
     {
-        $directory = $this->getBackupPath($directory).'/'.$this->now()->format('Y-m-d_H-00-00');
+        $directory = $this->getBackupPath($directory) . '/' . $this->now()->format('Y-m-d_H-00-00');
 
-        if ( ! file_exists($directory) )
-            exec('mkdir -p "'.$directory.'"');
+        if (!file_exists($directory)) {
+            exec('mkdir -p "' . $directory . '"');
+        }
 
         return $directory;
     }
@@ -166,8 +172,9 @@ class Backup extends Application
      */
     private function getTree($path)
     {
-        if ( ! file_exists($path) )
+        if (!file_exists($path)) {
             return [];
+        }
 
         return array_values(array_diff(scandir($path), ['.', '..']));
     }
@@ -177,7 +184,7 @@ class Backup extends Application
         $name = preg_replace('/^\//', '', $name);
         $name = str_replace('/', '_', $name);
 
-        return $name.'.zip';
+        return $name . '.zip';
     }
 
     /*
@@ -187,21 +194,23 @@ class Backup extends Application
     {
         $backup_path = $this->createIfNotExists('dirs');
 
-        if ( $this->hasEnoughtSpace(['dirs'], 'Could not backup server directories.') === false ){
+        if ($this->hasEnoughtSpace(['dirs'], 'Could not backup server directories.') === false) {
             return $this->response();
         }
 
         //If we dont want backup any directories
-        if ( ($backup_directories = $this->config('backup_directories')) == '-' )
+        if (($backup_directories = $this->config('backup_directories')) == '-') {
             return $this->response();
+        }
 
         $directories = array_filter(explode(';', $backup_directories));
 
         $errors = [];
 
-        foreach ($directories as $dir)
-        {
-            $this->response()->success('Saving and compressing <comment>'.$dir.'</comment> directory.')->writeln();
+        foreach ($directories as $dir) {
+            $this->response()
+                ->success('Saving and compressing <comment>' . $dir . '</comment> directory.')
+                ->writeln();
 
             //Split commands into directory and other parameters
             $dir_parts = explode(' ', $dir);
@@ -211,13 +220,15 @@ class Backup extends Application
             $except = count($dir_parts) > 1 ? implode(' ', array_slice($dir_parts, 1)) : null;
 
             //Zip and save directory
-            if ( ! $this->zipDirectory($dir, $backup_path.'/'.$this->getZipName($dir), $except) )
+            if (!$this->zipDirectory($dir, $backup_path . '/' . $this->getZipName($dir), $except)) {
                 $errors[] = $dir;
+            }
         }
 
         //Log and send all directories which could not be saved
-        if ( count($errors) > 0 )
-            return $this->sendError('Could not backup directories: '.implode(', ', $errors));
+        if (count($errors) > 0) {
+            return $this->sendError('Could not backup directories: ' . implode(', ', $errors));
+        }
 
         return $this->response()->success('<info>Folders has been successfully backed up.</info>');
     }
@@ -227,7 +238,7 @@ class Backup extends Application
      */
     private function escapeDirectory($directory)
     {
-        $directory = preg_replace('/[^a-z\.A-Z\_\-0-9\/]/', "", $directory);
+        $directory = preg_replace('/[^a-z\.A-Z\_\-0-9\/]/', '', $directory);
 
         return $directory;
     }
@@ -246,33 +257,33 @@ class Backup extends Application
 
         //Exclude gloval folders
         foreach ($exclude_global_folters as $item) {
-            $exclude .= ' -x */\\'.$item;
+            $exclude .= ' -x */\\' . $item;
         }
 
-        $isWebDirWithData = file_exists($domain_path.$dataDir);
-        $webDir = $isWebDirWithData ? $domain_path.$dataDir : $domain_path;
-        $relativePath = ($isWebDirWithData ? trim($dataDir, '/') : $domain);
+        $isWebDirWithData = file_exists($domain_path . $dataDir);
+        $webDir = $isWebDirWithData ? $domain_path . $dataDir : $domain_path;
+        $relativePath = $isWebDirWithData ? trim($dataDir, '/') : $domain;
 
         //Check if ignore file exists, and exclude directories from given file
-        if ( file_exists($ignore_file = $webDir.'/'.$this->ignoreFile) )
-        {
+        if (file_exists($ignore_file = $webDir . '/' . $this->ignoreFile)) {
             $ignore = array_filter(explode("\n", file_get_contents($ignore_file)));
 
-            foreach ($ignore as $item)
-            {
+            foreach ($ignore as $item) {
                 $item = trim($item, '/');
 
                 //Exclude file or firectory
-                if ( is_file($webDir.'/'.$item) )
-                    $exclude .= ' -x '.$relativePath.'/'.$this->escapeDirectory($item);
-                else if ( is_dir($webDir.'/'.$item) )
-                    $exclude .= ' -x '.$relativePath.'/'.$this->escapeDirectory($item).'/\*';
+                if (is_file($webDir . '/' . $item)) {
+                    $exclude .= ' -x ' . $relativePath . '/' . $this->escapeDirectory($item);
+                } elseif (is_dir($webDir . '/' . $item)) {
+                    $exclude .= ' -x ' . $relativePath . '/' . $this->escapeDirectory($item) . '/\*';
+                }
             }
         }
 
         //Exclude uneccessary directories in root domain folder
-        foreach ($exclude_domain_root as $item)
-            $exclude .= ' -x '.$relativePath.'/'.$item;
+        foreach ($exclude_domain_root as $item) {
+            $exclude .= ' -x ' . $relativePath . '/' . $item;
+        }
 
         return $exclude;
     }
@@ -285,7 +296,7 @@ class Backup extends Application
     {
         $backup_path = $this->createIfNotExists('www');
 
-        if ( $this->hasEnoughtSpace(['www'], 'Could not backup WWWW directories.') === false ){
+        if ($this->hasEnoughtSpace(['www'], 'Could not backup WWWW directories.') === false) {
             return $this->response();
         }
 
@@ -295,29 +306,28 @@ class Backup extends Application
 
         $errors = [];
 
-        foreach ($directories as $domain)
-        {
-            $this->response()->success('Saving and compressing <comment>'.$domain.'</comment> domain.')->writeln();
+        foreach ($directories as $domain) {
+            $this->response()
+                ->success('Saving and compressing <comment>' . $domain . '</comment> domain.')
+                ->writeln();
 
-            $webPath = $www_path.'/'.$domain;
+            $webPath = $www_path . '/' . $domain;
 
             //If is new directory structure, then copy all files from data folder
-            if ( file_exists($dataWebpath = $webPath.$this->getWebDirectory()) )
+            if (file_exists($dataWebpath = $webPath . $this->getWebDirectory())) {
                 $webPath = $dataWebpath;
+            }
 
             //Zip and save directory
-            if ( ! $this->zipDirectory(
-                $webPath,
-                $backup_path.'/'.$this->getZipName($domain),
-                $this->getExcludeDirectories($domain)
-            ) ) {
+            if (!$this->zipDirectory($webPath, $backup_path . '/' . $this->getZipName($domain), $this->getExcludeDirectories($domain))) {
                 $errors[] = $domain;
             }
         }
 
         //Log and send all directories which could not be saved
-        if ( count($errors) > 0 )
-            return $this->sendError('Could not backup directories: '.implode(', ', $errors));
+        if (count($errors) > 0) {
+            return $this->sendError('Could not backup directories: ' . implode(', ', $errors));
+        }
 
         return $this->response()->success('<info>Folders has been successfully backed up.</info>');
     }
@@ -345,8 +355,9 @@ class Backup extends Application
 
         //Remove files which are not in format of backups
         foreach ($backups as $key => $date_dir) {
-            if ( ! DateTime::createFromFormat('Y-m-d_H-i-s', $date_dir) )
+            if (!DateTime::createFromFormat('Y-m-d_H-i-s', $date_dir)) {
                 unset($backups[$key]);
+            }
         }
 
         //In every case of date does not delete 2 last backups. Because if backups stops
@@ -354,8 +365,7 @@ class Backup extends Application
         $allow = array_slice($backups, -2);
 
         //Delete uneccessary backups
-        foreach ($backups as $date_dir)
-        {
+        foreach ($backups as $date_dir) {
             $date = DateTime::createFromFormat('Y-m-d_H-i-s', $date_dir);
 
             $yesterday = $this->now()->addDays(-1);
@@ -363,25 +373,25 @@ class Backup extends Application
             $month_before = $this->now()->addMonths(-1);
 
             //Allow everything from last 24 hours
-            if ( $date >= $yesterday )
+            if ($date >= $yesterday) {
                 $allow[] = $date_dir;
+            }
 
             //Allow one backup per day from last week
-            if ( $date >= $week_before && $date < $yesterday )
+            if ($date >= $week_before && $date < $yesterday) {
                 $allow[$date->format('y-m-d')] = $date_dir;
+            }
 
             //Allow one backup per week from last month interval
-            if (
-                $date >= $month_before && $date < $week_before
-                && !array_key_exists($key = 'week-'.$date->format('y-m-W'), $allow)
-            ) {
+            if ($date >= $month_before && $date < $week_before && !array_key_exists($key = 'week-' . $date->format('y-m-W'), $allow)) {
                 $allow[$key] = $date_dir;
             }
         }
 
         //Remove uneccessary backups
-        foreach (array_diff($backups, array_unique($allow)) as $dir)
-            exec('rm -rf "'.$backup_path.'/'.$dir.'"');
+        foreach (array_diff($backups, array_unique($allow)) as $dir) {
+            exec('rm -rf "' . $backup_path . '/' . $dir . '"');
+        }
     }
 
     /*
@@ -398,39 +408,38 @@ class Backup extends Application
 
         //Remove files which are not in format of backups
         foreach ($backups as $key => $date_dir) {
-            if ( ! DateTime::createFromFormat('Y-m-d_H-i-s', $date_dir) )
+            if (!DateTime::createFromFormat('Y-m-d_H-i-s', $date_dir)) {
                 unset($backups[$key]);
+            }
         }
 
         $allow = [];
 
         //In every case of date does not delete last backup. Because if backups stops
         //you will have last backup...
-        if ( $latestBackupFile = array_slice($backups, -1)[0] ?? null ){
+        if ($latestBackupFile = array_slice($backups, -1)[0] ?? null) {
             $allow['today'] = $latestBackupFile;
         }
 
         //Delete uneccessary backups
-        foreach ($backups as $date_dir)
-        {
+        foreach ($backups as $date_dir) {
             $date = DateTime::createFromFormat('Y-m-d_H-i-s', $date_dir);
 
             $yesterday = $this->now()->setTime(0, 0, 0);
-            $weeks2_before = $this->now()->startOf('week')->addWeeks(-1);
+            $weeks2_before = $this->now()
+                ->startOf('week')
+                ->addWeeks(-1);
 
             //Allow latest everything from today
-            if ( $date >= $yesterday )
+            if ($date >= $yesterday) {
                 $allow['today'] = $date_dir;
+            }
 
             //Allow last 2 backups from last 2 mondays
-            if (
-                $date >= $weeks2_before && $date->format('D') == 'Mon' && $date < $yesterday
-                && !array_key_exists($key = 'week-'.$date->format('y-m-d'), $allow)
-            ) {
+            if ($date >= $weeks2_before && $date->format('D') == 'Mon' && $date < $yesterday && !array_key_exists($key = 'week-' . $date->format('y-m-d'), $allow)) {
                 $allow[$key] = $date_dir;
             }
         }
-
 
         //Allow only x newest backups
         $latestBackups = array_values($allow);
@@ -440,7 +449,7 @@ class Backup extends Application
 
         //Remove uneccessary backups
         foreach (array_diff($backups, array_unique($whitelistedBackups)) as $dir) {
-            exec('rm -rf "'.$backup_path.'/'.$dir.'"');
+            exec('rm -rf "' . $backup_path . '/' . $dir . '"');
         }
     }
 
@@ -453,19 +462,27 @@ class Backup extends Application
         $storages = $this->getTree($backup_path);
 
         //Remove from all storages
-        foreach ($storages as $storage)
-        {
+        foreach ($storages as $storage) {
             $this->removeOldDatabaseBackups($storage);
             $this->removeOldDataBackups($storage, 'dirs');
             $this->removeOldDataBackups($storage, 'www');
         }
 
-        $this->response()->success('<info>Old backups has been removed.</info>')->writeln();
+        $this->response()
+            ->success('<info>Old backups has been removed.</info>')
+            ->writeln();
     }
 
     public function testRemoteServer()
     {
-        $cmd = 'ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=5 '.$this->config('remote_user').'@'.$this->config('remote_server').' -i '.$this->getRemoteRSAKeyPath().' -t "exit" 2>&1';
+        $cmd =
+            'ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=5 ' .
+            $this->config('remote_user') .
+            '@' .
+            $this->config('remote_server') .
+            ' -i ' .
+            $this->getRemoteRSAKeyPath() .
+            ' -t "exit" 2>&1';
 
         exec($cmd, $output, $return_var);
 
@@ -487,13 +504,13 @@ class Backup extends Application
             $server_name = $this->config('backup_server_name', 'VPS Manager');
 
             //Server settings
-            $mail->isSMTP();                                        // Set mailer to use SMTP
-            $mail->Host       = $host[0];                           // Specify main and backup SMTP servers
-            $mail->SMTPAuth   = true;                               // Enable SMTP authentication
-            $mail->Username   = $this->config('email_username');    // SMTP username
-            $mail->Password   = $this->config('email_password');    // SMTP password
-            $mail->SMTPSecure = $host[1] == 25 ? 'tls' : 'ssl';     // Enable TLS encryption, `ssl` also accepted
-            $mail->Port       = $host[1];                           // TCP port to connect to
+            $mail->isSMTP(); // Set mailer to use SMTP
+            $mail->Host = $host[0]; // Specify main and backup SMTP servers
+            $mail->SMTPAuth = true; // Enable SMTP authentication
+            $mail->Username = $this->config('email_username'); // SMTP username
+            $mail->Password = $this->config('email_password'); // SMTP password
+            $mail->SMTPSecure = $host[1] == 25 ? 'tls' : 'ssl'; // Enable TLS encryption, `ssl` also accepted
+            $mail->Port = $host[1]; // TCP port to connect to
 
             //Recipients
             $mail->setFrom($this->config('email_username'), 'VPS Manager');
@@ -501,12 +518,12 @@ class Backup extends Application
 
             // Content
             $mail->isHTML(true);
-            $mail->Subject = ($subject ?: 'Backups') . ' - '.$server_name;
-            $mail->Body    = $message;
-            $mail->Body   .= '<br><br>';
-            $mail->Body   .= 'Server: <strong>'.$server_name.'</strong><br>';
-            $mail->Body   .= 'Date: '.date('d.m.Y H:i:s').'<br>';
-            $mail->Body   .= '<br><img src="https://media.giphy.com/media/EFXGvbDPhLoWs/giphy.gif" alt="">';
+            $mail->Subject = ($subject ?: 'Backups') . ' - ' . $server_name;
+            $mail->Body = $message;
+            $mail->Body .= '<br><br>';
+            $mail->Body .= 'Server: <strong>' . $server_name . '</strong><br>';
+            $mail->Body .= 'Date: ' . date('d.m.Y H:i:s') . '<br>';
+            $mail->Body .= '<br><img src="https://media.giphy.com/media/EFXGvbDPhLoWs/giphy.gif" alt="">';
 
             $mail->send();
 
@@ -523,16 +540,15 @@ class Backup extends Application
     {
         $exclude = [];
 
-        foreach ($this->getTree($backup_path) as $dir)
-        {
-            $backups = $this->getTree($backup_path.'/'.$dir);
+        foreach ($this->getTree($backup_path) as $dir) {
+            $backups = $this->getTree($backup_path . '/' . $dir);
 
             //Get last x backups
             $allowed_backups = array_slice($backups, -$this->config('remote_backup_limit'));
 
             //Build rsync params
-            $exclude_folders = array_map(function($backup) use($dir){
-                return '--exclude \''.$dir.'/'.$backup.'\'';
+            $exclude_folders = array_map(function ($backup) use ($dir) {
+                return '--exclude \'' . $dir . '/' . $backup . '\'';
             }, array_diff($backups, $allowed_backups));
 
             $exclude = array_merge($exclude, $exclude_folders);
@@ -546,28 +562,50 @@ class Backup extends Application
      */
     public function sendLocalBackupsToRemoteServer()
     {
-        if ( ! $this->config('remote_backups') )
+        if (!$this->config('remote_backups')) {
             return;
+        }
 
         $remote_server = $this->config('remote_server');
 
-        $this->response()->success('Syncing backups to remote <comment>'.$remote_server.'</comment> server.')->writeln();
+        $this->response()
+            ->success('Syncing backups to remote <comment>' . $remote_server . '</comment> server.')
+            ->writeln();
 
         $backup_path = $this->getBackupPath();
         $exclude = $this->getExcludedRsyncBackups($backup_path);
 
         //If ssh key does not exists
-        if ( !file_exists($this->getRemoteRSAKeyPath()) ){
+        if (!file_exists($this->getRemoteRSAKeyPath())) {
             $this->sendError('SSH Key for authentication with remove server does not exists.');
             return;
         }
 
-        exec($cmd = 'rsync -avzP --delete --delete-excluded '.implode(' ', $exclude).' -e \'ssh -o StrictHostKeyChecking=no -i '.$this->getRemoteRSAKeyPath().'\' '.$this->getBackupPath().'/* '.$this->config('remote_user').'@'.$remote_server.':'.$this->config('remote_path'), $output, $return_var);
+        exec(
+            $cmd =
+                'rsync -avzP --delete --delete-excluded ' .
+                implode(' ', $exclude) .
+                ' -e \'ssh -o StrictHostKeyChecking=no -i ' .
+                $this->getRemoteRSAKeyPath() .
+                '\' ' .
+                $this->getBackupPath() .
+                '/* ' .
+                $this->config('remote_user') .
+                '@' .
+                $remote_server .
+                ':' .
+                $this->config('remote_path'),
+            $output,
+            $return_var,
+        );
 
-        if ( $return_var == 0 )
-            $this->response()->success('<info>All backups has been synced to remote</info> <comment>'.$remote_server.'</comment> <info>server</info>')->writeln();
-        else
+        if ($return_var == 0) {
+            $this->response()
+                ->success('<info>All backups has been synced to remote</info> <comment>' . $remote_server . '</comment> <info>server</info>')
+                ->writeln();
+        } else {
             $this->sendError('Files could not be synced to other server.');
+        }
     }
 
     /*
@@ -575,7 +613,7 @@ class Backup extends Application
      */
     public function getRemoteRSAKeyPath()
     {
-        return $this->config('backup_path').'/.ssh/id_rsa';
+        return $this->config('backup_path') . '/.ssh/id_rsa';
     }
 
     /*
@@ -586,20 +624,21 @@ class Backup extends Application
         $key_path = $this->getRemoteRSAKeyPath();
 
         file_put_contents($key_path, $value);
-        exec('chmod 600 '.$key_path);
+        exec('chmod 600 ' . $key_path);
     }
 
     //Send email if notifications are enabled
     //and any error happens
     private function sendNotification()
     {
-        if ( $this->config('email_notifications') && count($this->log) > 0 )
+        if ($this->config('email_notifications') && count($this->log) > 0) {
             $this->sendMail('Error notification', implode('<br>', $this->log));
+        }
     }
 
     public function getFreeDiskSpace($path = '/')
     {
-        return round(disk_free_space($path)/1000000, 1);
+        return round(disk_free_space($path) / 1000000, 1);
     }
 
     /*
@@ -609,27 +648,43 @@ class Backup extends Application
     {
         $this->date = $backup['date'] ?? $this->now();
 
-        $this->response()->success('<info>Performing backup for '.$this->now()->format('d.m.Y H:i').'.</info>')->writeln();
+        $this->response()
+            ->success('<info>Performing backup for ' . $this->now()->format('d.m.Y H:i') . '.</info>')
+            ->writeln();
 
         $start = microtime(true);
 
         //Backup databases
-        if ( $this->isAllowed($backup, 'databases') )
+        if ($this->isAllowed($backup, 'databases')) {
             $this->backupDatabases()->writeln();
+        }
 
         //Backup directories
-        if ( $this->isAllowed($backup, 'dirs') )
+        if ($this->isAllowed($backup, 'dirs')) {
             $this->backupDirectories()->writeln();
+        }
 
         //Backup www data
-        if ( $this->isAllowed($backup, 'www') )
+        if ($this->isAllowed($backup, 'www')) {
             $this->backupWWWData()->writeln();
+        }
 
         $this->removeOldBackups();
         $this->sendLocalBackupsToRemoteServer();
         $this->sendNotification();
 
-        $this->log('INFO', 'Backup end | DB:'.($this->isAllowed($backup, 'databases') ? 'YES' : 'NO').' | WWW:'.($this->isAllowed($backup, 'www') ? 'YES' : 'NO').' | DIRS:'.($this->isAllowed($backup, 'dirs') ? 'YES' : 'NO').' | '.round((microtime(true)-$start)/60, 1).' Min.');
+        $this->log(
+            'INFO',
+            'Backup end | DB:' .
+                ($this->isAllowed($backup, 'databases') ? 'YES' : 'NO') .
+                ' | WWW:' .
+                ($this->isAllowed($backup, 'www') ? 'YES' : 'NO') .
+                ' | DIRS:' .
+                ($this->isAllowed($backup, 'dirs') ? 'YES' : 'NO') .
+                ' | ' .
+                round((microtime(true) - $start) / 60, 1) .
+                ' Min.',
+        );
 
         return $this->response()->success('Full backup has been successfullu performed.');
     }
@@ -641,22 +696,22 @@ class Backup extends Application
         foreach ($sumDirectories as $directory) {
             $backupPath = $this->getBackupPath($directory);
 
-            if ( file_exists($backupPath) == false ){
+            if (file_exists($backupPath) == false) {
                 continue;
             }
 
             $files = $this->getTree($backupPath);
 
-            if ( count($files) == 0 ){
+            if (count($files) == 0) {
                 continue;
             }
 
             asort($files);
-            if ( !($latestBackup = array_reverse(array_slice($files, -1))[0] ?? null) ){
+            if (!($latestBackup = array_reverse(array_slice($files, -1))[0] ?? null)) {
                 continue;
             }
 
-            $latestBackupPath = $backupPath.'/'.$latestBackup;
+            $latestBackupPath = $backupPath . '/' . $latestBackup;
 
             $totalSum += round(getDirectorySize($latestBackupPath) / 1000000);
         }
@@ -674,8 +729,17 @@ class Backup extends Application
         $buffer = 2000;
 
         //If memory is under 2 gigabytes, send notification
-        if ( $freeSpace <= ($latestBackupSize + $buffer) ) {
-            $this->sendError($error.' Because disk space is lower than previous backup '.$latestBackupSize.'MB. Actual disk space is '.$freeSpace.'MB. Please expand you disk space at least above '.$buffer.'MB by latest backup.');
+        if ($freeSpace <= $latestBackupSize + $buffer) {
+            $this->sendError(
+                $error .
+                    ' Because disk space is lower than previous backup ' .
+                    $latestBackupSize .
+                    'MB. Actual disk space is ' .
+                    $freeSpace .
+                    'MB. Please expand you disk space at least above ' .
+                    $buffer .
+                    'MB by latest backup.',
+            );
 
             return false;
         }

@@ -21,9 +21,9 @@ class ChrootCreateCommand extends Command
     protected function configure()
     {
         $this->setName('chroot:create')
-             ->addArgument('domain', InputArgument::OPTIONAL, 'Domain name')
-             ->addOption('domain', null, InputOption::VALUE_OPTIONAL, 'Domain name', null)
-             ->setDescription('Updates chroot directory for given domain');
+            ->addArgument('domain', InputArgument::OPTIONAL, 'Domain name')
+            ->addOption('domain', null, InputOption::VALUE_OPTIONAL, 'Domain name', null)
+            ->setDescription('Updates chroot directory for given domain');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
@@ -36,10 +36,19 @@ class ChrootCreateCommand extends Command
 
         $domain = $this->getDomainName();
 
-        if ( ($response = vpsManager()->chroot()->create($domain, [
-            'chroot' => true,
-            'php_version' => $this->getPHPVersion()
-        ], true)->writeln())->isError() ) {
+        if (
+            ($response = vpsManager()
+                ->chroot()
+                ->create(
+                    $domain,
+                    [
+                        'chroot' => true,
+                        'php_version' => $this->getPHPVersion(),
+                    ],
+                    true,
+                )
+                ->writeln())->isError()
+        ) {
             return $response;
         }
 
@@ -51,13 +60,18 @@ class ChrootCreateCommand extends Command
         $default = vpsManager()->config('php_version');
 
         //Nginx path
-        $question = new ChoiceQuestion('Set PHP CLI Version of your domain. ['.$default.']: ', vpsManager()->php()->getVersions(), $default);
+        $question = new ChoiceQuestion(
+            'Set PHP CLI Version of your domain. [' . $default . ']: ',
+            vpsManager()
+                ->php()
+                ->getVersions(),
+            $default,
+        );
 
         $version = $this->helper->ask($this->input, $this->output, $question) ?: $default;
 
         //Check if is PHP Version installed
-        if ( ($php = vpsManager()->php())->isInstalled($version) )
-        {
+        if (($php = vpsManager()->php())->isInstalled($version)) {
             return $version;
         } else {
             throw new \Exception('Required PHP Version is not installed.');
@@ -66,18 +80,19 @@ class ChrootCreateCommand extends Command
 
     public function getDomainName()
     {
-        if ( ($domain = $this->input->getArgument('domain')) )
-        {
-            if ( ! isValidDomain($domain) )
+        if ($domain = $this->input->getArgument('domain')) {
+            if (!isValidDomain($domain)) {
                 $this->output->writeln('<error>Please fill valid domain name.</error>');
-            else
+            } else {
                 return $domain;
+            }
         }
 
         $question = new Question('Please fill domain name for manage your chroot hosting (eg. <info>example.com</info>): ', $this->input->getOption('domain'));
-        $question->setValidator(function($host) {
-            if ( ! $host || ! isValidDomain($host) )
+        $question->setValidator(function ($host) {
+            if (!$host || !isValidDomain($host)) {
                 throw new \Exception('Please fill valid domain name.');
+            }
 
             return $host;
         });

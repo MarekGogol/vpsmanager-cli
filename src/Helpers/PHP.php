@@ -14,10 +14,11 @@ class PHP extends Application
      */
     public function isInstalled($version, $php_path = null)
     {
-        if ( ! $this->isValidPHPVersion($version) )
+        if (!$this->isValidPHPVersion($version)) {
             return false;
+        }
 
-        return file_exists(($php_path ?: $this->config('php_path')) .'/'. $version);
+        return file_exists(($php_path ?: $this->config('php_path')) . '/' . $version);
     }
 
     /*
@@ -25,7 +26,7 @@ class PHP extends Application
      */
     public function getPhpBinPath($version)
     {
-        return '/usr/bin/php'.$version;
+        return '/usr/bin/php' . $version;
     }
 
     /*
@@ -33,7 +34,7 @@ class PHP extends Application
      */
     public function changeDefaultPHP($version)
     {
-        exec('update-alternatives --set php '.$this->getPhpBinPath($version), $output, $return_var);
+        exec('update-alternatives --set php ' . $this->getPhpBinPath($version), $output, $return_var);
 
         return $return_var == 0 ? true : false;
     }
@@ -43,7 +44,7 @@ class PHP extends Application
      */
     public function getSocketName($domain, $php_version)
     {
-        return 'php'.$php_version.'-fpm-'.$this->toUserFormat($domain);
+        return 'php' . $php_version . '-fpm-' . $this->toUserFormat($domain);
     }
 
     /*
@@ -51,7 +52,7 @@ class PHP extends Application
      */
     public function getPoolPath($domain, $php_version)
     {
-        return $this->config('php_path').'/'.$php_version.'/fpm/pool.d/'.$this->toUserFormat($domain).'.conf';
+        return $this->config('php_path') . '/' . $php_version . '/fpm/pool.d/' . $this->toUserFormat($domain) . '.conf';
     }
 
     /*
@@ -74,17 +75,21 @@ class PHP extends Application
 
         $user = $this->toUserFormat($domain);
 
-        if ( ! in_array($php_version, $this->getVersions()) )
+        if (!in_array($php_version, $this->getVersions())) {
             return $this->response()->error('Zadali ste nesprávnu verziu PHP');
+        }
 
-        if ( ! isValidDomain($domain) )
+        if (!isValidDomain($domain)) {
             return $this->response()->wrongDomainName();
+        }
 
-        if ( ! $this->isInstalled($php_version) )
-            return $this->response()->error('PHP s verziou '.$php_version.' nie je nainštalované.');
+        if (!$this->isInstalled($php_version)) {
+            return $this->response()->error('PHP s verziou ' . $php_version . ' nie je nainštalované.');
+        }
 
-        if ( $this->poolExists($domain, $php_version) )
+        if ($this->poolExists($domain, $php_version)) {
             return $this->response();
+        }
 
         $stub = $this->getStub('php-pool.conf');
 
@@ -93,14 +98,16 @@ class PHP extends Application
         $stub->replace('{{socket_name}}', $this->getSocketName($domain, $php_version));
 
         //Add settings at the end of the pool
-        foreach ($this->phpSettings($domain, $config) as $key => $value)
-            $stub->addLine('php_admin_value['.$key.'] = '.$value);
+        foreach ($this->phpSettings($domain, $config) as $key => $value) {
+            $stub->addLine('php_admin_value[' . $key . '] = ' . $value);
+        }
 
         //Save pool
-        if ( ! $stub->save($this->getPoolPath($domain, $php_version)) )
+        if (!$stub->save($this->getPoolPath($domain, $php_version))) {
             return $this->response()->error('Súbor pre PHP pool sa nepodarilo uložiť.');
+        }
 
-        return $this->response()->success('PHP Pool pre web <info>'.$domain.'</info> bol úspešne vytvorený.');
+        return $this->response()->success('PHP Pool pre web <info>' . $domain . '</info> bol úspešne vytvorený.');
     }
 
     /*
@@ -108,11 +115,13 @@ class PHP extends Application
      */
     public function removePool($domain, $php_version)
     {
-        if ( !isValidDomain($domain) || !$this->isValidPHPVersion($php_version) )
+        if (!isValidDomain($domain) || !$this->isValidPHPVersion($php_version)) {
             return false;
+        }
 
-        if ( ! file_exists($pool_path = $this->getPoolPath($domain, $php_version)) )
+        if (!file_exists($pool_path = $this->getPoolPath($domain, $php_version))) {
             return true;
+        }
 
         return @unlink($pool_path) ? true : false;
     }
@@ -122,10 +131,11 @@ class PHP extends Application
      */
     public function restart($php_version)
     {
-        if ( !$this->isValidPHPVersion($php_version) )
+        if (!$this->isValidPHPVersion($php_version)) {
             return false;
+        }
 
-        exec('service php'.$php_version.'-fpm restart', $output, $return_var);
+        exec('service php' . $php_version . '-fpm restart', $output, $return_var);
 
         return $return_var == 0 ? true : false;
     }

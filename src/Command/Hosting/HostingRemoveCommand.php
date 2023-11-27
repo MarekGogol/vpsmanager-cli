@@ -21,15 +21,15 @@ class HostingRemoveCommand extends Command
     protected function configure()
     {
         $this->setName('hosting:remove')
-             ->addArgument('domain', InputArgument::OPTIONAL, 'Domain name')
-             ->setDescription('Delete all hosting configruations');
+            ->addArgument('domain', InputArgument::OPTIONAL, 'Domain name')
+            ->setDescription('Delete all hosting configruations');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
         $this->input = $input;
         $this->output = $output;
-        $this->helper = $this->getHelper('question');;
+        $this->helper = $this->getHelper('question');
 
         vpsManager()->bootConsole($output, $input, $this->helper);
 
@@ -47,21 +47,27 @@ class HostingRemoveCommand extends Command
 
     public function getDomainName()
     {
-        if ( ($domain = $this->input->getArgument('domain')) )
-        {
-            if ( ! isValidDomain($domain) )
+        if ($domain = $this->input->getArgument('domain')) {
+            if (!isValidDomain($domain)) {
                 $this->output->writeln('<error>Please fill valid domain name.</error>');
-            else
+            } else {
                 return $domain;
+            }
         }
 
         $question = new Question('<info>Please fill domain name of hosting you want delete (eg.</info> example.com<info>):</info> ', null);
-        $question->setValidator(function($host) {
-            if ( ! $host || ! isValidDomain($host) )
+        $question->setValidator(function ($host) {
+            if (!$host || !isValidDomain($host)) {
                 throw new \Exception('Please fill valid domain name.');
+            }
 
-            if ( ! vpsManager()->nginx()->exists($host) )
+            if (
+                !vpsManager()
+                    ->nginx()
+                    ->exists($host)
+            ) {
                 throw new \Exception('This hosting name does not exists.');
+            }
 
             return $host;
         });
@@ -72,9 +78,9 @@ class HostingRemoveCommand extends Command
     public function askForStorageDelete($domain)
     {
         $question = new ConfirmationQuestion(
-            '<info>Would you like to permanently delete all storage data?</info>'."\n".
-            'Directory: <comment>'.vpsManager()->getUserDirPath($domain).'</comment>? (y/N) [n]: '
-        , false);
+            '<info>Would you like to permanently delete all storage data?</info>' . "\n" . 'Directory: <comment>' . vpsManager()->getUserDirPath($domain) . '</comment>? (y/N) [n]: ',
+            false,
+        );
 
         return $this->helper->ask($this->input, $this->output, $question);
     }
@@ -82,9 +88,15 @@ class HostingRemoveCommand extends Command
     public function askForMysqlDelete($domain)
     {
         $question = new ConfirmationQuestion(
-            '<info>Would you like to permanently delete all users\'s mysql data?</info>'."\n".
-            'User / database: <comment>'.vpsManager()->mysql()->dbName($domain).'</comment> (y/N) [n]: '
-        , false);
+            '<info>Would you like to permanently delete all users\'s mysql data?</info>' .
+                "\n" .
+                'User / database: <comment>' .
+                vpsManager()
+                    ->mysql()
+                    ->dbName($domain) .
+                '</comment> (y/N) [n]: ',
+            false,
+        );
 
         return $this->helper->ask($this->input, $this->output, $question);
     }
@@ -99,8 +111,10 @@ class HostingRemoveCommand extends Command
      */
     private function removeHosting($domain, $delete_data = false, $delete_mysql = false)
     {
-        $response = vpsManager()->hosting()->remove($domain, $delete_data, $delete_mysql);
+        $response = vpsManager()
+            ->hosting()
+            ->remove($domain, $delete_data, $delete_mysql);
 
-        return $this->output->writeln('<info>'.$response->message.'</info>');;
+        return $this->output->writeln('<info>' . $response->message . '</info>');
     }
 }

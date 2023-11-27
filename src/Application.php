@@ -33,7 +33,6 @@ class Application
     public $input = null;
     public $helper = null;
 
-
     /*
      * Return config
      */
@@ -42,11 +41,7 @@ class Application
         //Boot config params
         $config = vpsManager()->bootConfig();
 
-        return $key ? (
-            array_key_exists($key, $config)
-                ? (is_null($config[$key]) ? $default : $config[$key])
-                : $default
-        ) : $config;
+        return $key ? (array_key_exists($key, $config) ? (is_null($config[$key]) ? $default : $config[$key]) : $default) : $config;
     }
 
     /*
@@ -54,12 +49,12 @@ class Application
      */
     public function bootConfig($force = false)
     {
-        if ( ! $this->config || $force === true )
-        {
-            if ( file_exists($path = vpsManagerPath() . '/config.php') )
-                $this->config = require($path);
-            else
+        if (!$this->config || $force === true) {
+            if (file_exists($path = vpsManagerPath() . '/config.php')) {
+                $this->config = require $path;
+            } else {
                 $this->config = [];
+            }
         }
 
         return $this->config;
@@ -67,13 +62,13 @@ class Application
 
     public function saveConfig($data)
     {
-        $path = vpsManagerPath().'/config.php';
+        $path = vpsManagerPath() . '/config.php';
 
         $save = file_put_contents($path, "<?php \n\nreturn " . var_export($data, true) . ';');
 
         //Change permissions of config just for root
-        exec('chown root:root '.$path);
-        exec('chmod 600 '.$path);
+        exec('chown root:root ' . $path);
+        exec('chmod 600 ' . $path);
 
         return $save;
     }
@@ -83,14 +78,17 @@ class Application
      */
     public function bootConsole($output, $input = null, $helper = null)
     {
-        if ( $output )
+        if ($output) {
             $this->output = $output;
+        }
 
-        if ( $input )
+        if ($input) {
             $this->input = $input;
+        }
 
-        if ( $helper )
+        if ($helper) {
             $this->helper = $helper;
+        }
 
         checkPermissions();
     }
@@ -121,10 +119,11 @@ class Application
 
     protected function boot($namespace)
     {
-        if ( array_key_exists($namespace, $this->booted) )
+        if (array_key_exists($namespace, $this->booted)) {
             return $this->booted[$namespace];
+        }
 
-        $this->booted[$namespace] = new $namespace;
+        $this->booted[$namespace] = new $namespace();
         $this->booted[$namespace]->booted = $this->booted;
 
         return $this->booted[$namespace];
@@ -135,7 +134,7 @@ class Application
      */
     public function response()
     {
-        return new Response;
+        return new Response();
     }
 
     /*
@@ -212,8 +211,9 @@ class Application
 
     public function getSubdomain($domain)
     {
-        if ( count($parts = $this->getDomainParts($domain)) == 3 )
+        if (count($parts = $this->getDomainParts($domain)) == 3) {
             return $parts[0];
+        }
 
         return false;
     }
@@ -233,8 +233,9 @@ class Application
      */
     public function getUserDirPath($domain, $config = null)
     {
-        if ( isset($config['www_path']) )
+        if (isset($config['www_path'])) {
             return $config['www_path'];
+        }
 
         return $this->config('www_path') . '/' . $this->server()->toUserFormat($domain);
     }
@@ -244,12 +245,11 @@ class Application
      */
     public function getWebPath($domain, $config = null)
     {
-        if ( isset($config['www_path']) )
+        if (isset($config['www_path'])) {
             return $config['www_path'];
+        }
 
-        return $this->config('www_path')
-               .'/'.$this->server()->toUserFormat($domain)
-               .$this->getWebDirectory($config);
+        return $this->config('www_path') . '/' . $this->server()->toUserFormat($domain) . $this->getWebDirectory($config);
     }
 
     /*

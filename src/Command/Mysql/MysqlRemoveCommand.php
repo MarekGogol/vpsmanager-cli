@@ -21,9 +21,9 @@ class MysqlRemoveCommand extends Command
     protected function configure()
     {
         $this->setName('mysql:remove')
-             ->addArgument('name', InputArgument::OPTIONAL, 'Database/User name')
-             ->addOption('name', null, InputOption::VALUE_OPTIONAL, 'Database/User name', null)
-             ->setDescription('Removes mysql user/database');
+            ->addArgument('name', InputArgument::OPTIONAL, 'Database/User name')
+            ->addOption('name', null, InputOption::VALUE_OPTIONAL, 'Database/User name', null)
+            ->setDescription('Removes mysql user/database');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
@@ -37,27 +37,39 @@ class MysqlRemoveCommand extends Command
         $db = $this->getDBName();
         $output->writeln('');
 
-        $response = vpsManager()->mysql()->removeDatabaseWithUser($db);
+        $response = vpsManager()
+            ->mysql()
+            ->removeDatabaseWithUser($db);
 
-        $this->output->writeln('<info>'.$response->message.'</info>');
+        $this->output->writeln('<info>' . $response->message . '</info>');
 
         return Command::SUCCESS;
     }
 
     public function getDBName()
     {
-        if ( ($name = $this->input->getArgument('name')) )
-        {
-            if ( ! vpsManager()->mysql()->isValidDBName($name) )
+        if ($name = $this->input->getArgument('name')) {
+            if (
+                !vpsManager()
+                    ->mysql()
+                    ->isValidDBName($name)
+            ) {
                 $this->output->writeln('<error>Please fill valid database name.</error>');
-            else
+            } else {
                 return $name;
+            }
         }
 
         $question = new Question('<info>Please fill database/user name what you want delete (eg.</info> my_db<info>):</info> ', $this->input->getOption('name'));
-        $question->setValidator(function($host) {
-            if ( ! $host || ! vpsManager()->mysql()->isValidDBName($host) )
+        $question->setValidator(function ($host) {
+            if (
+                !$host ||
+                !vpsManager()
+                    ->mysql()
+                    ->isValidDBName($host)
+            ) {
                 throw new \Exception('Please fill valid database/user name.');
+            }
 
             return $host;
         });

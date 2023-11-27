@@ -20,8 +20,7 @@ class ChrootUpdateCommand extends Command
 
     protected function configure()
     {
-        $this->setName('chroot:update')
-             ->setDescription('Update all available chroot instances');
+        $this->setName('chroot:update')->setDescription('Update all available chroot instances');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
@@ -32,7 +31,10 @@ class ChrootUpdateCommand extends Command
 
         vpsManager()->bootConsole($output, $input, $this->helper);
 
-        vpsManager()->chroot()->update()->writeln(null, true);
+        vpsManager()
+            ->chroot()
+            ->update()
+            ->writeln(null, true);
 
         return Command::SUCCESS;
     }

@@ -21,18 +21,18 @@ class HostingCreateCommand extends Command
     protected function configure()
     {
         $this->setName('hosting:create')
-             ->addArgument('domain', InputArgument::OPTIONAL, 'Domain name')
-             ->setDescription('Create new hosting with full php/mysql/nginx setup')
-             ->addOption('domain', null, InputOption::VALUE_OPTIONAL, 'Domain name', null)
-             ->addOption('php_version', null, InputOption::VALUE_OPTIONAL, 'PHP Version', null)
-             ->addOption('dev', null, InputOption::VALUE_OPTIONAL, 'Use dev version of command', null);
+            ->addArgument('domain', InputArgument::OPTIONAL, 'Domain name')
+            ->setDescription('Create new hosting with full php/mysql/nginx setup')
+            ->addOption('domain', null, InputOption::VALUE_OPTIONAL, 'Domain name', null)
+            ->addOption('php_version', null, InputOption::VALUE_OPTIONAL, 'PHP Version', null)
+            ->addOption('dev', null, InputOption::VALUE_OPTIONAL, 'Use dev version of command', null);
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
         $this->input = $input;
         $this->output = $output;
-        $this->helper = $this->getHelper('question');;
+        $this->helper = $this->getHelper('question');
 
         vpsManager()->bootConsole($output, $input, $this->helper);
 
@@ -43,8 +43,11 @@ class HostingCreateCommand extends Command
 
         //Remove all hosting settings
         //If dev parameter will be presented as number 2, all www data and database will be destroyed!
-        if ( $this->isDev() )
-            vpsManager()->hosting()->remove($domain, $this->input->getOption('dev') == 2);
+        if ($this->isDev()) {
+            vpsManager()
+                ->hosting()
+                ->remove($domain, $this->input->getOption('dev') == 2);
+        }
 
         $this->generateManagerHosting($domain, $php_version, $database, $chroot);
 
@@ -53,18 +56,19 @@ class HostingCreateCommand extends Command
 
     public function getDomainName()
     {
-        if ( ($domain = $this->input->getArgument('domain')) )
-        {
-            if ( ! isValidDomain($domain) )
+        if ($domain = $this->input->getArgument('domain')) {
+            if (!isValidDomain($domain)) {
                 $this->output->writeln('<error>Please fill valid domain name.</error>');
-            else
+            } else {
                 return $domain;
+            }
         }
 
         $question = new Question('Please fill domain name of your new hosting (eg. <info>example.com</info>): ', $this->input->getOption('domain'));
-        $question->setValidator(function($host) {
-            if ( ! $host || ! isValidDomain($host) )
+        $question->setValidator(function ($host) {
+            if (!$host || !isValidDomain($host)) {
                 throw new \Exception('Please fill valid domain name.');
+            }
 
             return $host;
         });
@@ -77,13 +81,18 @@ class HostingCreateCommand extends Command
         $default = vpsManager()->config('php_version');
 
         //Nginx path
-        $question = new ChoiceQuestion('Set PHP Version of your domain. ['.$default.']: ', vpsManager()->php()->getVersions(), $default);
+        $question = new ChoiceQuestion(
+            'Set PHP Version of your domain. [' . $default . ']: ',
+            vpsManager()
+                ->php()
+                ->getVersions(),
+            $default,
+        );
 
         $version = $this->helper->ask($this->input, $this->output, $question) ?: $default;
 
         //Check if is PHP Version installed
-        if ( ($php = vpsManager()->php())->isInstalled($version) )
-        {
+        if (($php = vpsManager()->php())->isInstalled($version)) {
             return $version;
         } else {
             throw new \Exception('Required PHP Version is not installed.');
@@ -114,14 +123,18 @@ class HostingCreateCommand extends Command
      */
     private function generateManagerHosting($domain, $php_version, $database = false, $chroot = false)
     {
-        if ( ($response = vpsManager()->hosting()->create($domain, [
-            'php_version' => $php_version,
-            'database' => $database,
-            'chroot' => $chroot,
-        ]))->isError() ) {
+        if (
+            ($response = vpsManager()
+                ->hosting()
+                ->create($domain, [
+                    'php_version' => $php_version,
+                    'database' => $database,
+                    'chroot' => $chroot,
+                ]))->isError()
+        ) {
             throw new \Exception($response->message);
         }
 
-        $this->output->writeln('<info>'.$response->message.'</info>');
+        $this->output->writeln('<info>' . $response->message . '</info>');
     }
 }

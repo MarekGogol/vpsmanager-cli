@@ -2,4 +2,5 @@
 /vendor
 .vps-wamp-setup
 composer.lock
+/node_modules/
 run.sh

@@ -17,21 +17,24 @@ class Chroot extends Application
     {
         $user = $this->toUserFormat($domain);
 
-        if ( ! isValidDomain($domain) )
+        if (!isValidDomain($domain)) {
             return $this->response()->wrongDomainName();
+        }
 
         $userDir = $this->getUserDirPath($domain, $config);
         $web_path = $this->getWebPath($domain, $config);
 
-        $this->response()->success('Setting chroot directory for <info>'.$userDir.'</info>')->writeln();
+        $this->response()
+            ->success('Setting chroot directory for <info>' . $userDir . '</info>')
+            ->writeln();
 
         //Set chroot permissions of root directory
-        exec('chown root:root '.$userDir.' && chmod 755 '.$userDir);
+        exec('chown root:root ' . $userDir . ' && chmod 755 ' . $userDir);
 
         $this->server()->createGroupIfNotExists($this->chrootGroup);
 
         //Add chroot group for specific user
-        exec('usermod -a -G '.$this->chrootGroup.' '.$user.' 2> /dev/null');
+        exec('usermod -a -G ' . $this->chrootGroup . ' ' . $user . ' 2> /dev/null');
 
         //Change user homedir directory
         $this->server()->changeHomeDir($user, '/data');
@@ -40,32 +43,43 @@ class Chroot extends Application
 
         //Move all old web data into user/data folder
         //Dont move files when data directory exists already
-        if ( $move_web_data === true && ! file_exists($web_path) ) {
+        if ($move_web_data === true && !file_exists($web_path)) {
             $webDir = trim($this->getWebDirectory(), '/');
 
-            createDirectories([
-                $web_path => 710,
-            ], $user);
+            createDirectories(
+                [
+                    $web_path => 710,
+                ],
+                $user,
+            );
 
-            exec('cd '.$userDir.'; find . -maxdepth 1 ! -name '.$webDir.' ! -name . -exec mv "{}" '.$webDir.' \;');
+            exec('cd ' . $userDir . '; find . -maxdepth 1 ! -name ' . $webDir . ' ! -name . -exec mv "{}" ' . $webDir . ' \;');
 
-            $this->response()->success('All web data moved from <info>'.$userDir.'</info> to <info>'.$userDir.'/'.$webDir.'</info>')->writeln();
+            $this->response()
+                ->success('All web data moved from <info>' . $userDir . '</info> to <info>' . $userDir . '/' . $webDir . '</info>')
+                ->writeln();
         }
 
         //Clone bashrc
         // exec('cp -Rf '.__DIR__.'/../Resources/user/.bash_profile '.$userDir.'/data');
 
-        createDirectories([
-            $userDir.'/tmp' => ['user' => $domain, 'group' => $domain, 'chmod' => 700],
-            $userDir.'/proc' => ['user' => 'root', 'group' => 'root', 'chmod' => 710],
-            $userDir.'/dev/null' => ['mknod' => [666, 'c 1 3']],
-            $userDir.'/dev/tty' => ['mknod' => [666, 'c 5 0']],
-            $userDir.'/dev/random' => ['mknod' => [444, 'c 1 8']],
-            $userDir.'/dev/urandom' => ['mknod' => [444, 'c 1 9']],
-            $userDir.'/usr/include' => ['user' => 'root', 'group' => 'root', 'chmod' => 755], //we need chmood 755, because libpng needs to read files from include
-            $userDir.'/usr/lib/x86_64-linux-gnu' => ['user' => 'root', 'group' => 'root', 'chmod' => 755], //we need chmood 755, because libpng needs to read files from include
-            $userDir.'/usr/local' => ['user' => 'root', 'group' => 'root', 'chmod' => 777], //we need chmood 755, because libpng needs to read files from include
-        ], $user, null, null, false);
+        createDirectories(
+            [
+                $userDir . '/tmp' => ['user' => $domain, 'group' => $domain, 'chmod' => 700],
+                $userDir . '/proc' => ['user' => 'root', 'group' => 'root', 'chmod' => 710],
+                $userDir . '/dev/null' => ['mknod' => [666, 'c 1 3']],
+                $userDir . '/dev/tty' => ['mknod' => [666, 'c 5 0']],
+                $userDir . '/dev/random' => ['mknod' => [444, 'c 1 8']],
+                $userDir . '/dev/urandom' => ['mknod' => [444, 'c 1 9']],
+                $userDir . '/usr/include' => ['user' => 'root', 'group' => 'root', 'chmod' => 755], //we need chmood 755, because libpng needs to read files from include
+                $userDir . '/usr/lib/x86_64-linux-gnu' => ['user' => 'root', 'group' => 'root', 'chmod' => 755], //we need chmood 755, because libpng needs to read files from include
+                $userDir . '/usr/local' => ['user' => 'root', 'group' => 'root', 'chmod' => 777], //we need chmood 755, because libpng needs to read files from include
+            ],
+            $user,
+            null,
+            null,
+            false,
+        );
 
         //Allow regularcommands
         $this->addChrootExtension($userDir, '/bin/bash', true);
@@ -140,7 +154,7 @@ class Chroot extends Application
         //Add chroot restriction into sshd_config
         $this->addChrootGroupIntoSSH();
 
-        return $this->response()->success('Chroot for directory <info>'.$userDir.'</info> has been successfully setted up.');
+        return $this->response()->success('Chroot for directory <info>' . $userDir . '</info> has been successfully setted up.');
     }
 
     /**
@@ -148,7 +162,7 @@ class Chroot extends Application
      */
     public function getNologinFile($web_path)
     {
-        return $web_path.'/.hushlogin';
+        return $web_path . '/.hushlogin';
     }
 
     public function disableLoginMessage($web_path)
@@ -162,19 +176,23 @@ class Chroot extends Application
     /*
      * Add chroot restriction into sshd_config
      */
-    public function addChrootGroupIntoSSH(){
+    public function addChrootGroupIntoSSH()
+    {
         $file = '/etc/ssh/sshd_config';
 
         $data = file_get_contents($file);
 
-        $section = "\n
-Match Group ".$this->chrootGroup."
+        $section =
+            "\n
+Match Group " .
+            $this->chrootGroup .
+            "
     ChrootDirectory /var/www/%u
     AuthorizedKeysFile /var/www/%u/data/.ssh/authorized_keys
     Banner /etc/ssh/vpsmanager_banner.txt\n";
 
         //If section does not exists
-        if ( strpos($data, $this->chrootGroup) === false ) {
+        if (strpos($data, $this->chrootGroup) === false) {
             //Set default mode as internal-sftp for working both sftp ans ssh
             $data = str_replace("Subsystem\tsftp\t/usr/lib/openssh/sftp-server", "Subsystem\tsftp\tinternal-sftp", $data);
 
@@ -185,14 +203,13 @@ Match Group ".$this->chrootGroup."
             $this->ssh()->rebootSSH();
         }
 
-
         //Add banner if does not exists
         $sysBannerPath = '/etc/ssh/vpsmanager_banner.txt';
 
-        if ( !file_exists($sysBannerPath) ){
-            $bannerPath = (new Stub)->getStubPath('banner.txt');
+        if (!file_exists($sysBannerPath)) {
+            $bannerPath = (new Stub())->getStubPath('banner.txt');
 
-            exec('cp -r '.$bannerPath.' '.$sysBannerPath);
+            exec('cp -r ' . $bannerPath . ' ' . $sysBannerPath);
         }
     }
 
@@ -201,9 +218,7 @@ Match Group ".$this->chrootGroup."
      */
     public function isChroot($userDir)
     {
-        return file_exists($userDir.'/etc/passwd')
-            && file_exists($userDir.'/data')
-            && file_exists($userDir.'/lib');
+        return file_exists($userDir . '/etc/passwd') && file_exists($userDir . '/data') && file_exists($userDir . '/lib');
     }
 
     /*
@@ -213,36 +228,37 @@ Match Group ".$this->chrootGroup."
     {
         $user = $this->toUserFormat($domain);
 
-        if ( ! isValidDomain($domain) )
+        if (!isValidDomain($domain)) {
             return $this->response()->wrongDomainName();
+        }
 
         $userDir = $this->getUserDirPath($domain);
         $webDir = $this->getWebPath($domain);
 
         //Check if is chroot environment
-        if ( ! $this->isChroot($userDir) ) {
+        if (!$this->isChroot($userDir)) {
             return $this->response()->error('<error>This is not chroot environment.</error>');
         }
 
         //Unmount directories
         foreach (['proc'] as $dir) {
-            if ( file_exists($userDir.'/'.$dir) ) {
-                exec('umount '.$userDir.'/'.$dir, $output);
+            if (file_exists($userDir . '/' . $dir)) {
+                exec('umount ' . $userDir . '/' . $dir, $output);
             }
         }
 
         //Remove all chroot directories
         foreach (['bin', 'dev', 'etc', 'lib', 'lib64', 'proc', 'tmp', 'usr'] as $dir) {
-            if ( file_exists($userDir.'/'.$dir) ) {
-                exec('rm -rf '.$userDir.'/'.$dir, $output);
+            if (file_exists($userDir . '/' . $dir)) {
+                exec('rm -rf ' . $userDir . '/' . $dir, $output);
             }
         }
 
         //Set chroot permissions of root directory
-        exec('chown '.$user.':www-data '.$userDir.' && chmod 710 '.$userDir);
+        exec('chown ' . $user . ':www-data ' . $userDir . ' && chmod 710 ' . $userDir);
 
         //Remove group from user
-        exec('deluser '.$user.' '.$this->chrootGroup.' 2> /dev/null', $output);
+        exec('deluser ' . $user . ' ' . $this->chrootGroup . ' 2> /dev/null', $output);
 
         //Change user homedir directory
         $this->server()->changeHomeDir($user, $webDir);
@@ -272,11 +288,11 @@ Match Group ".$this->chrootGroup."
         $this->addChrootExtension($userDir, '/usr/lib/node_modules/npm');
         $this->addChrootExtension($userDir, '/usr/local/lib/node_modules/npm');
 
-        exec('ln -s -f /usr/lib/node_modules/npm/bin/npm-cli.js '.$userDir.'/usr/bin/npm', $output);
-        exec('ln -s -f /usr/local/lib/node_modules/npm/bin/npm-cli.js '.$userDir.'/usr/local/bin/npm', $output);
+        exec('ln -s -f /usr/lib/node_modules/npm/bin/npm-cli.js ' . $userDir . '/usr/bin/npm', $output);
+        exec('ln -s -f /usr/local/lib/node_modules/npm/bin/npm-cli.js ' . $userDir . '/usr/local/bin/npm', $output);
 
-        exec('ln -s -f /usr/lib/node_modules/npm/bin/npx-cli.js '.$userDir.'/usr/bin/npx', $output);
-        exec('ln -s -f /usr/local/lib/node_modules/npm/bin/npx-cli.js '.$userDir.'/usr/local/bin/npx', $output);
+        exec('ln -s -f /usr/lib/node_modules/npm/bin/npx-cli.js ' . $userDir . '/usr/bin/npx', $output);
+        exec('ln -s -f /usr/local/lib/node_modules/npm/bin/npx-cli.js ' . $userDir . '/usr/local/bin/npx', $output);
 
         //Add cpp+ libraries support
         $this->addChrootExtension($userDir, '/usr/include');
@@ -318,8 +334,8 @@ Match Group ".$this->chrootGroup."
         $this->allowGcc($userDir);
 
         //If proc is not mounted
-        if ( ! file_exists($userDir.'/proc/cpuinfo') ) {
-            exec('mount --bind /proc '.$userDir.'/proc', $output);
+        if (!file_exists($userDir . '/proc/cpuinfo')) {
+            exec('mount --bind /proc ' . $userDir . '/proc', $output);
         }
     }
 
@@ -328,15 +344,15 @@ Match Group ".$this->chrootGroup."
         exec('gcc --version', $gccVersion);
 
         // $gccVersion = explode(' ', @explode("\n", $gccVersion)[0]);
-        $gccVersion = @explode(" ", @$gccVersion[0]);
+        $gccVersion = @explode(' ', @$gccVersion[0]);
         $gccVersion = end($gccVersion);
 
         // $gccVersion =
         $this->addChrootExtension($userDir, '/usr/bin/gcc', true);
         $this->addChrootExtension($userDir, '/usr/bin/gcc-7', true);
         $this->addChrootExtension($userDir, '/usr/lib/gcc');
-        $this->addChrootExtension($userDir, '/usr/lib/gcc/x86_64-linux-gnu/'.$gccVersion.'/cc1', true);
-        $this->addChrootExtension($userDir, '/usr/lib/gcc/x86_64-linux-gnu/'.$gccVersion.'/collect2', true);
+        $this->addChrootExtension($userDir, '/usr/lib/gcc/x86_64-linux-gnu/' . $gccVersion . '/cc1', true);
+        $this->addChrootExtension($userDir, '/usr/lib/gcc/x86_64-linux-gnu/' . $gccVersion . '/collect2', true);
 
         //Allow ldd
         $this->addChrootExtension($userDir, '/usr/bin/ld', true);
@@ -361,16 +377,10 @@ Match Group ".$this->chrootGroup."
     {
         $this->addChrootExtension($userDir, '/lib/x86_64-linux-gnu/libnss_files.so.2');
 
-        $allowGroupNames = [
-            'root',
-            'www-data',
-            $user,
-            $this->server()->getHostingUserGroup(),
-            $this->chrootGroup,
-        ];
+        $allowGroupNames = ['root', 'www-data', $user, $this->server()->getHostingUserGroup(), $this->chrootGroup];
 
-        exec('rm -rf '.$userDir.'/etc/group && cat /etc/group | grep "'.implode('\|', $allowGroupNames).'" >> '.$userDir.'/etc/group', $output);
-        exec('rm -rf '.$userDir.'/etc/passwd && cat /etc/passwd | grep "'.implode('\|', $allowGroupNames).'" >> '.$userDir.'/etc/passwd', $output);
+        exec('rm -rf ' . $userDir . '/etc/group && cat /etc/group | grep "' . implode('\|', $allowGroupNames) . '" >> ' . $userDir . '/etc/group', $output);
+        exec('rm -rf ' . $userDir . '/etc/passwd && cat /etc/passwd | grep "' . implode('\|', $allowGroupNames) . '" >> ' . $userDir . '/etc/passwd', $output);
     }
 
     public function fixGitSupport($userDir)
@@ -407,13 +417,13 @@ Match Group ".$this->chrootGroup."
         //Allow all php aliases on system
         foreach ($this->php()->getVersions() as $phpVersion) {
             //If php version is not installed
-            if ( ! file_exists('/etc/php/'.$phpVersion.'/fpm') ){
+            if (!file_exists('/etc/php/' . $phpVersion . '/fpm')) {
                 continue;
             }
 
-            $this->addChrootExtension($userDir, '/etc/php/'.$phpVersion.'/cli');
-            $this->addChrootExtension($userDir, '/etc/php/'.$phpVersion.'/mods-available');
-            $this->addChrootExtension($userDir, '/usr/bin/php'.$phpVersion, true);
+            $this->addChrootExtension($userDir, '/etc/php/' . $phpVersion . '/cli');
+            $this->addChrootExtension($userDir, '/etc/php/' . $phpVersion . '/mods-available');
+            $this->addChrootExtension($userDir, '/usr/bin/php' . $phpVersion, true);
         }
 
         //Install all php extensions dependencies
@@ -421,24 +431,20 @@ Match Group ".$this->chrootGroup."
         foreach (scandir($phpUsrDir) as $phpV) {
             //If phpversion is not installed,
             //install all versions into chroot
-            if (
-                strlen($phpV) != 8
-                || !is_numeric($phpV)
-                || ! file_exists($phpExtPath = $phpUsrDir.$phpV)
-            ) {
+            if (strlen($phpV) != 8 || !is_numeric($phpV) || !file_exists($phpExtPath = $phpUsrDir . $phpV)) {
                 continue;
             }
 
-            foreach (array_slice(scandir($phpExtPath = $phpUsrDir.$phpV), 2) as $extension) {
-                $this->addChrootExtension($userDir, $phpExtPath.'/'.$extension, true);
+            foreach (array_slice(scandir($phpExtPath = $phpUsrDir . $phpV), 2) as $extension) {
+                $this->addChrootExtension($userDir, $phpExtPath . '/' . $extension, true);
             }
         }
 
         //Allow primary php alias
         $this->addChrootExtension($userDir, '/etc/alternatives/php', true);
 
-        if ( $usePhpCliVersion ) {
-            exec('cp -rf '.$userDir.'/usr/bin/php'.$usePhpCliVersion.' '.$userDir.'/usr/bin/php', $output);
+        if ($usePhpCliVersion) {
+            exec('cp -rf ' . $userDir . '/usr/bin/php' . $usePhpCliVersion . ' ' . $userDir . '/usr/bin/php', $output);
         }
     }
 
@@ -447,24 +453,21 @@ Match Group ".$this->chrootGroup."
      */
     public function addChrootExtension($userDir, $extension, $withDependencies = false)
     {
-        createParentDirectory($userDir.'/'.$extension);
+        createParentDirectory($userDir . '/' . $extension);
 
-        if ( is_dir($extension) ) {
-            exec('cp -raL '.$extension.' '.$userDir.'/'.getParentDir($extension), $output);
-        }
-
-        else if ( file_exists($extension) ) {
+        if (is_dir($extension)) {
+            exec('cp -raL ' . $extension . ' ' . $userDir . '/' . getParentDir($extension), $output);
+        } elseif (file_exists($extension)) {
             //Copy extension
-            exec('cp -raL '.$extension.' '.$userDir.'/'.$extension, $output);
+            exec('cp -raL ' . $extension . ' ' . $userDir . '/' . $extension, $output);
 
-            if ( $withDependencies === true )
-            {
-                exec('ldd "'.$extension.'" | grep -o \'\(\/.*\s\)\'', $dependencies);
+            if ($withDependencies === true) {
+                exec('ldd "' . $extension . '" | grep -o \'\(\/.*\s\)\'', $dependencies);
 
                 foreach ($dependencies as $dependency) {
-                    createParentDirectory($userDir.$dependency);
+                    createParentDirectory($userDir . $dependency);
 
-                    exec('cp -rL '.$dependency.' '.$userDir.$dependency);
+                    exec('cp -rL ' . $dependency . ' ' . $userDir . $dependency);
                 }
             }
         }
@@ -481,20 +484,15 @@ Match Group ".$this->chrootGroup."
         $domains = scandir($wwwPath);
 
         foreach ($domains as $domain) {
-            $userPath = $wwwPath.'/'.$domain;
+            $userPath = $wwwPath . '/' . $domain;
 
             //If is not chroot directory
-            if (
-                !is_dir($userPath)
-                || in_array($domain, ['.', '..'])
-                || !isValidDomain($domain)
-                || ! $this->isChroot($userPath)
-            ) {
+            if (!is_dir($userPath) || in_array($domain, ['.', '..']) || !isValidDomain($domain) || !$this->isChroot($userPath)) {
                 continue;
             }
 
             $this->create($domain, [
-                'chroot' => true
+                'chroot' => true,
             ]);
         }
 

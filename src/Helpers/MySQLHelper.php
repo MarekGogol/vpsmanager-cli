@@ -10,7 +10,7 @@ class MySQLHelper extends Application
 
     public function connect()
     {
-        if ( $this->mysqli ) {
+        if ($this->mysqli) {
             return $this->mysqli;
         }
 
@@ -19,7 +19,7 @@ class MySQLHelper extends Application
 
     public function dbName($domain)
     {
-        return preg_replace("/[^a-z0-9]+/i", '_', $domain);;
+        return preg_replace('/[^a-z0-9]+/i', '_', $domain);
     }
 
     /*
@@ -37,24 +37,25 @@ class MySQLHelper extends Application
      */
     public function createDatabase($domain)
     {
-        if ( ! ($this->isValidDBName($domain) || isValidDomain($domain) ) )
+        if (!($this->isValidDBName($domain) || isValidDomain($domain))) {
             return $this->response->wrongDomainName();
+        }
 
         $database = $this->dbName($domain);
         $password = getRandomPassword();
 
         //Check if db exists
-        if ( $this->connect()->select_db($database) )
-            return $this->response()->success('User and database <comment>'.$database.'</comment> already exists.');
+        if ($this->connect()->select_db($database)) {
+            return $this->response()->success('User and database <comment>' . $database . '</comment> already exists.');
+        }
 
-        $this->connect()->query('CREATE DATABASE IF NOT EXISTS `'.$database.'` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
-        $this->connect()->query('CREATE USER `'.$database.'`@`localhost` IDENTIFIED WITH mysql_native_password BY \''.$password.'\'');
-        $this->connect()->query('GRANT ALL PRIVILEGES ON `'.$database.'`.* TO `'.$database.'`@`localhost`');
+        $this->connect()->query('CREATE DATABASE IF NOT EXISTS `' . $database . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
+        $this->connect()->query('CREATE USER `' . $database . '`@`localhost` IDENTIFIED WITH mysql_native_password BY \'' . $password . '\'');
+        $this->connect()->query('GRANT ALL PRIVILEGES ON `' . $database . '`.* TO `' . $database . '`@`localhost`');
         // $this->connect()->query('GRANT ALL PRIVILEGES ON `'.$database.'`.* to `'.$database.'`@`localhost` identified by \''.$password.'\'');
         $this->connect()->query('flush privileges');
 
-        return $this->response()
-                    ->success("<info>MySQL database has been successfuly created.</info>\nDatabase\User: <comment>$database</comment>\nPassword: <comment>$password</comment>");
+        return $this->response()->success("<info>MySQL database has been successfuly created.</info>\nDatabase\User: <comment>$database</comment>\nPassword: <comment>$password</comment>");
     }
 
     /**
@@ -64,22 +65,22 @@ class MySQLHelper extends Application
      */
     public function resetPasswordDatabase($domain)
     {
-        if ( ! ($this->isValidDBName($domain) || isValidDomain($domain) ) )
+        if (!($this->isValidDBName($domain) || isValidDomain($domain))) {
             return $this->response->wrongDomainName();
+        }
 
         $database = $this->dbName($domain);
         $password = getRandomPassword();
 
         //Check if db exists
-        if ( !$this->connect()->select_db($database) ){
-            return $this->response()->success('User and database <comment>'.$database.'</comment> does not exists.');
+        if (!$this->connect()->select_db($database)) {
+            return $this->response()->success('User and database <comment>' . $database . '</comment> does not exists.');
         }
 
         $this->connect()->query("ALTER USER '$database'@'localhost' IDENTIFIED BY '$password'");
         $this->connect()->query('flush privileges');
 
-        return $this->response()
-                    ->success("<info>MySQL password has been successfuly changed.</info>\nDatabase\User: <comment>$database</comment>\nPassword: <comment>$password</comment>");
+        return $this->response()->success("<info>MySQL password has been successfuly changed.</info>\nDatabase\User: <comment>$database</comment>\nPassword: <comment>$password</comment>");
     }
 
     /**
@@ -89,23 +90,26 @@ class MySQLHelper extends Application
      */
     public function removeDatabaseWithUser($domain)
     {
-        if ( ! ($this->isValidDBName($domain) || isValidDomain($domain) ) )
+        if (!($this->isValidDBName($domain) || isValidDomain($domain))) {
             return $this->response()->wrongDomainName();
+        }
 
         $database = $this->dbName($domain);
 
-        if ( ! $this->connect()->select_db($database) )
-            return $this->response()->success('Database <comment>'.$database.'</comment> does not exists. In this case will not be deleted.');
+        if (!$this->connect()->select_db($database)) {
+            return $this->response()->success('Database <comment>' . $database . '</comment> does not exists. In this case will not be deleted.');
+        }
 
-        $query1 = $this->connect()->query('drop database `'.$database.'`');
-        $query2 = $this->connect()->query('delete from mysql.user where user=\''.$database.'\'');
+        $query1 = $this->connect()->query('drop database `' . $database . '`');
+        $query2 = $this->connect()->query('delete from mysql.user where user=\'' . $database . '\'');
 
         $this->connect()->query('flush privileges');
 
-        if ( !($query1 == true && $query2 == true) )
-            return $this->response()->error('<error>Database and user '.$database.' could not be deleted</error>.');
+        if (!($query1 == true && $query2 == true)) {
+            return $this->response()->error('<error>Database and user ' . $database . ' could not be deleted</error>.');
+        }
 
-        return $this->response()->success('<info>Mysql database and user</info> <comment>'.$database.'</comment> <info>has been successfuly removed.</info>');
+        return $this->response()->success('<info>Mysql database and user</info> <comment>' . $database . '</comment> <info>has been successfuly removed.</info>');
     }
 }
 
