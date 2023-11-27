@@ -23,6 +23,11 @@ class MySQLHelper extends Application
         return preg_replace('/[^a-z0-9]+/i', '_', $domain);
     }
 
+    public function getHost()
+    {
+        return $this->config('mysql_host', 'localhost');
+    }
+
     /*
      * Check if given db name is valid
      */
@@ -54,11 +59,13 @@ class MySQLHelper extends Application
             //..
         }
 
+        $host = $this->getHost();
+
         $this->connect()->query('CREATE DATABASE IF NOT EXISTS `' . $database . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
-        $this->connect()->query('CREATE USER `' . $database . '`@`localhost` IDENTIFIED WITH mysql_native_password BY \'' . $password . '\'');
-        $this->connect()->query('GRANT ALL PRIVILEGES ON `' . $database . '`.* TO `' . $database . '`@`localhost`');
-        // $this->connect()->query('GRANT ALL PRIVILEGES ON `'.$database.'`.* to `'.$database.'`@`localhost` identified by \''.$password.'\'');
-        $this->connect()->query('flush privileges');
+        $this->connect()->query('CREATE USER `' . $database . '`@`'.$host.'` IDENTIFIED WITH mysql_native_password BY \'' . $password . '\'');
+        $this->connect()->query('GRANT ALL PRIVILEGES ON `' . $database . '`.* TO `' . $database . '`@`'.$host.'`');
+        // $this->connect()->query('GRANT ALL PRIVILEGES ON `'.$database.'`.* to `'.$database.'`@`'.$host.'` identified by \''.$password.'\'');
+        $this->connect()->query('FLUSH PRIVILEGES');
 
         return $this->response()->success("<info>MySQL database has been successfuly created.</info>\nDatabase\User: <comment>$database</comment>\nPassword: <comment>$password</comment>");
     }
@@ -82,8 +89,8 @@ class MySQLHelper extends Application
             return $this->response()->success('User and database <comment>' . $database . '</comment> does not exists.');
         }
 
-        $this->connect()->query("ALTER USER '$database'@'localhost' IDENTIFIED BY '$password'");
-        $this->connect()->query('flush privileges');
+        $this->connect()->query('ALTER USER `'.$database.'`@`'.$this->getHost().'` IDENTIFIED BY \''.$password.'\'');
+        $this->connect()->query('FLUSH PRIVILEGES');
 
         return $this->response()->success("<info>MySQL password has been successfuly changed.</info>\nDatabase\User: <comment>$database</comment>\nPassword: <comment>$password</comment>");
     }
@@ -107,9 +114,9 @@ class MySQLHelper extends Application
 
         $query1 = $this->connect()->query('DROP DATABASE `' . $database . '`');
         $query2 = $this->connect()->query('DELETE FROM mysql.user WHERE user=\'' . $database . '\'');
-        $query2 = $this->connect()->query('DROP USER `' . $database . '`@`localhost`;');
+        $query2 = $this->connect()->query('DROP USER `' . $database . '`@`'.$this->getHost().'`;');
 
-        $this->connect()->query('flush privileges');
+        $this->connect()->query('FLUSH PRIVILEGES');
 
         if (!($query1 == true && $query2 == true)) {
             return $this->response()->error('<error>Database and user ' . $database . ' could not be deleted</error>.');

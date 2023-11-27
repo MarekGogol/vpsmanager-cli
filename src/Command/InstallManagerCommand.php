@@ -102,6 +102,10 @@ class InstallManagerCommand extends Command
                     'config_key' => ($k = 'mysql_pass'),
                     'default' => $vm->config($k, ''),
                 ],
+                'setMysqlHost' => [
+                    'config_key' => ($k = 'mysql_host'),
+                    'default' => $vm->config($k, 'localhost'),
+                ],
                 // 'setVpsManagerPath' => [
                 //     'config_key' => $k = 'vpsmanager_path',
                 //     'default' => $vm->config($k, $input->getOption('vpsmanager_path') ?: null)
@@ -315,6 +319,18 @@ class InstallManagerCommand extends Command
         $value = $config = $helper->ask($input, $output, $question) ?: $default;
 
         $output->writeln('Used password: <comment>' . $value . '</comment>');
+    }
+
+    private function setMysqlHost($input, $output, $helper, &$config, $default)
+    {
+        $output->writeln('<info>Please set MYSQL host in case of remote connections. (localhost, 192.168.1.%, %) </info>');
+
+        //Nginx path
+        $question = new Question('Type mysql hostname <comment>' . $default . '</comment>: ', null);
+
+        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+
+        $output->writeln('Used host: <comment>' . $value . '</comment>');
     }
 
     private function setHost($input, $output, $helper, &$config, $default)
