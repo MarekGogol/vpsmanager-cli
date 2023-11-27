@@ -3,6 +3,7 @@
 namespace Gogol\VpsManagerCLI\Helpers;
 
 use Gogol\VpsManagerCLI\Application;
+use Exception;
 
 class MySQLHelper extends Application
 {
@@ -45,8 +46,12 @@ class MySQLHelper extends Application
         $password = getRandomPassword();
 
         //Check if db exists
-        if ($this->connect()->select_db($database)) {
-            return $this->response()->success('User and database <comment>' . $database . '</comment> already exists.');
+        try {
+            if ($this->connect()->select_db($database)) {
+                return $this->response()->success('User and database <comment>' . $database . '</comment> already exists.');
+            }
+        } catch (Exception $e) {
+            //..
         }
 
         $this->connect()->query('CREATE DATABASE IF NOT EXISTS `' . $database . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
@@ -100,8 +105,9 @@ class MySQLHelper extends Application
             return $this->response()->success('Database <comment>' . $database . '</comment> does not exists. In this case will not be deleted.');
         }
 
-        $query1 = $this->connect()->query('drop database `' . $database . '`');
-        $query2 = $this->connect()->query('delete from mysql.user where user=\'' . $database . '\'');
+        $query1 = $this->connect()->query('DROP DATABASE `' . $database . '`');
+        $query2 = $this->connect()->query('DELETE FROM mysql.user WHERE user=\'' . $database . '\'');
+        $query2 = $this->connect()->query('DROP USER `' . $database . '`@`localhost`;');
 
         $this->connect()->query('flush privileges');
 
