@@ -152,9 +152,9 @@ else
     answer=${answer:Y}
 
     if [[ $answer =~ [Yy] ]]; then
-        wget -c https://dev.mysql.com/get/mysql-apt-config_0.8.15-1_all.deb
-        dpkg -i mysql-apt-config_0.8.15-1_all.deb
-        rm mysql-apt-config_0.8.15-1_all.deb
+        wget -c https://dev.mysql.com/get/mysql-apt-config_0.8.28-1_all.deb
+        dpkg -i mysql-apt-config_0.8.28-1_all.deb
+        rm mysql-apt-config_0.8.28-1_all.deb
         apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 467B942D3A79BD29
         apt-get update
 
