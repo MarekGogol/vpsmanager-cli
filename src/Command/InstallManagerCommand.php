@@ -65,6 +65,10 @@ class InstallManagerCommand extends Command
                 'config_key' => $k = 'nginx_path',
                 'default' => $vm->config($k, '/etc/nginx')
             ],
+            'setIsProxiedNginx' => [
+                'config_key' => $k = 'nginx_is_proxied',
+                'default' => $vm->config($k, false)
+            ],
             'setPHPPath' => [
                 'config_key' => $k = 'php_path',
                 'default' => $vm->config($k, '/etc/php')
@@ -369,7 +373,7 @@ class InstallManagerCommand extends Command
 
     private function enableSelfSignedSSL($input, $output, $helper, &$config, $default)
     {
-        $question = new ConfirmationQuestion('<info>Would you like to allow self signed SSL certificates in NGINX?</info> (y/N) ', $default);
+        $question = new ConfirmationQuestion('<info>Would you like to allow self signed SSL certificates in NGINX?</info> ('.($default ? 'y' : 'N').') ', $default);
 
         if ( !($config = $helper->ask($input, $output, $question)) )
             return;
@@ -380,8 +384,10 @@ class InstallManagerCommand extends Command
         $command = 'make-ssl-cert generate-default-snakeoil --force-overwrite';
         $generate = "\n".'<info>run command:</info> '.$command;
 
-        if ( ! file_exists($path = '/etc/ssl/certs/ssl-cert-snakeoil.pem') )
-        {
+        if (
+            !file_exists($path = '/etc/ssl/certs/ssl-cert-snakeoil.pem')
+            || !file_exists($path = '/etc/ssl/private/ssl-cert-snakeoil.key')
+        ) {
             exec($command, $_output, $return_var);
 
             if ( $return_var == 0 )
@@ -389,15 +395,14 @@ class InstallManagerCommand extends Command
             else
                 return $output->writeln('<error>SSL Snakeoil certificate does not exists and could not be created at: '.$path.'</error>'.$generate);
         }
+    }
 
-        if ( ! file_exists($path = '/etc/ssl/private/ssl-cert-snakeoil.key') )
-        {
-            exec($command, $_output, $return_var);
+    private function setIsProxiedNginx($input, $output, $helper, &$config, $default)
+    {
+        $question = new ConfirmationQuestion('<info>Is this proxy behind LoadBalancer and will receive proxied SSL requests?</info> ('.($default ? 'y' : 'N').') ', $default);
 
-            if ( $return_var == 0 )
-                $output->writeln('SSL Snakeoil certificate has been created: '.$path);
-            else
-                return $output->writeln('<error>SSL Snakeoil certificate does not exists and could not be created at: '.$path.'</error>'.$generate);
+        if ( !($config = $helper->ask($input, $output, $question)) ) {
+            return;
         }
     }
 }

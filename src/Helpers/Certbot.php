@@ -80,9 +80,11 @@ class Certbot extends Application
 
         $first_level_domain = $this->toUserFormat($domain);
 
+        $proxy = $this->config('nginx_is_proxied') ? ' proxy_protocol' : '';
+
         $host_section = str_replace('server_name www.'.$first_level_domain.';', 'server_name www.'.$first_level_domain.' '.$first_level_domain.';', $host_section);
-        $host_section = str_replace('listen 80;', 'listen 443 ssl http2;', $host_section);
-        $host_section = str_replace('listen [::]:80;', 'listen [::]:443 ssl http2;'.$this->getSSLPaths($cert_name).$this->getSSLWWWRedirect($domain), $host_section);
+        $host_section = str_replace('listen 80;', 'listen 443 ssl http2'.$proxy.';', $host_section);
+        $host_section = str_replace('listen [::]:80;', 'listen [::]:443 ssl http2'.$proxy.';'.$this->getSSLPaths($cert_name).$this->getSSLWWWRedirect($domain), $host_section);
 
         return str_replace($host_section_def, $host_section, $nginx_conf);
     }
@@ -121,13 +123,15 @@ class Certbot extends Application
             $webPath = $this->getUserDirPath($domain);
         }
 
+        $proxy = $this->config('nginx_is_proxied') ? ' proxy_protocol' : '';
+
         $stub = $this->getStub('nginx.template.conf');
         $stub->addLineBefore('# HTTPS host for subdomain '.$domain);
         $stub->replace('{host}', $domain);
         $stub->replace('{path}', $webPath.'/sub/'.$this->getSubdomain($domain).'/public');
         $stub->replace('{error_log_path}', $this->nginx()->getErrorLogPath($domain, ['www_path' => $webPath]));
-        $stub->replace('listen 80;', 'listen 443 ssl http2;');
-        $stub->replace('listen [::]:80;', 'listen [::]:443 ssl http2;'.$this->getSSLPaths($cert_name));
+        $stub->replace('listen 80;', 'listen 443 ssl http2'.$proxy.';');
+        $stub->replace('listen [::]:80;', 'listen [::]:443 ssl http2'.$proxy.';'.$this->getSSLPaths($cert_name));
 
         preg_match('/php\d([\s\S]*?)\.sock/', $nginx_conf, $matches);
 
