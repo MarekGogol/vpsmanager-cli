@@ -110,6 +110,21 @@ else
     fi
 fi
 
+dpkg -s php8.3-cli &> /dev/null
+PHP83=$?
+if [ $PHP83 -eq 0 ]; then
+    echo -e "\e[32mPHP 8.3 version installed.\e[0m"
+else
+    read -p 'Do you want to install PHP 8.3? [Y/n]:' answer
+    answer=${answer:Y}
+
+    if [[ $answer =~ [Yy] ]]; then
+        add_ppa_if_not_exists ondrej/php
+        apt install -y php8.3-fpm && apt install -y php8.3-cli php8.3-fpm php8.3-soap php8.3-mysql php8.3-zip php8.3-gd php8.3-mbstring php8.3-curl php8.3-xml php8.3-bcmath php8.3-redis php8.3-common php8.3-imagick php8.3-intl php8.3-tidy
+        service php8.2-fpm start
+    fi
+fi
+
 # Check if certbot is installed
 dpkg -s python3-certbot-nginx &> /dev/null
 IS_CERTBOT=$?

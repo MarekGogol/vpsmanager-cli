@@ -484,7 +484,7 @@ class BackupSetupCommand extends Command
         }
 
         $crontab_path = '/var/spool/cron/crontabs/root';
-        $crontab_data = file_get_contents($crontab_path);
+        $crontab_data = @file_get_contents($crontab_path) ?: '';
 
         //If crontab does not exists already
         if (strpos($crontab_data, 'vpsmanager backup:run') === false) {
