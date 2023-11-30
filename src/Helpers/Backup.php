@@ -723,7 +723,9 @@ class Backup extends Application
     {
         $latestBackupSize = $this->getLatestTotalBackupSize($sumDirectories);
 
-        $freeSpace = $this->getFreeDiskSpace();
+        $freeSpace = $this->getFreeDiskSpace(
+            $this->config('backup_path')
+        );
 
         //We need have at least 5gb buffer for backups.
         $buffer = 2000;

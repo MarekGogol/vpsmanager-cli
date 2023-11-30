@@ -174,7 +174,7 @@ class Certbot extends Application
     {
         $default_path = $this->nginx()->getAvailablePath('default');
 
-        $default = file_get_contents($default_path);
+        $default = @file_get_contents($default_path) ?: '';
 
         //Uncomment self signed certs
         $default = str_replace('# listen 443 ssl default_server;', 'listen 443 ssl default_server;', $default);
