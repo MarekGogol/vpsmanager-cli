@@ -90,7 +90,7 @@ else
 
     if [[ $answer =~ [Yy] ]]; then
         add_ppa_if_not_exists ondrej/php
-        apt install -y php8.0-fpm && apt install -y php8.0-cli php8.0-fpm php8.0-soap php8.0-mysql php8.0-zip php8.0-gd php8.0-mbstring php8.0-curl php8.0-xml php8.0-bcmath php8.0-redis php8.0-common php8.0-imagick php8.0-intl php8.0-tidy
+        apt install -y php8.0-fpm && apt install -y php8.0-cli php8.0-fpm php8.0-soap php8.0-mysql php8.0-zip php8.0-gd php8.0-mbstring php8.0-curl php8.0-xml php8.0-bcmath php8.0-redis php8.0-common php8.0-imagick php8.0-intl php8.0-tidy php8.0-sqlite3
         service php8.0-fpm start
     fi
 fi
@@ -105,7 +105,7 @@ else
 
     if [[ $answer =~ [Yy] ]]; then
         add_ppa_if_not_exists ondrej/php
-        apt install -y php8.2-fpm && apt install -y php8.2-cli php8.2-fpm php8.2-soap php8.2-mysql php8.2-zip php8.2-gd php8.2-mbstring php8.2-curl php8.2-xml php8.2-bcmath php8.2-redis php8.2-common php8.2-imagick php8.2-intl php8.2-tidy
+        apt install -y php8.2-fpm && apt install -y php8.2-cli php8.2-fpm php8.2-soap php8.2-mysql php8.2-zip php8.2-gd php8.2-mbstring php8.2-curl php8.2-xml php8.2-bcmath php8.2-redis php8.2-common php8.2-imagick php8.2-intl php8.2-tidy php8.2-sqlite3
         service php8.2-fpm start
     fi
 fi
@@ -119,9 +119,16 @@ else
     answer=${answer:Y}
 
     if [[ $answer =~ [Yy] ]]; then
+
+
+        apt install apt-transport-https
+        sudo curl -sSLo /usr/share/keyrings/deb.sury.org-php.gpg https://packages.sury.org/php/apt.gpg
+        sudo sh -c 'echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list'
+        sudo apt update
+
         add_ppa_if_not_exists ondrej/php
-        apt install -y php8.3-fpm && apt install -y php8.3-cli php8.3-fpm php8.3-soap php8.3-mysql php8.3-zip php8.3-gd php8.3-mbstring php8.3-curl php8.3-xml php8.3-bcmath php8.3-redis php8.3-common php8.3-imagick php8.3-intl php8.3-tidy
-        service php8.2-fpm start
+        apt install -y php8.3-fpm && apt install -y php8.3-cli php8.3-fpm php8.3-soap php8.3-mysql php8.3-zip php8.3-gd php8.3-mbstring php8.3-curl php8.3-xml php8.3-bcmath php8.3-redis php8.3-common php8.3-imagick php8.3-intl php8.3-tidy php8.3-sqlite3
+        service php8.3-fpm start
     fi
 fi
 
@@ -167,13 +174,20 @@ else
     answer=${answer:Y}
 
     if [[ $answer =~ [Yy] ]]; then
-        wget -c https://dev.mysql.com/get/mysql-apt-config_0.8.28-1_all.deb
-        dpkg -i mysql-apt-config_0.8.28-1_all.deb
-        rm mysql-apt-config_0.8.28-1_all.deb
-        apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 467B942D3A79BD29
-        apt-get update
+        wget -c https://dev.mysql.com/get/mysql-apt-config_0.8.29-1_all.deb
 
+        #Debian
+        apt install ./mysql-apt-config_0.8.25-1_all.deb
+        apt update
         apt install mysql-server
+
+        # Ubuntu
+        # dpkg -i mysql-apt-config_0.8.29-1_all.deb
+        # rm mysql-apt-config_0.8.29-1_all.deb
+        # apt-key adv --keyserver keyserver.ubuntu.com --recv-keys B7B3B788A8D3785C
+        # apt-get update
+        # apt install mysql-server
+
         service mysql start
         mysql_secure_installation
     fi
