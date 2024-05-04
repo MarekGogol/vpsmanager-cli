@@ -113,7 +113,11 @@ class Nginx extends Application
                 '# Default domain redirect (non www to www)',
         );
         $stub->replace('{from-host}', $this->toUserFormat($domain));
-        $stub->replace('{to-host}', 'www.' . $this->toUserFormat($domain));
+
+        //Previously we used: old: 'www.' . $this->toUserFormat($domain)
+        //But we need use $host, because correct workflot of redirect is redirecting to the same domain of https versions.
+        //For enhanced security
+        $stub->replace('{to-host}', '$host');
 
         //Add default nginx host configuration
         $stub->addLine("\n" . (clone ($host_stub = $this->getStub('nginx.template.conf')))->addLineBefore('# Default host configuration'));

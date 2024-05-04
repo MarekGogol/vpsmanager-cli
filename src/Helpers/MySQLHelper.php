@@ -62,7 +62,7 @@ class MySQLHelper extends Application
         $host = $this->getHost();
 
         $this->connect()->query('CREATE DATABASE IF NOT EXISTS `' . $database . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
-        $this->connect()->query('CREATE USER `' . $database . '`@`'.$host.'` IDENTIFIED WITH mysql_native_password BY \'' . $password . '\'');
+        $this->connect()->query('CREATE USER `' . $database . '`@`'.$host.'` IDENTIFIED WITH caching_sha2_password BY \'' . $password . '\'');
         $this->connect()->query('GRANT ALL PRIVILEGES ON `' . $database . '`.* TO `' . $database . '`@`'.$host.'`');
         // $this->connect()->query('GRANT ALL PRIVILEGES ON `'.$database.'`.* to `'.$database.'`@`'.$host.'` identified by \''.$password.'\'');
         $this->connect()->query('FLUSH PRIVILEGES');
