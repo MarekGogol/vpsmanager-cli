@@ -213,10 +213,6 @@ read -p 'Do you want to install Image optimalization libraries? [Y/n]:' answer
 answer=${answer:Y}
 
 if [[ $answer =~ [Yy] ]]; then
-    apt-get install jpegoptim
-    apt-get install optipng
-    apt-get install pngquant
-    apt-get install gifsicle
-    apt-get install webp
+    apt install jpegoptim optipng pngquant gifsicle webp -y
     npm install -g svgo
 fi
