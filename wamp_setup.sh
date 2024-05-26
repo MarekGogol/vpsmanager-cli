@@ -19,7 +19,7 @@ apt install -y gcc
 apt install -y libpng-dev
 apt install -y make
 apt install -y software-properties-common
-apt install -y fail2ban
+apt install -y fail2ban && systemctl enable fail2ban
 
 # Install locales
 locale-gen sk_SK
