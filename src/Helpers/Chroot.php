@@ -287,6 +287,7 @@ Match Group " .
         //Add npm command
         $this->addChrootExtension($userDir, '/usr/lib/node_modules/npm');
         $this->addChrootExtension($userDir, '/usr/local/lib/node_modules/npm');
+        $this->addChrootExtension($userDir, '/usr/local/bin/pm2');
 
         exec('ln -s -f /usr/lib/node_modules/npm/bin/npm-cli.js ' . $userDir . '/usr/bin/npm', $output);
         exec('ln -s -f /usr/local/lib/node_modules/npm/bin/npm-cli.js ' . $userDir . '/usr/local/bin/npm', $output);
