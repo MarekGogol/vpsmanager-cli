@@ -119,8 +119,6 @@ else
     answer=${answer:Y}
 
     if [[ $answer =~ [Yy] ]]; then
-
-
         apt install apt-transport-https
         sudo curl -sSLo /usr/share/keyrings/deb.sury.org-php.gpg https://packages.sury.org/php/apt.gpg
         sudo sh -c 'echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list'
@@ -129,6 +127,26 @@ else
         add_ppa_if_not_exists ondrej/php
         apt install -y php8.3-fpm && apt install -y php8.3-cli php8.3-fpm php8.3-soap php8.3-mysql php8.3-zip php8.3-gd php8.3-mbstring php8.3-curl php8.3-xml php8.3-bcmath php8.3-redis php8.3-common php8.3-imagick php8.3-intl php8.3-tidy php8.3-sqlite3
         service php8.3-fpm start
+    fi
+fi
+
+dpkg -s php8.4-cli &> /dev/null
+PHP84=$?
+if [ $PHP84 -eq 0 ]; then
+    echo -e "\e[32mPHP 8.4 version installed.\e[0m"
+else
+    read -p 'Do you want to install PHP 8.4? [Y/n]:' answer
+    answer=${answer:Y}
+
+    if [[ $answer =~ [Yy] ]]; then
+        apt install apt-transport-https
+        sudo curl -sSLo /usr/share/keyrings/deb.sury.org-php.gpg https://packages.sury.org/php/apt.gpg
+        sudo sh -c 'echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list'
+        sudo apt update
+
+        add_ppa_if_not_exists ondrej/php
+        apt install -y php8.4-fpm && apt install -y php8.4-cli php8.4-fpm php8.4-soap php8.4-mysql php8.4-zip php8.4-gd php8.4-mbstring php8.4-curl php8.4-xml php8.4-bcmath php8.4-redis php8.4-common php8.4-imagick php8.4-intl php8.4-tidy php8.4-sqlite3
+        service php8.4-fpm start
     fi
 fi
 
