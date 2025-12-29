@@ -252,7 +252,7 @@ if [[ $answer =~ [Yy] ]]; then
 fi
 
 # Set journald max size
-sed -i 's|^#\?SystemMaxUse=.*|SystemMaxUse=1G|' /etc/systemd/journald.conf
+sed -i 's|^#\?SystemMaxUse=.*|SystemMaxUse=500M|' /etc/systemd/journald.conf
 sed -i 's|^#\?SystemKeepFree=.*|SystemKeepFree=500M|' /etc/systemd/journald.conf
 sed -i 's|^#\?SystemMaxFileSize=.*|SystemMaxFileSize=200M|' /etc/systemd/journald.conf
 sed -i 's|^#\?SystemMaxFiles=.*|SystemMaxFiles=10|' /etc/systemd/journald.conf
