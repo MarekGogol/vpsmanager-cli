@@ -68,7 +68,7 @@ class Backup extends Application
     {
         $missing = [];
 
-        foreach (['zip', 'rsync'] as $apt) {
+        foreach (['zip', 'tar', 'rsync'] as $apt) {
             if (!$this->server()->isInstalledExtension($apt)) {
                 $missing[] = $apt;
             }
@@ -142,6 +142,8 @@ class Backup extends Application
 
     /*
      * Zip directory and return if has been saved
+     * This method is depreacted. Its less efficient than tarDirectory.
+     * @deprecated Use tarDirectory instead.
      */
     public function zipDirectory(string $dir, string $where, $excludeArgs = null): bool
     {
@@ -157,6 +159,27 @@ class Backup extends Application
         exec($cmd, $output, $code);
 
         return $code === 0;
+    }
+
+    public function tarDirectory(string $dir, string $where, ?string $except = null): bool
+    {
+        $dir = rtrim($dir, '/');
+        $directory = basename($dir);
+        $baseDir = dirname($dir);
+
+        // Allow passing tar excludes either as:
+        //   "--exclude='*/node_modules/*' --exclude='*/vendor/*'"
+        // or as null. (This keeps compatibility with your existing $except usage.)
+        $excludePart = $except ? ' ' . $except : '';
+
+        // Streaming tar -> gzip, lower priority, fast compression (-1)
+        $cmd = sprintf('cd %s && nice -n 15 ionice -c2 -n7 tar -cf -%s %s | gzip -1 > %s', escapeshellarg($baseDir), $excludePart, escapeshellarg($directory), escapeshellarg($where));
+
+        $output = [];
+        $returnVar = 0;
+        exec($cmd, $output, $returnVar);
+
+        return $returnVar === 0;
     }
 
     /*
@@ -226,7 +249,7 @@ class Backup extends Application
             $except = count($dir_parts) > 1 ? implode(' ', array_slice($dir_parts, 1)) : null;
 
             //Zip and save directory
-            if (!$this->zipDirectory($dir, $backup_path . '/' . $this->getZipName($dir), $except)) {
+            if (!$this->tarDirectory($dir, $backup_path . '/' . $this->getZipName($dir), $except)) {
                 $errors[] = $dir;
             }
         }
@@ -254,41 +277,61 @@ class Backup extends Application
      */
     private function getExcludeDirectories($domain, $exclude = '')
     {
-        $exclude_domain_root = ['.config/\*', '.cache/\*', '.local/\*', '.npm/\*', '.pm2/\*', '.nano/\*', '.gnupg/\*', '.bash_history', '.selected_editor'];
-        $exclude_global_folters = ['node_modules/\*', 'vendor/\*', 'cache/\*', 'laravel.log'];
+        // Things excluded from user's HOME
+        $exclude_domain_root = ['.config/*', '.cache/*', '.local/*', '.npm/*', '.pm2/*', '.nano/*', '.gnupg/*', '.bash_history', '.selected_editor'];
+
+        // Things excluded inside project
+        $exclude_global_folders = ['node_modules/*', 'vendor/*', 'cache/*', 'laravel.log'];
 
         $domain_path = $this->getUserDirPath($domain);
-
         $dataDir = $this->getWebDirectory();
 
-        //Exclude gloval folders
-        foreach ($exclude_global_folters as $item) {
-            $exclude .= ' -x */\\' . $item;
+        /*
+         |------------------------------------------------------------
+         | Global excludes (apply anywhere)
+         |------------------------------------------------------------
+         */
+        foreach ($exclude_global_folders as $item) {
+            $exclude .= ' --exclude=' . escapeshellarg("*/{$item}");
         }
 
         $isWebDirWithData = file_exists($domain_path . $dataDir);
         $webDir = $isWebDirWithData ? $domain_path . $dataDir : $domain_path;
         $relativePath = $isWebDirWithData ? trim($dataDir, '/') : $domain;
 
-        //Check if ignore file exists, and exclude directories from given file
+        /*
+         |------------------------------------------------------------
+         | Read .backupignore / ignore file if exists
+         |------------------------------------------------------------
+         */
         if (file_exists($ignore_file = $webDir . '/' . $this->ignoreFile)) {
             $ignore = array_filter(explode("\n", file_get_contents($ignore_file)));
 
             foreach ($ignore as $item) {
-                $item = trim($item, '/');
+                $item = trim($item);
 
-                //Exclude file or firectory
-                if (is_file($webDir . '/' . $item)) {
-                    $exclude .= ' -x ' . $relativePath . '/' . $this->escapeDirectory($item);
-                } elseif (is_dir($webDir . '/' . $item)) {
-                    $exclude .= ' -x ' . $relativePath . '/' . $this->escapeDirectory($item) . '/\*';
+                if ($item === '' || str_starts_with($item, '#')) {
+                    continue;
                 }
+
+                $fullPath = $webDir . '/' . $item;
+                $pattern = $relativePath . '/' . trim($item, '/');
+
+                if (is_dir($fullPath)) {
+                    $pattern .= '/*';
+                }
+
+                $exclude .= ' --exclude=' . escapeshellarg($pattern);
             }
         }
 
-        //Exclude uneccessary directories in root domain folder
+        /*
+         |------------------------------------------------------------
+         | Exclude HOME garbage inside domain root
+         |------------------------------------------------------------
+         */
         foreach ($exclude_domain_root as $item) {
-            $exclude .= ' -x ' . $relativePath . '/' . $item;
+            $exclude .= ' --exclude=' . escapeshellarg($relativePath . '/' . $item);
         }
 
         return $exclude;
@@ -324,8 +367,10 @@ class Backup extends Application
                 $webPath = $dataWebpath;
             }
 
+            $except = $this->getExcludeDirectories($domain);
+
             //Zip and save directory
-            if (!$this->zipDirectory($webPath, $backup_path . '/' . $this->getZipName($domain), $this->getExcludeDirectories($domain))) {
+            if (!$this->tarDirectory($webPath, $backup_path . '/' . $this->getZipName($domain), $except)) {
                 $errors[] = $domain;
             }
         }
