@@ -121,7 +121,22 @@ class Backup extends Application
             $this->response()
                 ->success('Saving and compressing <comment>' . $database . '</comment> database.')
                 ->writeln();
-            exec('(mysqldump -u' . $user . ' ' . ($pass ? '-p"' . $pass . '"' : '') . ' ' . $database . ' || rm -f "' . $filename . '") | gzip > "' . $filename . '"', $output, $return_var);
+
+            exec(
+                '(nice -n 15 ionice -c2 -n7 mysqldump --single-transaction --quick --routines --events --triggers -u' .
+                    $user .
+                    ' ' .
+                    ($pass ? '-p"' . $pass . '"' : '') .
+                    ' ' .
+                    $database .
+                    ' || rm -f "' .
+                    $filename .
+                    '") | gzip -1 > "' .
+                    $filename .
+                    '"',
+                $output,
+                $return_var,
+            );
         }
 
         //Check if is available at least one backup
