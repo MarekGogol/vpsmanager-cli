@@ -224,6 +224,8 @@ else
 
         service mysql start
         mysql_secure_installation
+
+        bash ./scripts/protect-mysql-from-oom.sh
     fi
 fi
 
