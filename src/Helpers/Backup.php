@@ -216,6 +216,14 @@ class Backup extends Application
         return $name . '.zip';
     }
 
+    private function getTarName($name)
+    {
+        $name = preg_replace('/^\//', '', $name);
+        $name = str_replace('/', '_', $name);
+
+        return $name . '.tar.gz';
+    }
+
     /*
      * Backup all required directories and zip them
      */
@@ -249,7 +257,7 @@ class Backup extends Application
             $except = count($dir_parts) > 1 ? implode(' ', array_slice($dir_parts, 1)) : null;
 
             //Zip and save directory
-            if (!$this->tarDirectory($dir, $backup_path . '/' . $this->getZipName($dir), $except)) {
+            if (!$this->tarDirectory($dir, $backup_path . '/' . $this->getTarName($dir), $except)) {
                 $errors[] = $dir;
             }
         }
@@ -370,7 +378,7 @@ class Backup extends Application
             $except = $this->getExcludeDirectories($domain);
 
             //Zip and save directory
-            if (!$this->tarDirectory($webPath, $backup_path . '/' . $this->getZipName($domain), $except)) {
+            if (!$this->tarDirectory($webPath, $backup_path . '/' . $this->getTarName($domain), $except)) {
                 $errors[] = $domain;
             }
         }
