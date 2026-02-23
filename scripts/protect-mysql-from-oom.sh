@@ -6,7 +6,7 @@ echo "===> Protecting MySQL/MariaDB from OOM killer"
 # Detect service name
 SERVICE=""
 for s in mysql mysqld mariadb; do
-    if systemctl list-unit-files | grep -q "^${s}\.service"; then
+    if systemctl status "${s}.service" >/dev/null 2>&1; then
         SERVICE="$s"
         break
     fi
