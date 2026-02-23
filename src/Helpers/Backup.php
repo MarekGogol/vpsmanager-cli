@@ -143,14 +143,20 @@ class Backup extends Application
     /*
      * Zip directory and return if has been saved
      */
-    public function zipDirectory($dir, $where, $except = null)
+    public function zipDirectory(string $dir, string $where, $excludeArgs = null): bool
     {
-        $path = explode('/', $dir);
-        $directory = end($path);
+        $dir = rtrim($dir, '/');
+        $baseDir = dirname($dir);
+        $directory = basename($dir);
 
-        exec('cd ' . $dir . '/../ && zip -r ' . $where . ' ' . $directory . ' ' . $except, $output, $return_var);
+        // Lower priority + faster compression (-1)
+        $cmd = sprintf('cd %s && nice -n 15 ionice -c2 -n7 zip -r -1 %s %s%s', escapeshellarg($baseDir), escapeshellarg($where), escapeshellarg($directory), $excludeArgs ?: '');
 
-        return $return_var == 0;
+        $output = [];
+        $code = 0;
+        exec($cmd, $output, $code);
+
+        return $code === 0;
     }
 
     /*
