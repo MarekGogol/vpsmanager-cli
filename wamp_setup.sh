@@ -80,25 +80,6 @@ else
     fi
 fi
 
-dpkg -s php8.0-cli &> /dev/null
-PHP80=$?
-if [ $PHP80 -eq 0 ]; then
-    echo -e "\e[32mPHP 8.0 version installed.\e[0m"
-else
-    read -p 'Do you want to install PHP 8.0? [Y/n]:' answer
-    answer=${answer:Y}
-
-    if [[ $answer =~ [Yy] ]]; then
-        add_ppa_if_not_exists ondrej/php
-        apt install -y php8.0-fpm && apt install -y php8.0-cli php8.0-fpm php8.0-soap php8.0-mysql php8.0-zip php8.0-gd php8.0-mbstring php8.0-curl php8.0-xml php8.0-bcmath php8.0-redis php8.0-common php8.0-imagick php8.0-intl php8.0-tidy php8.0-sqlite3
-        service php8.0-fpm start
-
-        # Enable restart on failure
-        sed -i '/^\[Service\]/a Restart=always' "/usr/lib/systemd/system/php8.0-fpm.service"
-        systemctl daemon-reload
-    fi
-fi
-
 dpkg -s php8.2-cli &> /dev/null
 PHP82=$?
 if [ $PHP82 -eq 0 ]; then
@@ -166,6 +147,31 @@ else
     fi
 fi
 
+dpkg -s php8.5-cli &> /dev/null
+PHP85=$?
+if [ $PHP85 -eq 0 ]; then
+    echo -e "\e[32mPHP 8.5 version installed.\e[0m"
+else
+    read -p 'Do you want to install PHP 8.5? [Y/n]:' answer
+    answer=${answer:Y}
+
+    if [[ $answer =~ [Yy] ]]; then
+        apt install apt-transport-https
+        sudo curl -sSLo /usr/share/keyrings/deb.sury.org-php.gpg https://packages.sury.org/php/apt.gpg
+        sudo sh -c 'echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list'
+        sudo apt update
+
+        add_ppa_if_not_exists ondrej/php
+        # OPcache is built into PHP 8.5, so no separate opcache package is needed
+        apt install -y php8.5-fpm && apt install -y php8.5-cli php8.5-fpm php8.5-soap php8.5-mysql php8.5-zip php8.5-gd php8.5-mbstring php8.5-curl php8.5-xml php8.5-bcmath php8.5-redis php8.5-common php8.5-imagick php8.5-intl php8.5-tidy php8.5-sqlite3
+        service php8.5-fpm start
+
+        # Enable restart on failure
+        sed -i '/^\[Service\]/a Restart=always' "/usr/lib/systemd/system/php8.5-fpm.service"
+        systemctl daemon-reload
+    fi
+fi
+
 # Check if certbot is installed
 dpkg -s python3-certbot-nginx &> /dev/null
 IS_CERTBOT=$?
@@ -204,23 +210,22 @@ IS_MYSQL=$?
 if [ $IS_MYSQL -eq 0 ]; then
     echo -e "\e[32mMySQL is installed\e[0m"
 else
-    read -p 'Do you want to install MySQL 8.0? [Y/n]:' answer
+    read -p 'Do you want to install MySQL 9.7 LTS? [Y/n]:' answer
     answer=${answer:Y}
 
     if [[ $answer =~ [Yy] ]]; then
-        wget -c https://dev.mysql.com/get/mysql-apt-config_0.8.29-1_all.deb
+        MYSQL_APT_CONFIG=mysql-apt-config_0.8.40-1_all.deb
+        wget -c https://dev.mysql.com/get/$MYSQL_APT_CONFIG -O /tmp/$MYSQL_APT_CONFIG
 
-        #Debian
-        apt install ./mysql-apt-config_0.8.25-1_all.deb
+        # Preselect MySQL 9.7 LTS repository, so apt config does not ask interactively (works on Debian and Ubuntu)
+        apt install -y debconf-utils lsb-release gnupg
+        echo "mysql-apt-config mysql-apt-config/select-server select mysql-9.7-lts" | debconf-set-selections
+        echo "mysql-apt-config mysql-apt-config/select-product select Ok" | debconf-set-selections
+        DEBIAN_FRONTEND=noninteractive dpkg -i /tmp/$MYSQL_APT_CONFIG
+        rm /tmp/$MYSQL_APT_CONFIG
+
         apt update
-        apt install mysql-server
-
-        # Ubuntu
-        # dpkg -i mysql-apt-config_0.8.29-1_all.deb
-        # rm mysql-apt-config_0.8.29-1_all.deb
-        # apt-key adv --keyserver keyserver.ubuntu.com --recv-keys B7B3B788A8D3785C
-        # apt-get update
-        # apt install mysql-server
+        apt install -y mysql-server
 
         service mysql start
         mysql_secure_installation
