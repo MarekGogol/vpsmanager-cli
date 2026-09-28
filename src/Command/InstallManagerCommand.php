@@ -99,7 +99,7 @@ class InstallManagerCommand extends Command
             'setPHPPath' => ['php_path', '/etc/php'],
             'setSSLPath' => ['ssl_path', '/etc/letsencrypt/live'],
             'setSSLEmail' => ['ssl_email', 'noreply@marekgogol.sk'],
-            'setDefaultPHPVersion' => ['php_version', '8.4'],
+            'setDefaultPHPVersion' => ['php_version', '8.5'],
             'setWWWPath' => ['www_path', '/var/www'],
             'enableSelfSignedSSL' => ['self_signed_ssl', true],
             'setMysqlUser' => ['mysql_user', 'root'],

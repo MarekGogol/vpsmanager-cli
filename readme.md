@@ -118,7 +118,7 @@ All configuration lives in **`src/config.php`**, a plain PHP file that returns a
 | `php_path` | `/etc/php` | PHP configuration directory. Pools are stored in `{php_path}/{version}/fpm/pool.d/` |
 | `ssl_path` | `/etc/letsencrypt/live` | Directory with Let's Encrypt certificates |
 | `ssl_email` | a placeholder address | Email passed to certbot (`-m`). Must be a valid address |
-| `php_version` | `8.4` | Default PHP version for new hostings. One of `8.2`, `8.3`, `8.4`, `8.5` |
+| `php_version` | `8.5` | Default PHP version for new hostings. One of `8.2`, `8.3`, `8.4`, `8.5` |
 | `www_path` | `/var/www` | Root directory of all hostings |
 | `self_signed_ssl` | `true` | Enable the snakeoil certificate on the NGINX default server |
 | `mysql_user` | `root` | MySQL admin user that creates and removes databases |
@@ -226,7 +226,7 @@ All hosting users are also members of the `vpsmanager_hosting_user` group. Chroo
 ### Create new hosting
 
 ```bash
-sudo php vpsmanager hosting:create [domain] [--php_version=8.4]
+sudo php vpsmanager hosting:create [domain] [--php_version=8.5]
 ```
 
 | Argument / option | Description |
