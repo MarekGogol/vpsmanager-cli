@@ -487,10 +487,11 @@ docker compose up -d --build
 docker compose exec vpsmanager bash
 
 # inside the container
-cd /root/vpsmanager
-php vpsmanager install
-php vpsmanager hosting:create example.test
+vpsmanager install
+vpsmanager hosting:create example.test
 ```
+
+- The image ships a `/usr/local/bin/vpsmanager` wrapper, so the `vpsmanager` command works right away without the `.bashrc` alias that `install` adds on a real server.
 
 - The repository is mounted to **`/root/vpsmanager`**, so your local changes are live inside the container.
 - Ports: **`8000` → 80** (HTTP), **`8443` → 443** (HTTPS), **`2200` → 22** (SSH, for testing chroot logins).

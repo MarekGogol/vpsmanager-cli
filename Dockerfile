@@ -26,7 +26,9 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/entrypoint.sh /usr/local/bin/vps-entrypoint
-RUN chmod +x /usr/local/bin/vps-entrypoint
+RUN chmod +x /usr/local/bin/vps-entrypoint \
+    && printf '#!/bin/sh\nexec php /root/vpsmanager/vpsmanager "$@"\n' > /usr/local/bin/vpsmanager \
+    && chmod +x /usr/local/bin/vpsmanager
 
 WORKDIR /root/vpsmanager
 
