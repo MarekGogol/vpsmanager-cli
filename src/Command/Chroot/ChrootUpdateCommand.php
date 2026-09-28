@@ -18,12 +18,12 @@ class ChrootUpdateCommand extends Command
     private $output;
     private $helper;
 
-    protected function configure()
+    protected function configure(): void
     {
         $this->setName('chroot:update')->setDescription('Update all available chroot instances');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->input = $input;
         $this->output = $output;

@@ -1,13 +1,13 @@
 {
     "name": "marekgogol/vpsmanager-cli",
-    "description": "CLI For your wamp VPS management",
+    "description": "CLI for LEMP VPS management: hostings, PHP-FPM pools, MySQL, SSL, chroot and backups",
     "type": "library",
     "require": {
-        "php": ">=7.1",
-        "symfony/console": "^4.2|^5.0",
-        "symfony/var-dumper": "^4.2|^5.0",
-        "phpmailer/phpmailer": "^6.0",
-        "nesbot/carbon": "^1.0|^2.61"
+        "php": "^8.4",
+        "symfony/console": "^8.1",
+        "symfony/var-dumper": "^8.1",
+        "phpmailer/phpmailer": "^7.1",
+        "nesbot/carbon": "^3.14"
     },
     "authors": [
         {
@@ -22,5 +22,16 @@
         "files": [
             "./src/Helpers/helpers.php"
         ]
+    },
+    "license": "MIT",
+    "require-dev": {
+        "laravel/pint": "^1.32"
+    },
+    "scripts": {
+        "lint": "pint --test",
+        "format": "pint"
+    },
+    "config": {
+        "sort-packages": true
     }
 }

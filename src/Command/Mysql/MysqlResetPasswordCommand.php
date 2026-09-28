@@ -18,7 +18,7 @@ class MysqlResetPasswordCommand extends Command
     private $output;
     private $helper;
 
-    protected function configure()
+    protected function configure(): void
     {
         $this->setName('mysql:reset')
             ->addArgument('name', InputArgument::OPTIONAL, 'Database/User name')
@@ -26,7 +26,7 @@ class MysqlResetPasswordCommand extends Command
             ->setDescription('Reset password for mysql user');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->input = $input;
         $this->output = $output;

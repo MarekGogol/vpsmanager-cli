@@ -18,7 +18,7 @@ class BackupPerformCommand extends Command
     private $output;
     private $helper;
 
-    protected function configure()
+    protected function configure(): void
     {
         $this->setName('backup:run')
             ->setDescription('Backup all databases, websites data, and other files. Also copies data to other server.')
@@ -27,7 +27,7 @@ class BackupPerformCommand extends Command
             ->addOption('www', null, InputOption::VALUE_OPTIONAL, 'Backup all www data', false);
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->input = $input;
         $this->output = $output;

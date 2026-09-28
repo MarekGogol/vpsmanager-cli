@@ -17,12 +17,12 @@ class BackupTestMailServer extends Command
     private $input;
     private $output;
 
-    protected function configure()
+    protected function configure(): void
     {
         $this->setName('backup:test-mail')->setDescription('Test mailserver connection and send test email');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         vpsManager()->bootConsole($output);
 

@@ -23,12 +23,12 @@ class BackupSetupCommand extends Command
      */
     private $default_backup_user = 'vpsmanager_backups';
 
-    protected function configure()
+    protected function configure(): void
     {
         $this->setName('backup:setup')->setDescription('Setup backup configuration');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         vpsManager()->bootConsole($output);
 

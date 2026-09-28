@@ -17,7 +17,7 @@ class InstallManagerCommand extends Command
     private $input;
     private $output;
 
-    protected function configure()
+    protected function configure(): void
     {
         $this->setName('install')
             ->setDescription('Install VPS Manager')
@@ -28,7 +28,7 @@ class InstallManagerCommand extends Command
             ->addOption('no_chmod', null, InputOption::VALUE_OPTIONAL, 'Disable change of chmod settings of web directory', null);
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         vpsManager()->bootConsole($output);
 

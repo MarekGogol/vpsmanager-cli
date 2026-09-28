@@ -1,6 +1,6 @@
 #!/usr/bin/env php
 <?php
-require_once 'vendor/autoload.php';
+require_once __DIR__.'/vendor/autoload.php';
 
 use Gogol\VpsManagerCLI\Command\Backup\BackupPerformCommand;
 use Gogol\VpsManagerCLI\Command\Backup\BackupSetupCommand;
@@ -20,20 +20,19 @@ use Symfony\Component\Console\Application;
 
 $application = new Application();
 
-$application->add(new InstallManagerCommand());
-$application->add(new HostingCreateCommand());
-$application->add(new HostingRemoveCommand());
-$application->add(new SSLCreateCommand());
-$application->add(new BackupSetupCommand());
-$application->add(new BackupPerformCommand());
-$application->add(new BackupTestRemoteServer());
-$application->add(new BackupTestMailServer());
-$application->add(new MysqlCreateCommand());
-$application->add(new MysqlResetPasswordCommand());
-$application->add(new MysqlRemoveCommand());
-$application->add(new ChrootCreateCommand());
-$application->add(new ChrootUpdateCommand());
-$application->add(new ChrootRemoveCommand());
+$application->addCommand(new InstallManagerCommand());
+$application->addCommand(new HostingCreateCommand());
+$application->addCommand(new HostingRemoveCommand());
+$application->addCommand(new SSLCreateCommand());
+$application->addCommand(new BackupSetupCommand());
+$application->addCommand(new BackupPerformCommand());
+$application->addCommand(new BackupTestRemoteServer());
+$application->addCommand(new BackupTestMailServer());
+$application->addCommand(new MysqlCreateCommand());
+$application->addCommand(new MysqlResetPasswordCommand());
+$application->addCommand(new MysqlRemoveCommand());
+$application->addCommand(new ChrootCreateCommand());
+$application->addCommand(new ChrootUpdateCommand());
+$application->addCommand(new ChrootRemoveCommand());
 
 $application->run();
-?>

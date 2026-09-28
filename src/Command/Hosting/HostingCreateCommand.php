@@ -18,7 +18,7 @@ class HostingCreateCommand extends Command
     private $output;
     private $helper;
 
-    protected function configure()
+    protected function configure(): void
     {
         $this->setName('hosting:create')
             ->addArgument('domain', InputArgument::OPTIONAL, 'Domain name')
@@ -28,7 +28,7 @@ class HostingCreateCommand extends Command
             ->addOption('dev', null, InputOption::VALUE_OPTIONAL, 'Use dev version of command', null);
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->input = $input;
         $this->output = $output;

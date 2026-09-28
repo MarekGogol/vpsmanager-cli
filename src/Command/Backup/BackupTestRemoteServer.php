@@ -17,12 +17,12 @@ class BackupTestRemoteServer extends Command
     private $input;
     private $output;
 
-    protected function configure()
+    protected function configure(): void
     {
         $this->setName('backup:test-remote')->setDescription('Test remote server connection');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         vpsManager()->bootConsole($output);
 

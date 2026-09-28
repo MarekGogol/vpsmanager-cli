@@ -18,7 +18,7 @@ class SSLCreateCommand extends Command
     private $output;
     private $helper;
 
-    protected function configure()
+    protected function configure(): void
     {
         $this->setName('hosting:ssl')
             ->addArgument('domain', InputArgument::OPTIONAL, 'Domain name')
@@ -26,7 +26,7 @@ class SSLCreateCommand extends Command
             ->setDescription('Set up lets encrypt SSL certificate for your domain/subdomain');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->input = $input;
         $this->output = $output;

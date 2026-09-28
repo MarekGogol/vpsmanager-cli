@@ -18,7 +18,7 @@ class ChrootCreateCommand extends Command
     private $output;
     private $helper;
 
-    protected function configure()
+    protected function configure(): void
     {
         $this->setName('chroot:create')
             ->addArgument('domain', InputArgument::OPTIONAL, 'Domain name')
@@ -26,7 +26,7 @@ class ChrootCreateCommand extends Command
             ->setDescription('Updates chroot directory for given domain');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->input = $input;
         $this->output = $output;
