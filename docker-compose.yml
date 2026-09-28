@@ -6,6 +6,8 @@ services:
         PHP_VERSION: '8.5'
     container_name: vpsmanager
     hostname: vpsmanager
+    # Reap zombie processes, so service restarts work like on a real server
+    init: true
     cap_add:
       - SYS_ADMIN
     security_opt:
