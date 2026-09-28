@@ -125,6 +125,9 @@ class PHP extends Application
             $stub->addLine('php_admin_value['.$key.'] = '.$value);
         }
 
+        // End with a new line, so settings appended later do not join the last line
+        $stub->addLine('');
+
         // Save pool
         if (! $stub->save($this->getPoolPath($domain, $php_version))) {
             return $this->response()->error('PHP pool file could not be saved.');
