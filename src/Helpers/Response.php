@@ -4,14 +4,34 @@ namespace Gogol\VpsManagerCLI\Helpers;
 
 class Response
 {
+    /**
+     * The response type (success or error).
+     *
+     * @var string|null
+     */
     public $type = null;
+
+    /**
+     * The response message.
+     *
+     * @var string|null
+     */
     public $message = null;
+
+    /**
+     * Additional response data.
+     *
+     * @var array
+     */
     public $data = [];
 
-    /*
-     * Set error response
+    /**
+     * Set error response.
+     *
+     * @param  string|null  $message
+     * @return $this
      */
-    public function error($message)
+    public function error($message): static
     {
         $this->type = 'error';
         $this->message = $message;
@@ -19,10 +39,13 @@ class Response
         return $this;
     }
 
-    /*
-     * Set success response
+    /**
+     * Set success response.
+     *
+     * @param  string|null  $message
+     * @return $this
      */
-    public function success($message)
+    public function success($message): static
     {
         $this->type = 'success';
         $this->message = $message;
@@ -30,62 +53,79 @@ class Response
         return $this;
     }
 
-    /*
-     * Message response
+    /**
+     * Set message response.
+     *
+     * @param  string|null  $message
+     * @return $this
      */
-    public function message($message)
+    public function message($message): static
     {
         return $this->success($message);
     }
 
-    /*
-     * Check if response is error
+    /**
+     * Check if response is error.
+     *
+     * @return bool
      */
-    public function isError()
+    public function isError(): bool
     {
         return $this->is('error');
     }
 
-    /*
-     * Check if response is given type
+    /**
+     * Check if response is of given type.
+     *
+     * @param  string  $type
+     * @return bool
      */
-    public function is($type)
+    public function is($type): bool
     {
         return $this->type == $type;
     }
 
-    /*
-     * Return response with data
+    /**
+     * Return response with data.
+     *
+     * @param  array  $data
+     * @return $this
      */
-    public function withData(array $data)
+    public function withData(array $data): static
     {
         $this->data = $data;
 
         return $this;
     }
 
-    /*
-     * If is console output available, write it.
+    /**
+     * Write message into console output, if output is available.
+     *
+     * @param  bool  $separator
+     * @param  bool  $with_error
+     * @return $this
      */
-    public function writeln($separator = false, $with_error = false)
+    public function writeln($separator = false, $with_error = false): static
     {
-        if (!$this->message || ($this->isError() && $with_error === false)) {
+        if (! $this->message || ($this->isError() && $with_error === false)) {
             return $this;
         }
 
-        $separator = $separator ? "\n" : null;
+        if (! $output = vpsManager()->getOutput()) {
+            return $this;
+        }
 
-        vpsManager()
-            ->getOutput()
-            ->writeln($this->message . $separator);
+        $output->writeln($this->message.($separator ? "\n" : ''));
 
         return $this;
     }
 
-    /*
-     * Return error with wrong domain name
+    /**
+     * Return error with wrong domain name.
+     *
+     * @return $this
      */
-    public function wrongDomainName()
+    public function wrongDomainName(): static
     {
         return $this->error('Domain name is not in valid format.');
     }

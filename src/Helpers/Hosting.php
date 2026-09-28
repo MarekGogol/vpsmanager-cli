@@ -3,121 +3,116 @@
 namespace Gogol\VpsManagerCLI\Helpers;
 
 use Gogol\VpsManagerCLI\Application;
+use Symfony\Component\Console\Question\ConfirmationQuestion;
 
 class Hosting extends Application
 {
-    /*
-     * Check if nginx or domain dir exists
+    /**
+     * Check if nginx host, linux user or php pool exists before creating a hosting.
+     *
+     * @param  string  $domain
+     * @param  array  $config
+     * @return \Gogol\VpsManagerCLI\Helpers\Response
      */
-    public function checkErrorsBeforeCreate(string $domain, $config)
+    public function checkErrorsBeforeCreate(string $domain, array $config): Response
     {
         $user = $this->toUserFormat($domain);
 
-        if (!isValidDomain($domain)) {
+        if (! isValidDomain($domain)) {
             return $this->response()->wrongDomainName();
         }
 
-        if ($this->nginx()->exists($domain) && !$this->canContinueNginx($user)) {
-            return $this->response()->error('Nginx nastavenia pre dómenu ' . $user . ' už existuju.');
+        // Check if we can continue with existing nginx host
+        if ($this->nginx()->exists($domain) && ! $this->canContinueNginx($user)) {
+            return $this->response()->error('NGINX configuration for domain '.$user.' already exists.');
         }
 
-        //Check if can continue with existing user
-        if ($this->server()->existsUser($user) && !$this->canContinueUser($user)) {
-            return $this->response()->error('LINUX používateľ ' . $user . ' už existuje.');
+        // Check if we can continue with existing user
+        if ($this->server()->existsUser($user) && ! $this->canContinueUser($user)) {
+            return $this->response()->error('Linux user '.$user.' already exists.');
         }
 
-        if (!$this->php()->isInstalled($config['php_version'])) {
-            return $this->response()->error('PHP s verziou ' . $config['php_version'] . ' nie je nainštalované.');
+        if (! $this->php()->isInstalled($config['php_version'])) {
+            return $this->response()->error('PHP version '.$config['php_version'].' is not installed.');
         }
 
-        //Check if can continue with existing PHP pool configuration
-        if ($this->php()->poolExists($domain, $config['php_version']) && !$this->canContinuePool($user, $config['php_version'])) {
-            return $this->response()->error('PHP Pool s názvom ' . $domain . '.conf pre verziu PHP ' . $config['php_version'] . ' už existuje.');
+        // Check if we can continue with existing PHP pool configuration
+        if ($this->php()->poolExists($domain, $config['php_version']) && ! $this->canContinuePool($user, $config['php_version'])) {
+            return $this->response()->error('PHP pool '.$user.'.conf for PHP version '.$config['php_version'].' already exists.');
         }
 
         return $this->response();
     }
 
-    /*
-     * Check if can continue with existing user
+    /**
+     * Ask a confirmation question when the console is available.
+     *
+     * @param  string  $message
+     * @return bool
      */
-    private function canContinueUser($user)
+    private function confirm(string $message): bool
     {
         $m = vpsManager();
 
-        //If console is not booted properly
-        if (!($m->output && $m->input && $m->helper)) {
+        // If console is not booted properly
+        if (! ($m->output && $m->input && $m->helper)) {
             return false;
         }
 
-        $question = new \Symfony\Component\Console\Question\ConfirmationQuestion(
-            "\n" . '<error>User ' . $user . ' exists already.</error>' . "\n" . 'Would you like continue with existing user? (y/N) ',
-            false,
-        );
-
-        return $m->helper->ask($m->input, $m->output, $question);
+        return (bool) $m->helper->ask($m->input, $m->output, new ConfirmationQuestion($message, false));
     }
 
-    /*
-     * Check if can continue with existing nginx
+    /**
+     * Check if we can continue with existing user.
+     *
+     * @param  string  $user
+     * @return bool
      */
-    private function canContinueNginx($user)
+    private function canContinueUser(string $user): bool
     {
-        $m = vpsManager();
-
-        //If console is not booted properly
-        if (!($m->output && $m->input && $m->helper)) {
-            return false;
-        }
-
-        $question = new \Symfony\Component\Console\Question\ConfirmationQuestion(
-            "\n" .
-                '<error>Webhosting ' .
-                $user .
-                ' already exists and has NGINX configruation.</error>' .
-                "\n" .
-                'Would you like use this existing <comment>' .
-                $this->nginx()->getAvailablePath($user) .
-                '</comment> configuration? (y/N) ',
-            false,
+        return $this->confirm(
+            "\n".'<error>User '.$user.' already exists.</error>'."\n".'Would you like to continue with the existing user? (y/N) ',
         );
-
-        return $m->helper->ask($m->input, $m->output, $question);
     }
 
-    /*
-     * Check if can continue with existing nginx
+    /**
+     * Check if we can continue with existing nginx configuration.
+     *
+     * @param  string  $user
+     * @return bool
      */
-    private function canContinuePool($user, $php_version)
+    private function canContinueNginx(string $user): bool
     {
-        $m = vpsManager();
-
-        //If console is not booted properly
-        if (!($m->output && $m->input && $m->helper)) {
-            return false;
-        }
-
-        $question = new \Symfony\Component\Console\Question\ConfirmationQuestion(
-            "\n" .
-                '<error>PHP ' .
-                $php_version .
-                ' Pool for domain name ' .
-                $user .
-                ' exists already.</error>' .
-                "\n" .
-                'Would you like use this existing <comment>' .
-                $this->php()->getPoolPath($user, $php_version) .
-                '</comment> configuration? (y/N) ',
-            false,
+        return $this->confirm(
+            "\n".'<error>Webhosting '.$user.' already exists and has NGINX configuration.</error>'."\n".
+            'Would you like to use the existing <comment>'.$this->nginx()->getAvailablePath($user).'</comment> configuration? (y/N) ',
         );
-
-        return $m->helper->ask($m->input, $m->output, $question);
     }
 
-    /*
-     * Get value from hosting
+    /**
+     * Check if we can continue with existing php pool.
+     *
+     * @param  string  $user
+     * @param  string  $php_version
+     * @return bool
      */
-    private function getParam($config, $key, $default = null)
+    private function canContinuePool(string $user, string $php_version): bool
+    {
+        return $this->confirm(
+            "\n".'<error>PHP '.$php_version.' pool for domain '.$user.' already exists.</error>'."\n".
+            'Would you like to use the existing <comment>'.$this->php()->getPoolPath($user, $php_version).'</comment> configuration? (y/N) ',
+        );
+    }
+
+    /**
+     * Get value from hosting configuration.
+     *
+     * @param  array  $config
+     * @param  string  $key
+     * @param  mixed  $default
+     * @return mixed
+     */
+    private function getParam(array $config, string $key, mixed $default = null): mixed
     {
         if (array_key_exists($key, $config)) {
             return $config[$key];
@@ -127,146 +122,117 @@ class Hosting extends Application
     }
 
     /**
-     * Create new hosting
-     * @param  [string] $domain [domain name]
-     * @param  [array] $config [hosting configuration]
-     * @return [response]
+     * Create new hosting.
+     *
+     * @param  string  $domain
+     * @param  array  $config
+     * @return \Gogol\VpsManagerCLI\Helpers\Response
      */
-    public function create($domain, array $config = [])
+    public function create(string $domain, array $config = []): Response
     {
         $config['php_version'] = $this->getParam($config, 'php_version', $this->config('php_version'));
 
-        //Check errors
+        // Check errors
         if (($response = $this->checkErrorsBeforeCreate($domain, $config))->isError()) {
             return $response;
         }
 
-        //Create user
-        if (
-            ($response = $this->server()
-                ->createUser($domain, $config)
-                ->writeln(true))->isError()
-        ) {
+        // Create user
+        if (($response = $this->server()->createUser($domain, $config)->writeln(true))->isError()) {
             return $response;
         }
 
-        //Create mysql database
-        if (
-            isset($config['database']) &&
-            $config['database'] == true &&
-            ($response = $this->mysql()
-                ->createDatabase($domain)
-                ->writeln(true))->isError()
-        ) {
+        // Create mysql database
+        if (! empty($config['database']) && ($response = $this->mysql()->createDatabase($domain)->writeln(true))->isError()) {
             return $response;
         }
 
         // Create domain directory tree
-        if (
-            ($response = $this->server()
-                ->createDomainTree($domain, $config)
-                ->writeln())->isError()
-        ) {
+        if (($response = $this->server()->createDomainTree($domain, $config)->writeln())->isError()) {
             return $response;
         }
 
         // Create chroot directory tree
-        if (
-            isset($config['chroot']) &&
-            $config['chroot'] == true &&
-            ($response = $this->chroot()
-                ->create($domain, $config)
-                ->writeln())->isError()
-        ) {
+        if (! empty($config['chroot']) && ($response = $this->chroot()->create($domain, $config)->writeln())->isError()) {
             return $response;
         }
 
         // Create php pool
-        if (
-            ($response = $this->php()
-                ->createPool($domain, $config)
-                ->writeln())->isError()
-        ) {
+        if (($response = $this->php()->createPool($domain, $config)->writeln())->isError()) {
             return $response;
         }
 
-        //Create nginx host
-        if (
-            ($response = $this->nginx()
-                ->createHost($domain, $config)
-                ->writeln())->isError()
-        ) {
+        // Create nginx host
+        if (($response = $this->nginx()->createHost($domain, $config)->writeln())->isError()) {
             return $response;
         }
 
-        //Test and reboot services
+        // Test and reboot services
         $this->rebootNginx();
         $this->rebootPHP($config['php_version']);
 
-        return $this->response()->success("\n" . 'Hosting bol úspešne vytvorený!');
+        return $this->response()->success("\n".'Hosting has been successfully created!');
     }
 
-    public function rebootNginx()
+    /**
+     * Test nginx configuration and restart nginx service.
+     *
+     * @return void
+     */
+    public function rebootNginx(): void
     {
-        if (
-            $this->server()
-                ->nginx()
-                ->test()
-        ) {
-            if (
-                $this->server()
-                    ->nginx()
-                    ->restart(false)
-            ) {
-                $this->response()
-                    ->success('<comment>NGINX bol úspešne reštartovaný.</comment>')
-                    ->writeln();
-            } else {
-                $this->response()
-                    ->message('<error>Došlo k chybe pri reštarte služby NGINX. Spustite službu manuálne.</error>')
-                    ->writeln();
-            }
+        if (! $this->nginx()->test()) {
+            $this->response()
+                ->message('<error>NGINX configuration is not valid, so the service could not be restarted.</error>')
+                ->writeln();
+
+            return;
+        }
+
+        if ($this->nginx()->restart(false)) {
+            $this->response()
+                ->success('<comment>NGINX has been successfully restarted.</comment>')
+                ->writeln();
         } else {
             $this->response()
-                ->message('<error>Konfigurácia NGINXU nie je správna, preto nie je možné spustiť reštart služby.</error>')
+                ->message('<error>An error occurred while restarting NGINX. Please restart the service manually.</error>')
                 ->writeln();
         }
     }
 
-    public function rebootPHP($php_version)
+    /**
+     * Restart php-fpm service of given version.
+     *
+     * @param  string  $php_version
+     * @return void
+     */
+    public function rebootPHP(string $php_version): void
     {
-        if (
-            $this->server()
-                ->php()
-                ->restart($php_version)
-        ) {
+        if ($this->php()->restart($php_version)) {
             $this->response()
-                ->success('<comment>PHP ' . $php_version . ' FPM bolo úspešne reštartované.</comment>')
+                ->success('<comment>PHP '.$php_version.' FPM has been successfully restarted.</comment>')
                 ->writeln();
         } else {
             $this->response()
-                ->error('<error>Došlo k chybe pri reštarte služby PHP. Spustite službu manuálne.</error>')
+                ->error('<error>An error occurred while restarting PHP '.$php_version.' FPM. Please restart the service manually.</error>')
                 ->writeln(null, true);
         }
     }
 
     /**
-     * Delete hosting
-     * @param  string  $domain       [domain name]
-     * @param  boolean $remove_data  [set if www data can be deleted]
-     * @param  boolean $remove_mysql [set if mysql user and database can me deleted]
-     * @return response
+     * Remove hosting.
+     *
+     * @param  string  $domain
+     * @param  bool  $remove_data
+     * @param  bool  $remove_mysql
+     * @return \Gogol\VpsManagerCLI\Helpers\Response
      */
-    public function remove($domain, $remove_data = false, $remove_mysql = false)
+    public function remove(string $domain, bool $remove_data = false, bool $remove_mysql = false): Response
     {
-        //Remove nginx
-        if (
-            vpsManager()
-                ->nginx()
-                ->removeHost($domain)
-        ) {
+        // Remove nginx host
+        if ($this->nginx()->removeHost($domain)) {
             $this->response()
-                ->success('<comment>NGINX</comment> <info>host has been successfully disabled and removed.<info>')
+                ->success('<comment>NGINX</comment> <info>host has been successfully disabled and removed.</info>')
                 ->writeln();
         } else {
             $this->response()
@@ -274,83 +240,65 @@ class Hosting extends Application
                 ->writeln(null, true);
         }
 
-        //Which php fpm versions should be rebooted
+        // PHP-FPM versions which should be restarted
         $reboot_php_versions = [];
 
-        //Remove pools from all php versions
-        foreach (
-            vpsManager()
-                ->php()
-                ->getVersions()
-            as $php_version
-        ) {
-            if (
-                !vpsManager()
-                    ->php()
-                    ->poolExists($domain, $php_version)
-            ) {
+        // Remove pools from all php versions
+        foreach ($this->php()->getVersions() as $php_version) {
+            if (! $this->php()->poolExists($domain, $php_version)) {
                 continue;
             }
 
-            if (
-                vpsManager()
-                    ->php()
-                    ->removePool($domain, $php_version)
-            ) {
+            if ($this->php()->removePool($domain, $php_version)) {
                 $reboot_php_versions[] = $php_version;
+
                 $this->response()
-                    ->success('<comment>PHP ' . $php_version . '</comment> <info>pool has been successfuly removed.</info>')
+                    ->success('<comment>PHP '.$php_version.'</comment> <info>pool has been successfully removed.</info>')
                     ->writeln();
             } else {
                 $this->response()
-                    ->message('<error>PHP ' . $php_version . ' pool could not be deleted.</error>')
+                    ->message('<error>PHP '.$php_version.' pool could not be deleted.</error>')
                     ->writeln();
             }
         }
 
-        //Test and reboot services
+        // Test and reboot services
         $this->rebootNginx();
 
-        //Rebot all php version from which has been pool removed
+        // Reboot all php versions from which a pool has been removed
         foreach ($reboot_php_versions as $version) {
             $this->rebootPHP($version);
         }
 
-        //Remove user
-        if (
-            vpsManager()
-                ->server()
-                ->deleteUser($domain)
-        ) {
+        // Remove user
+        if ($this->server()->deleteUser($domain)) {
             $this->response()
-                ->success('<info>User</info> <comment>' . $domain . '</comment> <info>has been successfuly removed.</info>')
+                ->success('<info>User</info> <comment>'.$domain.'</comment> <info>has been successfully removed.</info>')
                 ->writeln();
         } else {
             $this->response()
-                ->message('<error>User ' . $domain . ' could not be deleted.</error>')
+                ->message('<error>User '.$domain.' could not be deleted.</error>')
                 ->writeln();
         }
 
-        //Remove mysql data
-        if ($remove_mysql) {
-            vpsManager()
-                ->mysql()
+        // Remove mysql data
+        if ($remove_mysql === true) {
+            $this->mysql()
                 ->removeDatabaseWithUser($domain)
                 ->writeln(null, true);
         }
 
+        // Remove storage data
         if ($remove_data === true) {
-            if (
-                vpsManager()
-                    ->server()
-                    ->deleteDomainTree($domain)
-            ) {
+            $userDirPath = $this->getUserDirPath($domain);
+
+            if ($this->server()->deleteDomainTree($domain)) {
                 $this->response()
-                    ->success('<info>Data storage</info> <comment>' . vpsManager()->getUserDirPath($domain) . '</comment> <info>has been deleted.</info>')
+                    ->success('<info>Data storage</info> <comment>'.$userDirPath.'</comment> <info>has been deleted.</info>')
                     ->writeln();
             } else {
                 $this->response()
-                    ->message('<error>Data storage ' . vpsManager()->getUserDirPath($domain) . ' could not be deleted.</error>')
+                    ->message('<error>Data storage '.$userDirPath.' could not be deleted.</error>')
                     ->writeln();
             }
         }
@@ -358,4 +306,3 @@ class Hosting extends Application
         return $this->response()->success('<info>Hosting has been successfully removed.</info>');
     }
 }
-?>

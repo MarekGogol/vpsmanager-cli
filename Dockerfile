@@ -1,34 +1,36 @@
-FROM ubuntu:18.04
+# Local test environment for VPS Manager CLI.
+# Mimics a fresh Ubuntu VPS with nginx, PHP-FPM, MySQL and certbot.
+FROM ubuntu:24.04
 
-ENV TZ=Europe/Bratislava
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
-RUN apt-get update
-RUN apt-get install -y curl
-RUN apt-get install -y locales
-RUN apt install -y gcc
-RUN apt install -y libpng-dev
-RUN apt install -y make
-RUN apt install -y rsync
-RUN apt install -y zip
-RUN apt install -y ssh
-RUN apt install -y nano
-RUN apt install -y software-properties-common
-RUN add-apt-repository -y ppa:ondrej/php
-RUN apt install -y php8.0-cli php8.0-fpm php8.0-soap php8.0-mysql php8.0-zip php8.0-gd php8.0-mbstring php8.0-curl php8.0-xml php8.0-bcmath php8.0-redis php8.0-common php8.0-imagick
-RUN service ssh start
-RUN service php8.0-fpm start
-# RUN add-apt-repository -y ppa:certbot/certbot && apt install -y python-certbot-nginx
-#RUN apt install -y nginx
-#RUN apt install -y composer
-#RUN apt install -y pngquant
-#RUN apt install -y mysql-server
-#RUN curl -sL https://deb.nodesource.com/setup_10.x | bash
-#RUN apt-get install -y nodejs
-#RUN chown -R mysql:mysql /var/lib/mysql /var/run/mysqld && \
-#    service mysql start && \
-#    mvn -q verify site
+ARG PHP_VERSION=8.5
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Europe/Bratislava \
+    PHP_VERSION=${PHP_VERSION}
+
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg locales software-properties-common \
+        zip unzip rsync ssh ssl-cert nano less git cron sudo \
+        gcc make libpng-dev imagemagick \
+        jpegoptim optipng pngquant gifsicle webp \
+        nginx mysql-server certbot python3-certbot-nginx \
+    && add-apt-repository -y ppa:ondrej/php \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        php${PHP_VERSION}-cli php${PHP_VERSION}-fpm php${PHP_VERSION}-soap php${PHP_VERSION}-mysql \
+        php${PHP_VERSION}-zip php${PHP_VERSION}-gd php${PHP_VERSION}-mbstring php${PHP_VERSION}-curl \
+        php${PHP_VERSION}-xml php${PHP_VERSION}-bcmath php${PHP_VERSION}-redis php${PHP_VERSION}-imagick \
+        php${PHP_VERSION}-intl php${PHP_VERSION}-sqlite3 \
+    && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY docker/entrypoint.sh /usr/local/bin/vps-entrypoint
+RUN chmod +x /usr/local/bin/vps-entrypoint
+
 WORKDIR /root/vpsmanager
 
-EXPOSE 80 443 21 22 3306
+EXPOSE 80 443 22 3306
 
-CMD ["/bin/bash"]
+ENTRYPOINT ["vps-entrypoint"]
+CMD ["sleep", "infinity"]

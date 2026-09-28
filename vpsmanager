@@ -1,5 +1,6 @@
 #!/usr/bin/env php
 <?php
+
 require_once __DIR__.'/vendor/autoload.php';
 
 use Gogol\VpsManagerCLI\Command\Backup\BackupPerformCommand;
@@ -18,7 +19,7 @@ use Gogol\VpsManagerCLI\Command\Mysql\MysqlResetPasswordCommand;
 use Gogol\VpsManagerCLI\Command\SSLCreateCommand;
 use Symfony\Component\Console\Application;
 
-$application = new Application();
+$application = new Application('VPS Manager');
 
 $application->addCommand(new InstallManagerCommand());
 $application->addCommand(new HostingCreateCommand());

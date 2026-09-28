@@ -1,46 +1,74 @@
 <?php
 
-/*
- * App instance
+use Gogol\VpsManagerCLI\Application;
+
+/**
+ * Get the VPS Manager root path.
+ *
+ * @return string
  */
-$vps_manager = null;
-
-function vpsManagerPath()
+function vpsManagerPath(): string
 {
-    return __DIR__ . '/..';
+    return __DIR__.'/..';
 }
 
-function vpsManager()
+/**
+ * Get the shared VPS Manager application instance.
+ *
+ * @return \Gogol\VpsManagerCLI\Application
+ */
+function vpsManager(): Application
 {
-    global $vpsmanager;
+    static $vpsManager = null;
 
-    //If vps manager has been already booted
-    if ($vpsmanager) {
-        return $vpsmanager;
-    }
-
-    return $vpsmanager = new Gogol\VpsManagerCLI\Application();
+    // Boot the application only once
+    return $vpsManager ??= new Application();
 }
 
-function isValidDomain($domain = null)
+/**
+ * Determine if the given domain is valid (at least second level domain).
+ *
+ * @param  string|null  $domain
+ * @return bool
+ */
+function isValidDomain($domain = null): bool
 {
-    //We want at least one domain name
-    if (strpos($domain, '.') === false) {
+    // We want at least one dot in the domain name
+    if (! is_string($domain) || ! str_contains($domain, '.')) {
         return false;
     }
 
-    return filter_var($domain, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME);
+    return filter_var($domain, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false;
 }
 
-function isValidEmail($email = null)
+/**
+ * Determine if the given email address is valid.
+ *
+ * @param  string|null  $email
+ * @return bool
+ */
+function isValidEmail($email = null): bool
 {
-    return filter_var($email, FILTER_VALIDATE_EMAIL);
+    return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
 }
 
-if (!function_exists('trim_end')) {
-    function trim_end($string, $trim)
+if (! function_exists('trim_end')) {
+    /**
+     * Remove all occurrences of the given suffix from the end of the string.
+     *
+     * @param  string|null  $string
+     * @param  string  $trim
+     * @return string
+     */
+    function trim_end($string, $trim): string
     {
-        while (substr($string, -strlen($trim)) == $trim) {
+        $string = (string) $string;
+
+        if ($trim === '') {
+            return $string;
+        }
+
+        while (str_ends_with($string, $trim)) {
             $string = substr($string, 0, -strlen($trim));
         }
 
@@ -48,98 +76,135 @@ if (!function_exists('trim_end')) {
     }
 }
 
-/*
- * Return password
+/**
+ * Generate a random password.
+ *
+ * @param  int  $length
+ * @return string
  */
-function getRandomPassword($length = 20)
+function getRandomPassword(int $length = 20): string
 {
     $pool = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ?:!._';
+    $max = strlen($pool) - 1;
 
-    return substr(str_shuffle(str_repeat($pool, 5)), 0, $length);
+    $password = '';
+
+    for ($i = 0; $i < $length; $i++) {
+        $password .= $pool[random_int(0, $max)];
+    }
+
+    return $password;
 }
 
-/*
- * Check app permissions
+/**
+ * Check if the application is running under the root user.
+ *
+ * @return void
+ *
+ * @throws \Exception
  */
-function checkPermissions()
+function checkPermissions(): void
 {
-    $user = trim(shell_exec('whoami'));
+    $user = trim((string) shell_exec('whoami'));
 
     if ($user !== 'root') {
-        throw new \Exception('This vpsManager can be booted just under root user.');
+        throw new Exception('VPS Manager can be booted only under the root user.');
     }
 }
 
-/*
- * Create given folders with permissions
+/**
+ * Create given directories with permissions.
+ *
+ * @param  array  $paths
+ * @param  string  $user
+ * @param  array  $config
+ * @param  callable|null  $callback
+ * @param  bool  $message
+ * @return void
  */
-function createDirectories($paths, $user, $config = [], $callback = null, $message = true)
+function createDirectories($paths, $user, $config = [], $callback = null, $message = true): void
 {
     foreach ($paths as $path => $permissions) {
-        if (!file_exists($path)) {
-            if (isset($permissions['mknod'])) {
-                createParentDirectory($path);
+        if (file_exists($path)) {
+            continue;
+        }
 
-                shell_exec('mknod -m ' . $permissions['mknod'][0] . ' ' . $path . ' ' . $permissions['mknod'][1]);
-            } else {
-                shell_exec('mkdir -p ' . $path);
+        if (isset($permissions['mknod'])) {
+            createParentDirectory($path);
 
-                //Callback on create direcotry
-                if (isset($callback)) {
-                    $callback($path, $permissions);
-                }
+            shell_exec('mknod -m '.$permissions['mknod'][0].' '.$path.' '.$permissions['mknod'][1]);
 
-                //Check if can change permissions of directory
-                $with_permissions = !isset($config['no_chmod']);
+            continue;
+        }
 
-                //Change permissions on new created files
-                if ($with_permissions) {
-                    $dir_chmod = isset($permissions['chmod']) ? $permissions['chmod'] : $permissions;
-                    $dir_user = isset($permissions['user']) ? $permissions['user'] : $user;
-                    $dir_group = isset($permissions['group']) ? $permissions['group'] : 'www-data';
-                    shell_exec('chmod ' . $dir_chmod . ' -R ' . $path . ' && chmod g+s -R ' . $path . ' && chown -R ' . $dir_user . ':' . $dir_group . ' ' . $path);
-                }
+        shell_exec('mkdir -p '.$path);
 
-                if ($message == true) {
-                    vpsManager()
-                        ->response()
-                        ->message('Directory created: <comment>' . $path . '</comment>')
-                        ->writeln();
-                }
-            }
+        // Callback on created directory
+        if (isset($callback)) {
+            $callback($path, $permissions);
+        }
+
+        // Change permissions of the newly created directory
+        if (! isset($config['no_chmod'])) {
+            $dir_chmod = $permissions['chmod'] ?? $permissions;
+            $dir_user = $permissions['user'] ?? $user;
+            $dir_group = $permissions['group'] ?? 'www-data';
+
+            shell_exec('chmod '.$dir_chmod.' -R '.$path.' && chmod g+s -R '.$path.' && chown -R '.$dir_user.':'.$dir_group.' '.$path);
+        }
+
+        if ($message == true) {
+            vpsManager()
+                ->response()
+                ->message('Directory created: <comment>'.$path.'</comment>')
+                ->writeln();
         }
     }
 }
 
-/*
- * Returns parent dir of directory
+/**
+ * Get the parent directory of the given directory.
+ *
+ * @param  string  $directory
+ * @return string
  */
-function getParentDir($directory)
+function getParentDir($directory): string
 {
     return implode('/', array_slice(explode('/', $directory), 0, -1));
 }
 
-/*
- * Create parent directory if is missing
+/**
+ * Create the parent directory if it is missing.
+ *
+ * @param  string  $directory
+ * @return void
  */
-function createParentDirectory($directory)
+function createParentDirectory($directory): void
 {
     $parentDir = getParentDir($directory);
 
-    //Create missing parent directory
-    if (!file_exists($parentDir)) {
-        shell_exec('mkdir -p ' . $parentDir . ' && chmod 701 -R ' . $parentDir . ' && chmod g+s -R ' . $parentDir . ' && chown -R root:root ' . $parentDir);
+    // Create missing parent directory
+    if (! file_exists($parentDir)) {
+        shell_exec('mkdir -p '.$parentDir.' && chmod 701 -R '.$parentDir.' && chmod g+s -R '.$parentDir.' && chown -R root:root '.$parentDir);
     }
 }
 
-function GetDirectorySize($path)
+/**
+ * Get the total size of the directory in bytes.
+ *
+ * @param  string  $path
+ * @return int
+ */
+function getDirectorySize($path): int
 {
-    $bytestotal = 0;
+    $bytesTotal = 0;
     $path = realpath($path);
+
     if ($path !== false && $path != '' && file_exists($path)) {
         foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS)) as $object) {
-            $bytestotal += $object->getSize();
+            $bytesTotal += $object->getSize();
         }
     }
-    return $bytestotal;
+
+    return $bytesTotal;
 }

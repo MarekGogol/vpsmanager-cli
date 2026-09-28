@@ -2,9 +2,9 @@
 
 namespace Gogol\VpsManagerCLI\Command;
 
-use Gogol\VpsManagerCLI\Nginx\Nginx;
+use Exception;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -14,20 +14,51 @@ use Symfony\Component\Console\Question\Question;
 
 class InstallManagerCommand extends Command
 {
+    /**
+     * The console input.
+     *
+     * @var \Symfony\Component\Console\Input\InputInterface
+     */
     private $input;
+
+    /**
+     * The console output.
+     *
+     * @var \Symfony\Component\Console\Output\OutputInterface
+     */
     private $output;
 
+    /**
+     * The question helper.
+     *
+     * @var \Symfony\Component\Console\Helper\QuestionHelper
+     */
+    private $helper;
+
+    /**
+     * Configure the command options.
+     *
+     * @return void
+     */
     protected function configure(): void
     {
         $this->setName('install')
             ->setDescription('Install VPS Manager')
-            ->addOption('dev', null, InputOption::VALUE_OPTIONAL, 'Use dev version of installation', null)
             ->addOption('vpsmanager_path', null, InputOption::VALUE_OPTIONAL, 'Set absolute path of VPS Manager web interface', null)
             ->addOption('host', null, InputOption::VALUE_OPTIONAL, 'Set host path for VPS Manager web interface', null)
             ->addOption('open_basedir', null, InputOption::VALUE_OPTIONAL, 'Allow open_basedir path for VPS Manager web interface', null)
             ->addOption('no_chmod', null, InputOption::VALUE_OPTIONAL, 'Disable change of chmod settings of web directory', null);
     }
 
+    /**
+     * Execute the console command.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @return int
+     *
+     * @throws \Exception
+     */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         vpsManager()->bootConsole($output);
@@ -40,396 +71,392 @@ class InstallManagerCommand extends Command
 
         $this->setConfig($input, $output, $helper);
 
-        // $this->generateManagerHosting($input, $output);
-
         $output->writeln('<info>Installation of</info> <comment>VPS Manager</comment> <info>has been successfully completed.</info>');
 
         return Command::SUCCESS;
     }
 
-    public function isDev()
-    {
-        return $this->input->getOption('dev') == 1;
-    }
-
-    public function setConfig($input, $output, $helper)
+    /**
+     * Ask for all config values and save the config file.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
+     * @return void
+     *
+     * @throws \Exception
+     */
+    public function setConfig(InputInterface $input, OutputInterface $output, QuestionHelper $helper): void
     {
         $vm = vpsManager();
         $config = $vm->config();
 
         $this->createCommandShortcut();
 
-        //Set config properties
-        foreach (
-            [
-                'setNginxPath' => [
-                    'config_key' => ($k = 'nginx_path'),
-                    'default' => $vm->config($k, '/etc/nginx'),
-                ],
-                'setIsProxiedNginx' => [
-                    'config_key' => ($k = 'nginx_is_proxied'),
-                    'default' => $vm->config($k, false),
-                ],
-                'setPHPPath' => [
-                    'config_key' => ($k = 'php_path'),
-                    'default' => $vm->config($k, '/etc/php'),
-                ],
-                'setSSLPath' => [
-                    'config_key' => ($k = 'ssl_path'),
-                    'default' => $vm->config($k, '/etc/letsencrypt/live'),
-                ],
-                'setSSLEmail' => [
-                    'config_key' => ($k = 'ssl_email'),
-                    'default' => $vm->config($k, 'noreply@marekgogol.sk'),
-                ],
-                'setDefaultPHPVersion' => [
-                    'config_key' => ($k = 'php_version'),
-                    'default' => $vm->config($k, '8.4'),
-                ],
-                'setWWWPath' => [
-                    'config_key' => ($k = 'www_path'),
-                    'default' => $vm->config($k, '/var/www'),
-                ],
-                'enableSelfSignedSSL' => [
-                    'config_key' => ($k = 'self_signed_ssl'),
-                    'default' => $vm->config($k, true),
-                ],
-                'setMysqlUser' => [
-                    'config_key' => ($k = 'mysql_user'),
-                    'default' => $vm->config($k, 'root'),
-                ],
-                'setMysqlPassword' => [
-                    'config_key' => ($k = 'mysql_pass'),
-                    'default' => $vm->config($k, ''),
-                ],
-                'setMysqlHost' => [
-                    'config_key' => ($k = 'mysql_host'),
-                    'default' => $vm->config($k, 'localhost'),
-                ],
-                // 'setVpsManagerPath' => [
-                //     'config_key' => $k = 'vpsmanager_path',
-                //     'default' => $vm->config($k, $input->getOption('vpsmanager_path') ?: null)
-                // ],
-                // 'setHost' => [
-                //     'config_key' => $k = 'host',
-                //     'default' => $vm->config($k, $input->getOption('host') ?: 'vpsmanager.example.com')
-                // ]
-            ]
-            as $method => $data
-        ) {
-            //Use default config values
-            if ($this->isDev()) {
-                $config[$data['config_key']] = $data['default'];
-            }
+        $settings = [
+            'setNginxPath' => ['nginx_path', '/etc/nginx'],
+            'setIsProxiedNginx' => ['nginx_is_proxied', false],
+            'setPHPPath' => ['php_path', '/etc/php'],
+            'setSSLPath' => ['ssl_path', '/etc/letsencrypt/live'],
+            'setSSLEmail' => ['ssl_email', 'noreply@marekgogol.sk'],
+            'setDefaultPHPVersion' => ['php_version', '8.4'],
+            'setWWWPath' => ['www_path', '/var/www'],
+            'enableSelfSignedSSL' => ['self_signed_ssl', true],
+            'setMysqlUser' => ['mysql_user', 'root'],
+            'setMysqlPassword' => ['mysql_pass', ''],
+            'setMysqlHost' => ['mysql_host', 'localhost'],
+        ];
 
-            //Get config inputs
-            else {
-                $this->{$method}($input, $output, $helper, $config[$data['config_key']], $data['default'], $config);
-                $output->writeln('');
-            }
+        // Set config properties
+        foreach ($settings as $method => [$key, $default]) {
+            $default = $vm->config($key, $default);
+
+            // Get config inputs
+            $config[$key] ??= null;
+
+            $this->{$method}($input, $output, $helper, $config[$key], $default, $config);
+
+            $output->writeln('');
         }
 
-        if (!vpsManager()->saveConfig($config)) {
-            throw new \Exception('Installation failed. Config could not be saved into ' . vpsManagerPath() . '/config.php');
+        if (! $vm->saveConfig($config)) {
+            throw new Exception('Installation failed. Config could not be saved into '.vpsManagerPath().'/config.php');
         }
 
-        //Forced booting config
-        vpsManager()->bootConfig(true);
+        // Force config reload
+        $vm->bootConfig(true);
     }
 
-    private function createCommandShortcut()
+    /**
+     * Add the vpsmanager alias into .bashrc file.
+     *
+     * @return void
+     */
+    private function createCommandShortcut(): void
     {
-        $bashrcFile = trim(shell_exec('cd ~ && pwd')) . '/.bashrc';
+        $bashrcFile = trim((string) shell_exec('cd ~ && pwd')).'/.bashrc';
 
-        $vpsmanagerCLIPath = realpath(__DIR__ . '/../../vpsmanager');
+        $vpsmanagerCLIPath = realpath(__DIR__.'/../../vpsmanager');
 
-        $command = 'alias vpsmanager="php ' . $vpsmanagerCLIPath . '"';
+        $command = 'alias vpsmanager="php '.$vpsmanagerCLIPath.'"';
 
-        //If command alias has not been setls
-        if (!file_exists($bashrcFile) || strpos(file_get_contents($bashrcFile), $command) === false) {
+        // Add alias only if it has not been set yet
+        if (! file_exists($bashrcFile) || ! str_contains(file_get_contents($bashrcFile), $command)) {
             @file_put_contents($bashrcFile, "#VPS Manager shortcut command\n$command\n", FILE_APPEND);
         }
     }
 
-    private function setNginxPath($input, $output, $helper, &$config, $default)
+    /**
+     * Create a question for an existing directory path.
+     *
+     * @param  string  $default
+     * @return \Symfony\Component\Console\Question\Question
+     */
+    private function createPathQuestion($default): Question
+    {
+        $question = new Question('Type new path or press enter to use default <comment>'.$default.'</comment> path: ', null);
+        $question->setValidator(function ($path) {
+            if ($path && ! file_exists($path)) {
+                throw new Exception('Please enter a valid existing path.');
+            }
+
+            return trim_end($path, '/');
+        });
+
+        return $question;
+    }
+
+    /**
+     * Ask for the NGINX path.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
+     * @param  mixed  $config
+     * @param  mixed  $default
+     * @return void
+     */
+    private function setNginxPath($input, $output, $helper, &$config, $default): void
     {
         $output->writeln('<info>Please set NGINX path.</info>');
 
-        //Nginx path
-        $question = new Question('Type new path or press enter for using default <comment>' . $default . '</comment> path: ', null);
-        $question->setValidator(function ($path) {
-            if ($path && !file_exists($path)) {
-                throw new \Exception('Please fill valid existing path.');
-            }
+        $value = $config = $helper->ask($input, $output, $this->createPathQuestion($default)) ?: $default;
 
-            return trim_end($path, '/');
-        });
-
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
-
-        $output->writeln('Used path: <comment>' . $value . '</comment>');
+        $output->writeln('Used path: <comment>'.$value.'</comment>');
     }
 
-    private function setPHPPath($input, $output, $helper, &$config, $default)
+    /**
+     * Ask for the PHP path.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
+     * @param  mixed  $config
+     * @param  mixed  $default
+     * @return void
+     */
+    private function setPHPPath($input, $output, $helper, &$config, $default): void
     {
         $output->writeln('<info>Please set PHP path.</info>');
 
-        //Nginx path
-        $question = new Question('Type new path or press enter for using default <comment>' . $default . '</comment> path: ', null);
-        $question->setValidator(function ($path) {
-            if ($path && !file_exists($path)) {
-                throw new \Exception('Please fill valid existing path.');
-            }
+        $value = $config = $helper->ask($input, $output, $this->createPathQuestion($default)) ?: $default;
 
-            return trim_end($path, '/');
-        });
-
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
-
-        $output->writeln('Used path: <comment>' . $value . '</comment>');
+        $output->writeln('Used path: <comment>'.$value.'</comment>');
     }
 
-    private function setSSLPath($input, $output, $helper, &$config, $default)
+    /**
+     * Ask for the SSL certificates path.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
+     * @param  mixed  $config
+     * @param  mixed  $default
+     * @return void
+     */
+    private function setSSLPath($input, $output, $helper, &$config, $default): void
     {
-        $output->writeln('<info>Please set SSL ceriticates path.</info>');
+        $output->writeln('<info>Please set SSL certificates path.</info>');
 
-        //SSL path
-        $question = new Question('Type new path or press enter for using default <comment>' . $default . '</comment> path: ', null);
-        $question->setValidator(function ($path) {
-            if ($path && !file_exists($path)) {
-                throw new \Exception('Please fill valid existing path.');
-            }
+        $value = $config = $helper->ask($input, $output, $this->createPathQuestion($default)) ?: $default;
 
-            return trim_end($path, '/');
-        });
-
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
-
-        $output->writeln('Used path: <comment>' . $value . '</comment>');
+        $output->writeln('Used path: <comment>'.$value.'</comment>');
     }
 
-    private function setSSLEmail($input, $output, $helper, &$config, $default)
+    /**
+     * Ask for the email used for SSL certificates.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
+     * @param  mixed  $config
+     * @param  mixed  $default
+     * @return void
+     */
+    private function setSSLEmail($input, $output, $helper, &$config, $default): void
     {
-        $output->writeln('<info>Please set Email for SSL ceriticates generation.</info>');
+        $output->writeln('<info>Please set email for SSL certificates generation.</info>');
 
-        //Nginx path
         $question = new Question(
-            'Type email adress for generating SSL certificate via certbot' . ($default ? ' or press enter for using default address <comment>' . $default . '</comment>' : '') . ': ',
+            'Type email address for generating SSL certificate via certbot'.($default ? ' or press enter to use default address <comment>'.$default.'</comment>' : '').': ',
             null,
         );
 
+        $question->setValidator(function ($email) {
+            if ($email && ! isValidEmail($email)) {
+                throw new Exception('Please enter a valid email address.');
+            }
+
+            return $email;
+        });
+
         $value = $config = $helper->ask($input, $output, $question) ?: $default;
 
-        $output->writeln('Used email: <comment>' . $value . '</comment>');
+        $output->writeln('Used email: <comment>'.$value.'</comment>');
     }
 
-    private function setDefaultPHPVersion($input, $output, $helper, &$config, $default, $full_config)
+    /**
+     * Ask for the default PHP version and set it as default PHP CLI version.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
+     * @param  mixed  $config
+     * @param  mixed  $default
+     * @param  array  $full_config
+     * @return void
+     */
+    private function setDefaultPHPVersion($input, $output, $helper, &$config, $default, $full_config): void
     {
         $output->writeln('<info>Please set default PHP version.</info>');
 
-        //Nginx path
+        $php = vpsManager()->php();
+
         $question = new ChoiceQuestion(
-            'Set default PHP Version of your server. Default is <comment>' . $default . '</comment>: ',
-            vpsManager()
-                ->php()
-                ->getVersions(),
+            'Set default PHP version of your server. Default is <comment>'.$default.'</comment>: ',
+            $php->getVersions(),
             $default,
         );
 
         $version = $config = $helper->ask($input, $output, $question) ?: $default;
 
-        $output->writeln('Used version for new websites: <comment>' . $version . '</comment>');
+        $output->writeln('Used version for new websites: <comment>'.$version.'</comment>');
 
-        //Check if is PHP Version installed
-        if (($php = vpsManager()->php())->isInstalled($version, $full_config['php_path'])) {
-            if ($php->changeDefaultPHP($version)) {
-                $output->writeln('Updated php alias to: <comment>' . $php->getPhpBinPath($version) . '</comment>');
-            } else {
-                $output->writeln('<error>PHP symlink could not be updated on path ' . $php->getPhpBinPath($version) . '</error>');
-            }
+        // Check if PHP version is installed
+        if (! $php->isInstalled($version, $full_config['php_path'] ?? null)) {
+            $output->writeln('<error>PHP '.$version.' is not installed. Default PHP CLI version has not been changed.</error>');
+
+            return;
+        }
+
+        if ($php->changeDefaultPHP($version)) {
+            $output->writeln('Updated php alias to: <comment>'.$php->getPhpBinPath($version).'</comment>');
         } else {
-            $output->writeln('<error>Please set default PHP version.</error>');
+            $output->writeln('<error>PHP symlink could not be updated on path '.$php->getPhpBinPath($version).'</error>');
         }
     }
 
-    private function setVpsManagerPath($input, $output, $helper, &$config, $default)
-    {
-        $output->writeln('<info>Please set VPSManager web interface path (path to Laravel app without /public).</info>');
-
-        //Nginx path
-        $question = new Question('Type new path or press enter for using default <comment>' . $default . '</comment> path: ', null);
-        $question->setValidator(function ($path) use ($default) {
-            if (($path && !file_exists($path)) || (!$path && !$default)) {
-                throw new \Exception('Please fill valid existing path.');
-            }
-
-            return trim_end($path, '/');
-        });
-
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
-
-        $output->writeln('Used path: <comment>' . $value . '</comment>');
-    }
-
-    private function setWWWPath($input, $output, $helper, &$config, $default)
+    /**
+     * Ask for the WWW path of websites.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
+     * @param  mixed  $config
+     * @param  mixed  $default
+     * @return void
+     */
+    private function setWWWPath($input, $output, $helper, &$config, $default): void
     {
         $output->writeln('<info>Please set WWW path of your websites.</info>');
 
-        //Nginx path
-        $question = new Question('Type new path or press enter for using default <comment>' . $default . '</comment> path: ', null);
-        $question->setValidator(function ($path) {
-            if ($path && !file_exists($path)) {
-                throw new \Exception('Please fill valid existing path.');
-            }
+        $value = $config = $helper->ask($input, $output, $this->createPathQuestion($default)) ?: $default;
 
-            return trim_end($path, '/');
-        });
-
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
-
-        $output->writeln('Used path: <comment>' . $value . '</comment>');
+        $output->writeln('Used path: <comment>'.$value.'</comment>');
     }
 
-    private function setMysqlUser($input, $output, $helper, &$config, $default)
-    {
-        $output->writeln('<info>Please set MYSQL root user name for future mysql modifications.</info>');
-
-        //Nginx path
-        $question = new Question('Type mysql root user name <comment>' . $default . '</comment>: ', null);
-
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
-
-        $output->writeln('Used username: <comment>' . $value . '</comment>');
-    }
-
-    private function setMysqlPassword($input, $output, $helper, &$config, $default)
-    {
-        $output->writeln('<info>Please set MYSQL password for future mysql modifications.</info>');
-
-        //Nginx path
-        $question = new Question('Type mysql root password <comment>' . $default . '</comment>: ', null);
-
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
-
-        $output->writeln('Used password: <comment>' . $value . '</comment>');
-    }
-
-    private function setMysqlHost($input, $output, $helper, &$config, $default)
-    {
-        $output->writeln('<info>Please set MYSQL host in case of remote connections. (localhost, 192.168.1.%, %) </info>');
-
-        //Nginx path
-        $question = new Question('Type mysql hostname <comment>' . $default . '</comment>: ', null);
-
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
-
-        $output->writeln('Used host: <comment>' . $value . '</comment>');
-    }
-
-    private function setHost($input, $output, $helper, &$config, $default)
-    {
-        $output->writeln('<info>Please set host of your VPSManager admin panel.</info>');
-
-        //Nginx path
-        $question = new Question('eg. vpsmanager.example.com: ', null);
-
-        $question->setValidator(function ($host) {
-            if (!$host || !isValidDomain($host)) {
-                throw new \Exception('Please fill valid host name.');
-            }
-
-            return $host;
-        });
-
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
-
-        $output->writeln('Used host: <comment>' . $value . '</comment>');
-    }
-
-    /*
-     * Returns manager host
+    /**
+     * Ask for the MySQL root user name.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
+     * @param  mixed  $config
+     * @param  mixed  $default
+     * @return void
      */
-    private function getManagerHost()
+    private function setMysqlUser($input, $output, $helper, &$config, $default): void
+    {
+        $output->writeln('<info>Please set MySQL root user name for future MySQL modifications.</info>');
+
+        $question = new Question('Type MySQL root user name <comment>'.$default.'</comment>: ', null);
+
+        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+
+        $output->writeln('Used username: <comment>'.$value.'</comment>');
+    }
+
+    /**
+     * Ask for the MySQL root password.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
+     * @param  mixed  $config
+     * @param  mixed  $default
+     * @return void
+     */
+    private function setMysqlPassword($input, $output, $helper, &$config, $default): void
+    {
+        $output->writeln('<info>Please set MySQL root password for future MySQL modifications.</info>');
+
+        $question = new Question('Type MySQL root password'.($default ? ' or press enter to keep the current one' : '').': ', null);
+
+        $config = $helper->ask($input, $output, $question) ?: $default;
+
+        $output->writeln('Used password: <comment>'.($config ? str_repeat('*', 8) : '(empty)').'</comment>');
+    }
+
+    /**
+     * Ask for the MySQL host of created users.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
+     * @param  mixed  $config
+     * @param  mixed  $default
+     * @return void
+     */
+    private function setMysqlHost($input, $output, $helper, &$config, $default): void
+    {
+        $output->writeln('<info>Please set MySQL host in case of remote connections (localhost, 192.168.1.%, %).</info>');
+
+        $question = new Question('Type MySQL hostname <comment>'.$default.'</comment>: ', null);
+
+        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+
+        $output->writeln('Used host: <comment>'.$value.'</comment>');
+    }
+
+    /**
+     * Get the VPS Manager web interface host.
+     *
+     * @return string|null
+     */
+    private function getManagerHost(): ?string
     {
         return vpsManager()->config('host');
     }
 
-    /*
-     * Return path of manager web interface
+    /**
+     * Get the path of VPS Manager web interface.
+     *
+     * @return string
      */
-    private function getManagerPath()
+    private function getManagerPath(): string
     {
         $path = vpsManager()->config('vpsmanager_path');
 
-        //If installation process was initialized from vendor directory, then remove this path from vpsmanager path
+        // Remove vendor path if the installation has been initialized from vendor directory
         $path = trim_end($path, '/');
         $path = trim_end($path, '/vendor/marekgogol/vpsmanager/src/app');
 
         return $path;
     }
 
-    /*
-     * Set host
+    /**
+     * Ask whether self signed SSL certificates should be enabled in NGINX.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
+     * @param  mixed  $config
+     * @param  mixed  $default
+     * @return void
      */
-    private function generateManagerHosting($input, $output)
+    private function enableSelfSignedSSL($input, $output, $helper, &$config, $default): void
     {
-        $host_name = $this->getManagerHost();
+        $question = new ConfirmationQuestion('<info>Would you like to allow self signed SSL certificates in NGINX?</info> ('.($default ? 'Y/n' : 'y/N').') ', (bool) $default);
 
-        //Reset settings for manager web interface
-        if ($this->isDev($input)) {
-            vpsManager()
-                ->hosting()
-                ->remove($host_name);
-        }
-
-        if (
-            ($response = vpsManager()
-                ->hosting()
-                ->create($host_name, [
-                    'www_path' => $this->getManagerPath(),
-                    'open_basedir' => $input->getOption('open_basedir'),
-                    'no_chmod' => $input->getOption('no_chmod'),
-                ]))->isError()
-        ) {
-            throw new \Exception($response->message);
-        }
-
-        $output->writeln('<info>' . $response->message . '</info>');
-    }
-
-    private function enableSelfSignedSSL($input, $output, $helper, &$config, $default)
-    {
-        $question = new ConfirmationQuestion('<info>Would you like to allow self signed SSL certificates in NGINX?</info> (' . ($default ? 'y' : 'N') . ') ', $default);
-
-        if (!($config = $helper->ask($input, $output, $question))) {
+        if (! ($config = $helper->ask($input, $output, $question))) {
             return;
         }
 
-        //Enable self signed certs in sites-available/default
-        vpsManager()
-            ->certbot()
-            ->enableDefaultSSLCert();
+        // Enable self signed certs in sites-available/default
+        vpsManager()->certbot()->enableDefaultSSLCert();
 
         $command = 'make-ssl-cert generate-default-snakeoil --force-overwrite';
-        $generate = "\n" . '<info>run command:</info> ' . $command;
 
-        if (!file_exists($path = '/etc/ssl/certs/ssl-cert-snakeoil.pem') || !file_exists($path = '/etc/ssl/private/ssl-cert-snakeoil.key')) {
-            exec($command, $_output, $return_var);
+        $certPath = '/etc/ssl/certs/ssl-cert-snakeoil.pem';
+        $keyPath = '/etc/ssl/private/ssl-cert-snakeoil.key';
 
-            if ($return_var == 0) {
-                $output->writeln('SSL Snakeoil certificate has been created: ' . $path);
-            } else {
-                return $output->writeln('<error>SSL Snakeoil certificate does not exists and could not be created at: ' . $path . '</error>' . $generate);
-            }
+        if (file_exists($certPath) && file_exists($keyPath)) {
+            return;
+        }
+
+        exec($command, $commandOutput, $return_var);
+
+        if ($return_var == 0) {
+            $output->writeln('SSL snakeoil certificate has been created: '.$certPath);
+        } else {
+            $output->writeln('<error>SSL snakeoil certificate does not exist and could not be created at: '.$certPath.'</error>'."\n".'<info>Run command:</info> '.$command);
         }
     }
 
-    private function setIsProxiedNginx($input, $output, $helper, &$config, $default)
+    /**
+     * Ask whether NGINX is behind a load balancer receiving proxied SSL requests.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
+     * @param  mixed  $config
+     * @param  mixed  $default
+     * @return void
+     */
+    private function setIsProxiedNginx($input, $output, $helper, &$config, $default): void
     {
-        $question = new ConfirmationQuestion('<info>Is this proxy behind LoadBalancer and will receive proxied SSL requests?</info> (' . ($default ? 'y' : 'N') . ') ', $default);
+        $question = new ConfirmationQuestion('<info>Is this server behind a load balancer and will it receive proxied SSL requests?</info> ('.($default ? 'Y/n' : 'y/N').') ', (bool) $default);
 
-        if (!($config = $helper->ask($input, $output, $question))) {
-            return;
-        }
+        $config = $helper->ask($input, $output, $question);
     }
 }

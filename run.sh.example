@@ -1,11 +1,12 @@
-#1. build: docker build . -t vpsmanager
-#2. run
-#3. docker exec -it vpsmanager /bin/bash
-docker run --cap-add=sys_admin --security-opt label:disable \
-            -it \
+# Preferred: docker compose up -d --build && docker compose exec vpsmanager bash
+# Plain docker alternative:
+docker build . -t vpsmanager
+docker run --cap-add=SYS_ADMIN --security-opt apparmor:unconfined \
             -d \
             --name vpsmanager \
-            -p 80:80 \
-            -p 22:22 \
-            -v /path-to-vpsmanager:/root/vpsmanager \
-            vpsmanager /bin/bash
+            -p 8000:80 \
+            -p 8443:443 \
+            -p 2200:22 \
+            -v "$(pwd)":/root/vpsmanager \
+            vpsmanager
+docker exec -it vpsmanager bash

@@ -2,8 +2,8 @@
 
 namespace Gogol\VpsManagerCLI\Command\Hosting;
 
-use Gogol\VpsManagerCLI\Nginx\Nginx;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -14,20 +14,50 @@ use Symfony\Component\Console\Question\Question;
 
 class HostingCreateCommand extends Command
 {
-    private $input;
-    private $output;
-    private $helper;
+    /**
+     * The console input.
+     *
+     * @var \Symfony\Component\Console\Input\InputInterface
+     */
+    private InputInterface $input;
 
+    /**
+     * The console output.
+     *
+     * @var \Symfony\Component\Console\Output\OutputInterface
+     */
+    private OutputInterface $output;
+
+    /**
+     * The question helper.
+     *
+     * @var \Symfony\Component\Console\Helper\QuestionHelper
+     */
+    private QuestionHelper $helper;
+
+    /**
+     * Configure the command.
+     *
+     * @return void
+     */
     protected function configure(): void
     {
         $this->setName('hosting:create')
             ->addArgument('domain', InputArgument::OPTIONAL, 'Domain name')
             ->setDescription('Create new hosting with full php/mysql/nginx setup')
             ->addOption('domain', null, InputOption::VALUE_OPTIONAL, 'Domain name', null)
-            ->addOption('php_version', null, InputOption::VALUE_OPTIONAL, 'PHP Version', null)
-            ->addOption('dev', null, InputOption::VALUE_OPTIONAL, 'Use dev version of command', null);
+            ->addOption('php_version', null, InputOption::VALUE_OPTIONAL, 'PHP Version', null);
     }
 
+    /**
+     * Execute the command.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @return int
+     *
+     * @throws \Exception
+     */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->input = $input;
@@ -41,32 +71,29 @@ class HostingCreateCommand extends Command
         $chroot = $this->getChrootEnabled();
         $database = $this->askForCreatingDatabase();
 
-        //Remove all hosting settings
-        //If dev parameter will be presented as number 2, all www data and database will be destroyed!
-        if ($this->isDev()) {
-            vpsManager()
-                ->hosting()
-                ->remove($domain, $this->input->getOption('dev') == 2);
-        }
-
         $this->generateManagerHosting($domain, $php_version, $database, $chroot);
 
         return Command::SUCCESS;
     }
 
-    public function getDomainName()
+    /**
+     * Get domain name from argument or ask for it.
+     *
+     * @return string
+     */
+    public function getDomainName(): string
     {
         if ($domain = $this->input->getArgument('domain')) {
-            if (!isValidDomain($domain)) {
-                $this->output->writeln('<error>Please fill valid domain name.</error>');
-            } else {
+            if (isValidDomain($domain)) {
                 return $domain;
             }
+
+            $this->output->writeln('<error>Please fill valid domain name.</error>');
         }
 
         $question = new Question('Please fill domain name of your new hosting (eg. <info>example.com</info>): ', $this->input->getOption('domain'));
         $question->setValidator(function ($host) {
-            if (!$host || !isValidDomain($host)) {
+            if (! $host || ! isValidDomain($host)) {
                 throw new \Exception('Please fill valid domain name.');
             }
 
@@ -76,65 +103,84 @@ class HostingCreateCommand extends Command
         return $this->helper->ask($this->input, $this->output, $question);
     }
 
-    public function getPHPVersion()
+    /**
+     * Get PHP version from option or ask for it.
+     *
+     * @return string
+     *
+     * @throws \Exception
+     */
+    public function getPHPVersion(): string
     {
         $default = vpsManager()->config('php_version');
 
-        //Nginx path
-        $question = new ChoiceQuestion(
-            'Set PHP Version of your domain. [' . $default . ']: ',
-            vpsManager()
-                ->php()
-                ->getVersions(),
-            $default,
-        );
+        if (! ($version = $this->input->getOption('php_version'))) {
+            $question = new ChoiceQuestion(
+                'Set PHP version of your domain. ['.$default.']: ',
+                vpsManager()->php()->getVersions(),
+                $default,
+            );
 
-        $version = $this->helper->ask($this->input, $this->output, $question) ?: $default;
-
-        //Check if is PHP Version installed
-        if (($php = vpsManager()->php())->isInstalled($version)) {
-            return $version;
-        } else {
-            throw new \Exception('Required PHP Version is not installed.');
+            $version = $this->helper->ask($this->input, $this->output, $question) ?: $default;
         }
+
+        // Check if PHP version is installed
+        if (! vpsManager()->php()->isInstalled($version)) {
+            throw new \Exception('Required PHP version is not installed.');
+        }
+
+        return $version;
     }
 
-    public function getChrootEnabled()
+    /**
+     * Ask if chroot environment should be created.
+     *
+     * @return bool
+     */
+    public function getChrootEnabled(): bool
     {
         $question = new ConfirmationQuestion('Would you like to set chroot environment for this user? (y/N) [N]: ', false);
 
-        return $this->helper->ask($this->input, $this->output, $question);
+        return (bool) $this->helper->ask($this->input, $this->output, $question);
     }
 
-    public function askForCreatingDatabase()
-    {
-        $question = new ConfirmationQuestion('Would you like to create MySql <info>user</info> and <info>database</info> for this domain? (y/N) [N]: ', false);
-
-        return $this->helper->ask($this->input, $this->output, $question);
-    }
-
-    public function isDev()
-    {
-        return $this->input->getOption('dev') > 1;
-    }
-
-    /*
-     * Set host
+    /**
+     * Ask if mysql user and database should be created.
+     *
+     * @return bool
      */
-    private function generateManagerHosting($domain, $php_version, $database = false, $chroot = false)
+    public function askForCreatingDatabase(): bool
     {
-        if (
-            ($response = vpsManager()
-                ->hosting()
-                ->create($domain, [
-                    'php_version' => $php_version,
-                    'database' => $database,
-                    'chroot' => $chroot,
-                ]))->isError()
-        ) {
+        $question = new ConfirmationQuestion('Would you like to create MySQL <info>user</info> and <info>database</info> for this domain? (y/N) [N]: ', false);
+
+        return (bool) $this->helper->ask($this->input, $this->output, $question);
+    }
+
+    /**
+     * Create the hosting.
+     *
+     * @param  string  $domain
+     * @param  string  $php_version
+     * @param  bool  $database
+     * @param  bool  $chroot
+     * @return void
+     *
+     * @throws \Exception
+     */
+    private function generateManagerHosting(string $domain, string $php_version, bool $database = false, bool $chroot = false): void
+    {
+        $response = vpsManager()
+            ->hosting()
+            ->create($domain, [
+                'php_version' => $php_version,
+                'database' => $database,
+                'chroot' => $chroot,
+            ]);
+
+        if ($response->isError()) {
             throw new \Exception($response->message);
         }
 
-        $this->output->writeln('<info>' . $response->message . '</info>');
+        $this->output->writeln('<info>'.$response->message.'</info>');
     }
 }

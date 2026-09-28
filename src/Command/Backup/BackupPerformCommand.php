@@ -2,22 +2,19 @@
 
 namespace Gogol\VpsManagerCLI\Command\Backup;
 
-use Gogol\VpsManagerCLI\Nginx\Nginx;
+use Exception;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Question\ChoiceQuestion;
-use Symfony\Component\Console\Question\ConfirmationQuestion;
-use Symfony\Component\Console\Question\Question;
 
 class BackupPerformCommand extends Command
 {
-    private $input;
-    private $output;
-    private $helper;
-
+    /**
+     * Configure the command.
+     *
+     * @return void
+     */
     protected function configure(): void
     {
         $this->setName('backup:run')
@@ -27,44 +24,45 @@ class BackupPerformCommand extends Command
             ->addOption('www', null, InputOption::VALUE_OPTIONAL, 'Backup all www data', false);
     }
 
+    /**
+     * Execute the command.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @return int
+     *
+     * @throws \Exception
+     */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $this->input = $input;
-        $this->output = $output;
-        $this->helper = $this->getHelper('question');
+        vpsManager()->bootConsole($output, $input, $this->getHelper('question'));
 
-        vpsManager()->bootConsole($output, $input, $this->helper);
-
-        if (!vpsManager()->config('backup_path')) {
-            throw new \Exception('Please, first start backups configuration with "php vpsmanager backup:setup" command.');
+        if (! vpsManager()->config('backup_path')) {
+            throw new Exception('Please, first start backups configuration with "php vpsmanager backup:setup" command.');
         }
 
-        if (
-            count(
-                $missing = vpsManager()
-                    ->backup()
-                    ->checkRequirements(),
-            ) > 0
-        ) {
-            throw new \Exception('Please, first install missing extensions "apt install -y ' . implode(' ', $missing) . '"');
+        $missing = vpsManager()->backup()->checkRequirements();
+
+        if (count($missing) > 0) {
+            throw new Exception('Please, first install missing extensions "apt install -y '.implode(' ', $missing).'"');
         }
 
-        //If any parameter has been filled, then everything will be backuped
-        $any = $input->getOption('databases') === false && $input->getOption('dirs') === false && $input->getOption('www') === false;
+        // If no option has been passed, everything will be backed up
+        $all = $input->getOption('databases') === false && $input->getOption('dirs') === false && $input->getOption('www') === false;
 
-        if (
-            ($response = vpsManager()
-                ->backup()
-                ->perform([
-                    'databases' => $any || $input->getOption('databases') === null,
-                    'dirs' => $any || $input->getOption('dirs') === null,
-                    'www' => $any || $input->getOption('www') === null,
-                ]))->isError()
-        ) {
-            throw new \Exception($response->message);
+        $response = vpsManager()
+            ->backup()
+            ->perform([
+                'databases' => $all || $input->getOption('databases') === null,
+                'dirs' => $all || $input->getOption('dirs') === null,
+                'www' => $all || $input->getOption('www') === null,
+            ]);
+
+        if ($response->isError()) {
+            throw new Exception($response->message);
         }
 
-        $this->output->writeln('<info>' . $response->message . '</info>');
+        $output->writeln('<info>'.$response->message.'</info>');
 
         return Command::SUCCESS;
     }

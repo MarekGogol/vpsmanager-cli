@@ -10,47 +10,88 @@ use Gogol\VpsManagerCLI\Helpers\MySQLHelper;
 use Gogol\VpsManagerCLI\Helpers\Nginx;
 use Gogol\VpsManagerCLI\Helpers\PHP;
 use Gogol\VpsManagerCLI\Helpers\Response;
-use Gogol\VpsManagerCLI\Helpers\SSH;
 use Gogol\VpsManagerCLI\Helpers\Server;
+use Gogol\VpsManagerCLI\Helpers\SSH;
 use Gogol\VpsManagerCLI\Helpers\Stub;
+use Symfony\Component\Console\Helper\QuestionHelper;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
 
+/*
+ * Main VPS Manager application container.
+ *
+ * Holds the loaded configuration, the console I/O and lazily booted helper instances.
+ */
 class Application
 {
-    /*
-     * Booted classes
+    /**
+     * The booted helper instances.
+     *
+     * @var array
      */
     public $booted = [];
 
-    /*
-     * Config properties
+    /**
+     * The loaded configuration.
+     *
+     * @var array|null
      */
     protected $config = null;
 
-    /*
-     * Console properties
+    /**
+     * The console output.
+     *
+     * @var \Symfony\Component\Console\Output\OutputInterface|null
      */
     public $output = null;
+
+    /**
+     * The console input.
+     *
+     * @var \Symfony\Component\Console\Input\InputInterface|null
+     */
     public $input = null;
+
+    /**
+     * The console question helper.
+     *
+     * @var \Symfony\Component\Console\Helper\QuestionHelper|null
+     */
     public $helper = null;
 
-    /*
-     * Return config
+    /**
+     * Get the whole configuration or a single config value.
+     *
+     * @param  string|null  $key
+     * @param  mixed  $default
+     * @return mixed
      */
     public function config($key = null, $default = null)
     {
-        //Boot config params
+        // Boot config params
         $config = vpsManager()->bootConfig();
 
-        return $key ? (array_key_exists($key, $config) ? (is_null($config[$key]) ? $default : $config[$key]) : $default) : $config;
+        if (! $key) {
+            return $config;
+        }
+
+        if (! array_key_exists($key, $config) || is_null($config[$key])) {
+            return $default;
+        }
+
+        return $config[$key];
     }
 
-    /*
-     * Boot config data from config file
+    /**
+     * Load configuration data from the config file.
+     *
+     * @param  bool  $force
+     * @return array
      */
-    public function bootConfig($force = false)
+    public function bootConfig(bool $force = false): array
     {
-        if (!$this->config || $force === true) {
-            if (file_exists($path = vpsManagerPath() . '/config.php')) {
+        if (! $this->config || $force === true) {
+            if (file_exists($path = vpsManagerPath().'/config.php')) {
                 $this->config = require $path;
             } else {
                 $this->config = [];
@@ -60,23 +101,36 @@ class Application
         return $this->config;
     }
 
-    public function saveConfig($data)
+    /**
+     * Save configuration data into the config file.
+     *
+     * @param  array  $data
+     * @return int|false
+     */
+    public function saveConfig(array $data): int|false
     {
-        $path = vpsManagerPath() . '/config.php';
+        $path = vpsManagerPath().'/config.php';
 
-        $save = file_put_contents($path, "<?php \n\nreturn " . var_export($data, true) . ';');
+        $save = file_put_contents($path, "<?php \n\nreturn ".var_export($data, true).';');
 
-        //Change permissions of config just for root
-        exec('chown root:root ' . $path);
-        exec('chmod 600 ' . $path);
+        // Make the config readable just for root
+        exec('chown root:root '.$path);
+        exec('chmod 600 '.$path);
 
         return $save;
     }
 
-    /*
-     * Boot console in vpsManager and check correct permissions
+    /**
+     * Boot console in VPS Manager and check correct permissions.
+     *
+     * @param  \Symfony\Component\Console\Output\OutputInterface|null  $output
+     * @param  \Symfony\Component\Console\Input\InputInterface|null  $input
+     * @param  \Symfony\Component\Console\Helper\QuestionHelper|null  $helper
+     * @return void
+     *
+     * @throws \Exception
      */
-    public function bootConsole($output, $input = null, $helper = null)
+    public function bootConsole(?OutputInterface $output, ?InputInterface $input = null, ?QuestionHelper $helper = null): void
     {
         if ($output) {
             $this->output = $output;
@@ -93,30 +147,43 @@ class Application
         checkPermissions();
     }
 
-    /*
-     * Get console output
+    /**
+     * Get the console output.
+     *
+     * @return \Symfony\Component\Console\Output\OutputInterface|null
      */
-    public function getOutput()
+    public function getOutput(): ?OutputInterface
     {
         return $this->output;
     }
 
-    /*
-     * Get console output
+    /**
+     * Get the console input.
+     *
+     * @return \Symfony\Component\Console\Input\InputInterface|null
      */
-    public function getInput()
+    public function getInput(): ?InputInterface
     {
         return $this->input;
     }
 
-    /*
-     * Return stub
+    /**
+     * Get a stub instance.
+     *
+     * @param  string  $name
+     * @return \Gogol\VpsManagerCLI\Helpers\Stub
      */
-    public function getStub($name)
+    public function getStub($name): Stub
     {
         return new Stub($name);
     }
 
+    /**
+     * Boot the given helper class only once.
+     *
+     * @param  string  $namespace
+     * @return mixed
+     */
     protected function boot($namespace)
     {
         if (array_key_exists($namespace, $this->booted)) {
@@ -129,87 +196,113 @@ class Application
         return $this->booted[$namespace];
     }
 
-    /*
-     * Return response helper
+    /**
+     * Get a new response instance.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\Response
      */
-    public function response()
+    public function response(): Response
     {
         return new Response();
     }
 
-    /*
-     * Return hosting helper
+    /**
+     * Get the hosting helper.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\Hosting
      */
-    public function hosting()
+    public function hosting(): Hosting
     {
         return $this->boot(Hosting::class);
     }
 
-    /*
-     * Return backup helper
+    /**
+     * Get the backup helper.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\Backup
      */
-    public function backup()
+    public function backup(): Backup
     {
         return $this->boot(Backup::class);
     }
 
-    /*
-     * Return hosting helper
+    /**
+     * Get the server helper.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\Server
      */
-    public function server()
+    public function server(): Server
     {
         return $this->boot(Server::class);
     }
 
-    /*
-     * Return hosting helper
+    /**
+     * Get the chroot helper.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\Chroot
      */
-    public function chroot()
+    public function chroot(): Chroot
     {
         return $this->boot(Chroot::class);
     }
 
-    /*
-     * Return NGINX helper
+    /**
+     * Get the NGINX helper.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\Nginx
      */
-    public function nginx()
+    public function nginx(): Nginx
     {
         return $this->boot(Nginx::class);
     }
 
-    /*
-     * Return ssh helper
+    /**
+     * Get the SSH helper.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\SSH
      */
-    public function ssh()
+    public function ssh(): SSH
     {
         return $this->boot(SSH::class);
     }
 
-    /*
-     * Return Certbot helper
+    /**
+     * Get the Certbot helper.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\Certbot
      */
-    public function certbot()
+    public function certbot(): Certbot
     {
         return $this->boot(Certbot::class);
     }
 
-    /*
-     * Return PHP helper
+    /**
+     * Get the PHP helper.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\PHP
      */
-    public function php()
+    public function php(): PHP
     {
         return $this->boot(PHP::class);
     }
 
-    /*
-     * Return PHP helper
+    /**
+     * Get the MySQL helper.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\MySQLHelper
      */
-    public function mysql()
+    public function mysql(): MySQLHelper
     {
         return $this->boot(MySQLHelper::class);
     }
 
-    public function getSubdomain($domain)
+    /**
+     * Get the subdomain part of a third level domain.
+     *
+     * @param  string  $domain
+     * @return string|false
+     */
+    public function getSubdomain($domain): string|false
     {
         if (count($parts = $this->getDomainParts($domain)) == 3) {
             return $parts[0];
@@ -218,45 +311,66 @@ class Application
         return false;
     }
 
-    public function getDomainParts($domain)
+    /**
+     * Split the domain into its parts.
+     *
+     * @param  string  $domain
+     * @return array
+     */
+    public function getDomainParts($domain): array
     {
         return explode('.', $domain);
     }
 
-    public function getWebDirectory()
+    /**
+     * Get the web data directory name inside the user directory.
+     *
+     * @return string
+     */
+    public function getWebDirectory(): string
     {
         return '/data';
     }
 
-    /*
-     * Return web path
+    /**
+     * Get the user directory path of the given domain.
+     *
+     * @param  string  $domain
+     * @param  array|null  $config
+     * @return string
      */
-    public function getUserDirPath($domain, $config = null)
+    public function getUserDirPath($domain, $config = null): string
     {
         if (isset($config['www_path'])) {
             return $config['www_path'];
         }
 
-        return $this->config('www_path') . '/' . $this->server()->toUserFormat($domain);
+        return $this->config('www_path').'/'.$this->toUserFormat($domain);
     }
 
-    /*
-     * Return web path
+    /**
+     * Get the web data path of the given domain.
+     *
+     * @param  string  $domain
+     * @param  array|null  $config
+     * @return string
      */
-    public function getWebPath($domain, $config = null)
+    public function getWebPath($domain, $config = null): string
     {
         if (isset($config['www_path'])) {
             return $config['www_path'];
         }
 
-        return $this->config('www_path') . '/' . $this->server()->toUserFormat($domain) . $this->getWebDirectory($config);
+        return $this->config('www_path').'/'.$this->toUserFormat($domain).$this->getWebDirectory();
     }
 
-    /*
-     * From domain to user format
-     * removes subdomains
+    /**
+     * Convert the domain into the user format (removes subdomains).
+     *
+     * @param  string  $domain
+     * @return string
      */
-    public function toUserFormat($domain)
+    public function toUserFormat($domain): string
     {
         $parts = explode('.', $domain);
 

@@ -1,0 +1,24 @@
+services:
+  vpsmanager:
+    build:
+      context: .
+      args:
+        PHP_VERSION: '8.5'
+    container_name: vpsmanager
+    hostname: vpsmanager
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    ports:
+      - '8000:80'
+      - '8443:443'
+      - '2200:22'
+    volumes:
+      - .:/root/vpsmanager
+      - www:/var/www
+      - mysql:/var/lib/mysql
+
+volumes:
+  www:
+  mysql:

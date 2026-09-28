@@ -9,82 +9,105 @@ class PHP extends Application
 {
     use PHPSettingsTrait;
 
-    /*
-     * Check if is php version installed
+    /**
+     * Determine if the given PHP version is installed.
+     *
+     * @param  string  $version
+     * @param  string|null  $php_path
+     * @return bool
      */
-    public function isInstalled($version, $php_path = null)
+    public function isInstalled($version, $php_path = null): bool
     {
-        if (!$this->isValidPHPVersion($version)) {
+        if (! $this->isValidPHPVersion($version)) {
             return false;
         }
 
-        return file_exists(($php_path ?: $this->config('php_path')) . '/' . $version);
+        return file_exists(($php_path ?: $this->config('php_path')).'/'.$version);
     }
 
-    /*
-     * Return path to command
+    /**
+     * Get the path to the PHP binary of the given version.
+     *
+     * @param  string  $version
+     * @return string
      */
-    public function getPhpBinPath($version)
+    public function getPhpBinPath($version): string
     {
-        return '/usr/bin/php' . $version;
+        return '/usr/bin/php'.$version;
     }
 
-    /*
-     * Changing default php in CLI
+    /**
+     * Change the default PHP version used in CLI.
+     *
+     * @param  string  $version
+     * @return bool
      */
-    public function changeDefaultPHP($version)
+    public function changeDefaultPHP($version): bool
     {
-        exec('update-alternatives --set php ' . $this->getPhpBinPath($version), $output, $return_var);
+        exec('update-alternatives --set php '.$this->getPhpBinPath($version), $output, $return_var);
 
-        return $return_var == 0 ? true : false;
+        return $return_var == 0;
     }
 
-    /*
-     * Returns php socket name
+    /**
+     * Get the PHP-FPM socket name of the given domain.
+     *
+     * @param  string  $domain
+     * @param  string  $php_version
+     * @return string
      */
-    public function getSocketName($domain, $php_version)
+    public function getSocketName($domain, $php_version): string
     {
-        return 'php' . $php_version . '-fpm-' . $this->toUserFormat($domain);
+        return 'php'.$php_version.'-fpm-'.$this->toUserFormat($domain);
     }
 
-    /*
-     * Return pool path
+    /**
+     * Get the PHP-FPM pool config path of the given domain.
+     *
+     * @param  string  $domain
+     * @param  string  $php_version
+     * @return string
      */
-    public function getPoolPath($domain, $php_version)
+    public function getPoolPath($domain, $php_version): string
     {
-        return $this->config('php_path') . '/' . $php_version . '/fpm/pool.d/' . $this->toUserFormat($domain) . '.conf';
+        return $this->config('php_path').'/'.$php_version.'/fpm/pool.d/'.$this->toUserFormat($domain).'.conf';
     }
 
-    /*
-     * Check if pool file exists
+    /**
+     * Determine if the pool file of the given domain exists.
+     *
+     * @param  string  $domain
+     * @param  string  $php_version
+     * @return bool
      */
-    public function poolExists($domain, $php_version)
+    public function poolExists($domain, $php_version): bool
     {
         return file_exists($this->getPoolPath($domain, $php_version));
     }
 
     /**
-     * Create new pool for domain
-     * @param  [type] $domain      domain name
-     * @param  [type] $php_version version of pgp
-     * @return [type]              [description]
+     * Create a new PHP-FPM pool for the given domain.
+     *
+     * @param  string  $domain
+     * @param  array  $config
+     * @return \Gogol\VpsManagerCLI\Helpers\Response
      */
-    public function createPool($domain, array $config = [])
+    public function createPool($domain, array $config = []): Response
     {
-        $php_version = $config['php_version'];
+        $php_version = $config['php_version'] ?? null;
 
         $user = $this->toUserFormat($domain);
 
-        if (!in_array($php_version, $this->getVersions())) {
-            return $this->response()->error('Zadali ste nesprávnu verziu PHP');
+        if (! $this->isValidPHPVersion($php_version)) {
+            return $this->response()->error('Invalid PHP version has been given.');
         }
 
-        if (!isValidDomain($domain)) {
+        if (! isValidDomain($domain)) {
             return $this->response()->wrongDomainName();
         }
 
-        if (!$this->isInstalled($php_version)) {
-            return $this->response()->error('PHP s verziou ' . $php_version . ' nie je nainštalované.');
+        if (! $this->isInstalled($php_version)) {
+            return $this->response()->error('PHP version '.$php_version.' is not installed.');
         }
 
         if ($this->poolExists($domain, $php_version)) {
@@ -97,48 +120,53 @@ class PHP extends Application
         $stub->replace('{{version}}', $php_version);
         $stub->replace('{{socket_name}}', $this->getSocketName($domain, $php_version));
 
-        //Add settings at the end of the pool
+        // Add settings at the end of the pool
         foreach ($this->phpSettings($domain, $config) as $key => $value) {
-            $stub->addLine('php_admin_value[' . $key . '] = ' . $value);
+            $stub->addLine('php_admin_value['.$key.'] = '.$value);
         }
 
-        //Save pool
-        if (!$stub->save($this->getPoolPath($domain, $php_version))) {
-            return $this->response()->error('Súbor pre PHP pool sa nepodarilo uložiť.');
+        // Save pool
+        if (! $stub->save($this->getPoolPath($domain, $php_version))) {
+            return $this->response()->error('PHP pool file could not be saved.');
         }
 
-        return $this->response()->success('PHP Pool pre web <info>' . $domain . '</info> bol úspešne vytvorený.');
+        return $this->response()->success('PHP pool for website <info>'.$domain.'</info> has been successfully created.');
     }
 
-    /*
-     * Remove pool from php configuration
+    /**
+     * Remove the pool of the given domain from the PHP configuration.
+     *
+     * @param  string  $domain
+     * @param  string  $php_version
+     * @return bool
      */
-    public function removePool($domain, $php_version)
+    public function removePool($domain, $php_version): bool
     {
-        if (!isValidDomain($domain) || !$this->isValidPHPVersion($php_version)) {
+        if (! isValidDomain($domain) || ! $this->isValidPHPVersion($php_version)) {
             return false;
         }
 
-        if (!file_exists($pool_path = $this->getPoolPath($domain, $php_version))) {
+        if (! file_exists($pool_path = $this->getPoolPath($domain, $php_version))) {
             return true;
         }
 
-        return @unlink($pool_path) ? true : false;
+        return @unlink($pool_path);
     }
 
-    /*
-     * Restart nginx
+    /**
+     * Restart PHP-FPM service of the given version.
+     *
+     * @param  string  $php_version
+     * @return bool
      */
-    public function restart($php_version)
+    public function restart($php_version): bool
     {
-        if (!$this->isValidPHPVersion($php_version)) {
+        if (! $this->isValidPHPVersion($php_version)) {
             return false;
         }
 
-        exec('service php' . $php_version . '-fpm restart', $output, $return_var);
+        exec('service php'.$php_version.'-fpm restart', $output, $return_var);
 
-        return $return_var == 0 ? true : false;
+        return $return_var == 0;
     }
 }
-
-?>

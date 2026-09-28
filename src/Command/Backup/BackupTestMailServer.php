@@ -2,50 +2,46 @@
 
 namespace Gogol\VpsManagerCLI\Command\Backup;
 
-use Gogol\VpsManagerCLI\Nginx\Nginx;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Question\ChoiceQuestion;
-use Symfony\Component\Console\Question\ConfirmationQuestion;
-use Symfony\Component\Console\Question\Question;
 
 class BackupTestMailServer extends Command
 {
-    private $input;
-    private $output;
-
+    /**
+     * Configure the command.
+     *
+     * @return void
+     */
     protected function configure(): void
     {
-        $this->setName('backup:test-mail')->setDescription('Test mailserver connection and send test email');
+        $this->setName('backup:test-mail')->setDescription('Test mail server connection and send test email');
     }
 
+    /**
+     * Execute the command.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @return int
+     */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         vpsManager()->bootConsole($output);
 
-        $this->input = $input;
-        $this->output = $output;
-        $this->helper = $helper = $this->getHelper('question');
-
         $output->writeln('');
 
-        $this->testMailServer();
+        $error = vpsManager()->backup()->testMailServer();
 
-        return Command::SUCCESS;
-    }
+        if ($error === true) {
+            $output->writeln('<info>Test email has been successfully sent.</info>');
 
-    private function testMailServer()
-    {
-        $b = vpsManager()->backup();
-
-        if (($error = $b->testMailServer()) === true) {
-            $this->output->writeln('<info>Test email has been successfully sent.</info>');
-        } else {
-            $this->output->writeln('<info>Test message could not be sent. Mailer Error:</info>');
-            $this->output->writeln('<error>' . $error . '</error>');
+            return Command::SUCCESS;
         }
+
+        $output->writeln('<info>Test message could not be sent. Mailer error:</info>');
+        $output->writeln('<error>'.$error.'</error>');
+
+        return Command::FAILURE;
     }
 }

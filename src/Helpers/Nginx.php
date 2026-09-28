@@ -6,78 +6,110 @@ use Gogol\VpsManagerCLI\Application;
 
 class Nginx extends Application
 {
-    /*
-     * Check if domain exists
+    /**
+     * Check if nginx host of the given domain exists.
+     *
+     * @param  string  $domain
+     * @return bool
      */
-    public function exists(string $domain)
+    public function exists(string $domain): bool
     {
-        if (!isValidDomain($domain)) {
+        if (! isValidDomain($domain)) {
             return false;
         }
 
-        $path = $this->config('nginx_path') . '/sites-available/' . $this->toUserFormat($domain);
-
-        return file_exists($path);
+        return file_exists($this->getAvailablePath($domain));
     }
 
-    public function getAvailablePath($domain)
+    /**
+     * Get path of the host configuration in sites-available.
+     *
+     * @param  string  $domain
+     * @return string
+     */
+    public function getAvailablePath(string $domain): string
     {
-        return $this->config('nginx_path') . '/sites-available/' . $this->toUserFormat($domain);
+        return $this->config('nginx_path').'/sites-available/'.$this->toUserFormat($domain);
     }
 
-    public function getEnabledPath($domain)
+    /**
+     * Get path of the host configuration in sites-enabled.
+     *
+     * @param  string  $domain
+     * @return string
+     */
+    public function getEnabledPath(string $domain): string
     {
-        return $this->config('nginx_path') . '/sites-enabled/' . $this->toUserFormat($domain);
+        return $this->config('nginx_path').'/sites-enabled/'.$this->toUserFormat($domain);
     }
 
-    public function getErrorLogPath($domain, $config = null, $filename = null)
+    /**
+     * Get path of the error log file.
+     *
+     * @param  string  $domain
+     * @param  array|null  $config
+     * @param  string|null  $filename
+     * @return string
+     */
+    public function getErrorLogPath(string $domain, ?array $config = null, ?string $filename = null): string
     {
-        return $this->getWebPath($domain, $config) . '/logs/' . ($filename ?: 'error') . '.log';
+        return $this->getWebPath($domain, $config).'/logs/'.($filename ?: 'error').'.log';
     }
 
-    public function cloneNginxSettings()
+    /**
+     * Copy vpsmanager nginx configuration files into the nginx directory.
+     *
+     * @return void
+     */
+    public function cloneNginxSettings(): void
     {
         $nginx_path = $this->config('nginx_path');
 
-        if (!file_exists($nginx_path . '/vpsmanager')) {
-            exec('cp -Rf ' . __DIR__ . '/../Resources/nginx/vpsmanager ' . $nginx_path . '/vpsmanager', $output, $return_var);
-            exec('cp -f ' . __DIR__ . '/../Resources/nginx/nginx.conf ' . $nginx_path . '/nginx.conf', $output1, $return_var1);
-            exec('cp -f ' . __DIR__ . '/../Resources/nginx/conf.d/* ' . $nginx_path . '/conf.d/', $output1, $return_var2);
+        if (file_exists($nginx_path.'/vpsmanager')) {
+            return;
+        }
 
-            if ($return_var == 0 && $return_var1 == 0 && $return_var2 == 0) {
-                $this->response()
-                    ->success('<info>NGINX configuration files has been successfully copied.</info>')
-                    ->writeln(null, true);
-            } else {
-                $this->response()
-                    ->error(
-                        '<error>NGINX configuration files could not be copied.</error>' .
-                            "\n" .
-                            'Please copy <comment>./Resources/nginx</comment> directory from this package to <comment>/etc/nginx</comment>',
-                    )
-                    ->writeln(null, true);
-            }
+        $resources = __DIR__.'/../Resources/nginx';
+
+        exec('cp -Rf '.$resources.'/vpsmanager '.$nginx_path.'/vpsmanager', $output, $return_var);
+        exec('cp -f '.$resources.'/nginx.conf '.$nginx_path.'/nginx.conf', $output, $return_var1);
+        exec('cp -f '.$resources.'/conf.d/* '.$nginx_path.'/conf.d/', $output, $return_var2);
+
+        if ($return_var === 0 && $return_var1 === 0 && $return_var2 === 0) {
+            $this->response()
+                ->success('<info>NGINX configuration files have been successfully copied.</info>')
+                ->writeln(null, true);
+        } else {
+            $this->response()
+                ->error(
+                    '<error>NGINX configuration files could not be copied.</error>'."\n".
+                    'Please copy <comment>./Resources/nginx</comment> directory from this package to <comment>/etc/nginx</comment>',
+                )
+                ->writeln(null, true);
         }
     }
 
     /**
-     * Create new host
-     * @param  string $domain
-     * @param  array  $config [php_version]
-     * @return [type]
+     * Create new nginx host.
+     *
+     * @param  string  $domain
+     * @param  array  $config
+     * @return \Gogol\VpsManagerCLI\Helpers\Response
      */
-    public function createHost(string $domain, array $config = [])
+    public function createHost(string $domain, array $config = []): Response
     {
-        if (!isValidDomain($domain)) {
+        if (! isValidDomain($domain)) {
             return $this->response()->wrongDomainName();
         }
 
-        //Check if is correct setted php verion
-        if (!in_array($php_version = $config['php_version'], $this->php()->getVersions())) {
-            return $this->response()->error('Zadali ste nesprávnu verziu PHP');
+        $php_version = $config['php_version'] ?? null;
+
+        // Check if the given php version is supported
+        if (! in_array($php_version, $this->php()->getVersions())) {
+            return $this->response()->error('Invalid PHP version given.');
         }
 
-        //Skip creating when nginx exists
+        // Skip creating when nginx host exists
         if ($this->exists($domain)) {
             return $this->response();
         }
@@ -86,42 +118,53 @@ class Nginx extends Application
 
         $stub = $this->generateNginxHostStub($domain, $config, $php_version);
 
-        if (!$stub->save($this->getAvailablePath($domain))) {
-            return $this->response()->error('Súbor NGINX host sa nepodarilo uložiť.');
+        if (! $stub->save($this->getAvailablePath($domain))) {
+            return $this->response()->error('NGINX host file could not be saved.');
         }
 
-        if (!$this->allowHost($domain)) {
-            return $this->response()->error('Nepodarilo sa vytvoriť odkaz na host v priečinku sites-enabled.');
+        if (! $this->allowHost($domain)) {
+            return $this->response()->error('Could not create a symlink of the host in the sites-enabled directory.');
         }
 
-        return $this->response()->success('NGINX host <info>' . $domain . '</info> bol úspešne vytvorený.');
+        return $this->response()->success('NGINX host <info>'.$domain.'</info> has been successfully created.');
     }
 
-    private function generateNginxHostStub($domain, $config, $php_version)
+    /**
+     * Generate nginx host configuration.
+     *
+     * @param  string  $domain
+     * @param  array  $config
+     * @param  string  $php_version
+     * @return \Gogol\VpsManagerCLI\Helpers\Stub
+     */
+    private function generateNginxHostStub(string $domain, array $config, string $php_version): Stub
     {
-        $www_path = isset($config['www_path']) ? $config['www_path'] . '/public' : $this->getWebPath($domain, $config) . '/web/public';
+        $first_level_domain = $this->toUserFormat($domain);
 
-        //Create redirect from non www to www
-        $redirect_stub = clone ($stub = $this->getStub('nginx.redirect.conf'));
+        $www_path = isset($config['www_path'])
+            ? $config['www_path'].'/public'
+            : $this->getWebPath($domain, $config).'/web/public';
+
+        // Keep clean templates for the subdomain sections
+        $stub = $this->getStub('nginx.redirect.conf');
+        $redirect_stub = clone $stub;
+        $host_stub = $this->getStub('nginx.template.conf');
+
+        // Create redirect from non www to www
         $stub->addLineBefore(
-            '# NGINX host configuration for ' .
-                $this->toUserFormat($domain) .
-                ' by VPS Manager.' .
-                "\n" .
-                '# Please do not delete any comments before server {} sections. Automated scripts are related to this comments.' .
-                "\n\n" .
-                '# Default domain redirect (non www to www)',
+            '# NGINX host configuration for '.$first_level_domain.' by VPS Manager.'."\n".
+            '# Please do not delete any comments before server {} sections. Automated scripts are related to these comments.'."\n\n".
+            '# Default domain redirect (non www to www)',
         );
-        $stub->replace('{from-host}', $this->toUserFormat($domain));
+        $stub->replace('{from-host}', $first_level_domain);
 
-        //Previously we used: old: 'www.' . $this->toUserFormat($domain)
-        //But we need use $host, because correct workflot of redirect is redirecting to the same domain of https versions.
-        //For enhanced security
+        // We use $host instead of www.domain, because redirect must point
+        // to the same domain first (then to the https version) for enhanced security
         $stub->replace('{to-host}', '$host');
 
-        //Add default nginx host configuration
-        $stub->addLine("\n" . (clone ($host_stub = $this->getStub('nginx.template.conf')))->addLineBefore('# Default host configuration'));
-        $stub->replace('{host}', 'www.' . $this->toUserFormat($domain));
+        // Add default nginx host configuration
+        $stub->addLine("\n".(clone $host_stub)->addLineBefore('# Default host configuration'));
+        $stub->replace('{host}', 'www.'.$first_level_domain);
         $stub->replace('{path}', $www_path);
         $stub->replace('{php_version}', $php_version);
         $stub->replace('{php_sock_name}', $this->php()->getSocketName($domain, $php_version));
@@ -132,66 +175,93 @@ class Nginx extends Application
         return $stub;
     }
 
-    private function addSubdomainSupport($domain, $config, $stub, $sub_stub, $redirect_stub, $php_version)
+    /**
+     * Add automatic subdomains support into nginx host configuration.
+     *
+     * @param  string  $domain
+     * @param  array  $config
+     * @param  \Gogol\VpsManagerCLI\Helpers\Stub  $stub
+     * @param  \Gogol\VpsManagerCLI\Helpers\Stub  $sub_stub
+     * @param  \Gogol\VpsManagerCLI\Helpers\Stub  $redirect_stub
+     * @param  string  $php_version
+     * @return void
+     */
+    private function addSubdomainSupport(string $domain, array $config, Stub $stub, Stub $sub_stub, Stub $redirect_stub, string $php_version): void
     {
-        //If is regular hosting, then allow auto subdomains
+        // Custom www path hostings (e.g. manager) do not support auto subdomains
         if (isset($config['www_path'])) {
             return;
         }
 
         $first_level_domain = $this->toUserFormat($domain);
+        $domain_regex = str_replace('.', '\.', $first_level_domain);
 
-        $redirect_stub->replace('{from-host}', '"~^www\.(?<sub>.+)\.' . str_replace('.', '\.', $first_level_domain) . '$"');
-        $redirect_stub->replace('{to-host}', '$sub.' . $first_level_domain);
-        $stub->addLine("\n" . $redirect_stub);
+        $redirect_stub->replace('{from-host}', '"~^www\.(?<sub>.+)\.'.$domain_regex.'$"');
+        $redirect_stub->replace('{to-host}', '$sub.'.$first_level_domain);
+        $stub->addLine("\n".$redirect_stub);
 
-        $sub_stub->replace('{host}', '"~^(?<sub>.+)\.' . str_replace('.', '\.', $first_level_domain) . '$"');
-        $sub_stub->replace('{path}', $this->getWebPath($domain, $config) . '/sub/$sub/public');
+        $sub_stub->replace('{host}', '"~^(?<sub>.+)\.'.$domain_regex.'$"');
+        $sub_stub->replace('{path}', $this->getWebPath($domain, $config).'/sub/$sub/public');
         $sub_stub->replace('{php_version}', $php_version);
         $sub_stub->replace('{php_sock_name}', $this->php()->getSocketName($domain, $php_version));
         $sub_stub->replace('{error_log_path}', $this->getErrorLogPath($domain, $config));
 
-        $stub->addLine("\n" . $sub_stub);
+        $stub->addLine("\n".$sub_stub);
     }
 
-    public function removeHost($domain)
+    /**
+     * Remove nginx host.
+     *
+     * @param  string  $domain
+     * @return bool
+     */
+    public function removeHost(string $domain): bool
     {
-        if (!isValidDomain($domain)) {
+        if (! isValidDomain($domain)) {
             return false;
         }
 
-        if (file_exists($this->getEnabledPath($domain)) && !@unlink($this->getEnabledPath($domain))) {
+        // Use is_link, because broken symlinks are not detected by file_exists
+        $enabledPath = $this->getEnabledPath($domain);
+
+        if ((is_link($enabledPath) || file_exists($enabledPath)) && ! @unlink($enabledPath)) {
             return false;
         }
 
-        if (file_exists($this->getAvailablePath($domain)) && !@unlink($this->getAvailablePath($domain))) {
+        if (file_exists($availablePath = $this->getAvailablePath($domain)) && ! @unlink($availablePath)) {
             return false;
         }
 
         return true;
     }
 
-    /*
-     * Return nginx section by comments
+    /**
+     * Get nginx server {} section by the comment above it.
+     *
+     * @param  string  $comment
+     * @param  string  $conf
+     * @return string|false
      */
-    public function getSection($comment, $conf)
+    public function getSection(string $comment, string $conf): string|false
     {
-        $regex = '#\#\s?' . preg_quote($comment) . '\nserver\s?\{[\s\S]*?\n\}#i';
-        preg_match($regex, $conf, $matches);
+        $regex = '#\#\s?'.preg_quote($comment, '#').'\nserver\s?\{[\s\S]*?\n\}#i';
 
-        if (count($matches) == 0) {
+        if (! preg_match($regex, $conf, $matches)) {
             return false;
         }
 
         return trim($matches[0]);
     }
 
-    /*
-     * Allow domain host
+    /**
+     * Enable domain host (symlink into sites-enabled).
+     *
+     * @param  string  $domain
+     * @return bool
      */
-    public function allowHost(string $domain)
+    public function allowHost(string $domain): bool
     {
-        if (!isValidDomain($domain)) {
+        if (! isValidDomain($domain)) {
             return false;
         }
 
@@ -199,39 +269,42 @@ class Nginx extends Application
             return true;
         }
 
-        exec('ln -s ' . $this->getAvailablePath($domain) . ' ' . $this->getEnabledPath($domain), $output, $return_var);
+        exec('ln -s '.$this->getAvailablePath($domain).' '.$this->getEnabledPath($domain), $output, $return_var);
 
-        return $return_var == 0 ? true : false;
+        return $return_var === 0;
     }
 
-    /*
-     * Check if configuration is ok
+    /**
+     * Check if nginx configuration is valid.
+     *
+     * @return bool
      */
-    public function test()
+    public function test(): bool
     {
         exec('nginx -t 2> /dev/null', $output, $return_var);
 
-        //If nginx has error, then test it again with response
-        if ($return_var != 0) {
+        // If nginx has an error, test it again to print the error output (stderr)
+        if ($return_var !== 0) {
             exec('nginx -t');
         }
 
-        return $return_var == 0 ? true : false;
+        return $return_var === 0;
     }
 
-    /*
-     * Restart nginx
+    /**
+     * Restart nginx service.
+     *
+     * @param  bool  $test_before
+     * @return bool
      */
-    public function restart($test_before = true)
+    public function restart(bool $test_before = true): bool
     {
-        if ($test_before === true && !$this->test()) {
+        if ($test_before === true && ! $this->test()) {
             return false;
         }
 
         exec('service nginx restart', $output, $return_var);
 
-        return $return_var == 0 ? true : false;
+        return $return_var === 0;
     }
 }
-
-?>
