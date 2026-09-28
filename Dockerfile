@@ -3,6 +3,7 @@
 FROM ubuntu:24.04
 
 ARG PHP_VERSION=8.5
+ARG RR_VERSION=2025.1.15
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Europe/Bratislava \
     PHP_VERSION=${PHP_VERSION}
@@ -24,6 +25,13 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
         php${PHP_VERSION}-intl php${PHP_VERSION}-sqlite3 \
     && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
     && rm -rf /var/lib/apt/lists/*
+
+# Global RoadRunner binary for Laravel Octane, found by Octane in PATH
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -sSL "https://github.com/roadrunner-server/roadrunner/releases/download/v${RR_VERSION}/roadrunner-${RR_VERSION}-linux-${ARCH}.tar.gz" \
+        | tar -xz -C /tmp \
+    && mv "/tmp/roadrunner-${RR_VERSION}-linux-${ARCH}/rr" /usr/local/bin/rr \
+    && rm -rf /tmp/roadrunner-*
 
 COPY docker/entrypoint.sh /usr/local/bin/vps-entrypoint
 RUN chmod +x /usr/local/bin/vps-entrypoint \

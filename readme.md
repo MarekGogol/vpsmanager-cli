@@ -502,7 +502,7 @@ sudo php vpsmanager laravel:octane example.com [--path=web] [--nginx|--no-nginx]
 sudo php vpsmanager laravel:octane example.com --path=web --remove
 ```
 
-Only the RoadRunner server is supported. The application needs `laravel/octane`, `spiral/roadrunner-cli` and `spiral/roadrunner-http` in `composer.lock`, and the `rr` binary in its root (`php artisan octane:install --server=roadrunner`, add `/rr` to `.gitignore`). The command lists what is missing.
+Only the RoadRunner server is supported. The application needs `laravel/octane`, `spiral/roadrunner-cli` and `spiral/roadrunner-http` in `composer.lock`, and the `rr` binary, either in its root (`php artisan octane:install --server=roadrunner`, add `/rr` to `.gitignore`) or installed globally in `PATH` (the Docker image has it in `/usr/local/bin/rr`). The command lists what is missing.
 
 **Settings live in the application `.env`**, so each project sets what it needs. Supervisor only runs `artisan octane:start`:
 
@@ -595,7 +595,7 @@ services:
       - /Volumes/SSD/www/root/home/packages/invoices:/Volumes/SSD/www/root/home/packages/invoices:ro
 ```
 
-- Mount the project and the packages under **the same absolute path as on the Mac**. `vendor/` symlinks of composer path repositories and Laravel's `bootstrap/cache` contain absolute Mac paths.
+- Mount the project and the packages under **the same absolute path as on the Mac**. If `vendor/` symlinks use a different letter case (for example `/volumes/ssd/...`), mount the packages under that path too, linux paths are case sensitive. `vendor/` symlinks of composer path repositories and Laravel's `bootstrap/cache` contain absolute Mac paths.
 - With `MYSQL_FORWARD_HOST` set, the entrypoint does not start the local MySQL server and forwards `127.0.0.1:3306` to the Mac instead, so the project's `.env` (`DB_HOST=127.0.0.1`) works without changes. Remove the variable to use MySQL inside the container again.
 
 **2. Hosting inside the container.** Only `/var/lib/mysql` is stored in a volume. The linux user, the PHP-FPM pool, the NGINX host and `/var/www` are not persisted, so **they are gone whenever the container is recreated** (`docker compose up` after a change of the compose files, `--build`, `docker compose down`). Recreate them with:

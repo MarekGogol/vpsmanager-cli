@@ -111,11 +111,24 @@ class Laravel extends Application
             }
         }
 
-        if (! file_exists($path.'/rr')) {
-            $missing[] = 'RoadRunner binary <comment>'.$path.'/rr</comment> (run <comment>php artisan octane:install --server=roadrunner</comment>)';
+        // Octane uses rr binary from the application root, or from PATH
+        if (! file_exists($path.'/rr') && ! $this->hasGlobalRoadRunner()) {
+            $missing[] = 'RoadRunner binary <comment>'.$path.'/rr</comment> or <comment>rr</comment> in PATH (run <comment>php artisan octane:install --server=roadrunner</comment>)';
         }
 
         return $missing;
+    }
+
+    /**
+     * Determine if RoadRunner binary is installed globally.
+     *
+     * @return bool
+     */
+    public function hasGlobalRoadRunner(): bool
+    {
+        exec('command -v rr', $output, $return_var);
+
+        return $return_var === 0;
     }
 
     /**
