@@ -26,9 +26,10 @@ Everything is ready out of the box. You configure the features with the installa
 7. [Chroot environments](#chroot-environments)
 8. [MySQL databases](#mysql-databases)
 9. [Backups](#backups)
-10. [Updating](#updating)
-11. [Local development with Docker](#local-development-with-docker)
-12. [Code style](#code-style)
+10. [Laravel queues and Octane](#laravel-queues-and-octane)
+11. [Updating](#updating)
+12. [Local development with Docker](#local-development-with-docker)
+13. [Code style](#code-style)
 
 ---
 
@@ -216,6 +217,7 @@ For a domain like `blog.example.com`:
 | PHP-FPM socket | `/run/php/php{ver}-fpm-example.com.sock` |
 | NGINX host | `{nginx_path}/sites-available/blog.example.com`, symlinked into `sites-enabled` |
 | MySQL database and user | `blog_example_com` (every non-alphanumeric run becomes `_`) |
+| Supervisor programs | `/etc/supervisor/conf.d/example.com.conf`, programs `example.com-web-queue`, `example.com-sub-api-octane`... |
 
 All hosting users are also members of the `vpsmanager_hosting_user` group. Chrooted users are also in `vpsmanager_chroot_user`.
 
@@ -466,6 +468,75 @@ sudo php vpsmanager backup:test-remote
 
 ---
 
+## Laravel queues and Octane
+
+Laravel applications of a hosting are found automatically: every directory with an `artisan` file in `data/web` and `data/sub/*` is offered (`web`, `sub/api`, `sub/dev-api`...). Programs run in **supervisor**, which `wamp_setup.sh` installs. All programs of one hosting are stored together in **`/etc/supervisor/conf.d/{domain}.conf`**, each in its own `[program:...]` section, and `hosting:remove` stops and removes them.
+
+Programs run as the hosting user with the PHP version of the hosting pool (`/usr/bin/php{ver}`).
+
+### Queue workers
+
+```bash
+sudo php vpsmanager laravel:queue example.com [--path=sub/api] [--workers=2] [--queue=high,default]
+sudo php vpsmanager laravel:queue example.com --path=sub/api --remove
+```
+
+| Option | Description |
+|---|---|
+| `domain` | Hosting domain. You are asked for it if it is missing |
+| `--path` | Application path (`web`, `sub/api`...). If omitted, you choose from the found applications |
+| `--workers` | Number of worker processes (`numprocs`), default `2` |
+| `--queue` | Queues to process, passed to `queue:work --queue` |
+| `--remove` | Stop the workers and remove the program |
+
+The program `{domain}-{app}-queue` runs `artisan queue:work --sleep=3 --tries=3 --max-time=3600`. Output goes to `storage/logs/worker.log` (10 MB × 5 files).
+
+- `stopwaitsecs=3600`: supervisor waits up to one hour for the running job to finish when it stops a worker. It must be at least as long as your longest job.
+- `startsecs=1`, `autorestart=true`: a crashed worker (for example during a database outage) is started again forever, so queues recover on their own. With a longer `startsecs`, repeated quick crashes would end in the `FATAL` state and the queue would stay down until a manual restart.
+- Run the command again to apply changed options. After each deploy run `php artisan queue:restart`.
+
+### Octane (RoadRunner)
+
+```bash
+sudo php vpsmanager laravel:octane example.com [--path=web] [--nginx|--no-nginx] [--port=8100]
+sudo php vpsmanager laravel:octane example.com --path=web --remove
+```
+
+Only the RoadRunner server is supported. The application needs `laravel/octane`, `spiral/roadrunner-cli` and `spiral/roadrunner-http` in `composer.lock`, and the `rr` binary in its root (`php artisan octane:install --server=roadrunner`, add `/rr` to `.gitignore`). The command lists what is missing.
+
+**Settings live in the application `.env`**, so each project sets what it needs. Supervisor only runs `artisan octane:start`:
+
+```ini
+OCTANE_SERVER=roadrunner
+OCTANE_HOST=127.0.0.1
+OCTANE_PORT=8100
+OCTANE_WORKERS=2
+OCTANE_MAX_REQUESTS=500
+OCTANE_MAX_EXECUTION_TIME=30
+```
+
+- When `OCTANE_PORT` is missing, the command offers the first free port from `8100` (or `--port`) and writes `OCTANE_SERVER`, `OCTANE_HOST` and `OCTANE_PORT` into `.env`. Ports of all applications on the server are read from their `.env` files, so they never collide.
+- RoadRunner RPC listens on `OCTANE_PORT - 1999` (for example `6101` for `8101`).
+- `OCTANE_HOST` must be `127.0.0.1`, NGINX proxies to it.
+- Octane reads `host` and `port` from `.env` directly, but workers, max requests and max execution time only when `config/octane.php` contains them. The command warns when they are missing:
+
+```php
+'host' => env('OCTANE_HOST', '127.0.0.1'),
+'port' => env('OCTANE_PORT', 8000),
+'workers' => env('OCTANE_WORKERS', 'auto'),
+'max_requests' => env('OCTANE_MAX_REQUESTS', 500),
+'max_execution_time' => env('OCTANE_MAX_EXECUTION_TIME', 30),
+```
+
+**NGINX** (`--nginx`, or answer yes): every server section of the application (HTTP, and HTTPS after `hosting:ssl`) serves existing static files directly and proxies everything else to Octane (`try_files $uri @octane;` plus a `location @octane` between `# Octane start/end` comments). A subdomain application gets its own server section (`# Octane host (...)`), because all subdomains otherwise share one regex host. `--remove` restores the PHP-FPM configuration. An invalid configuration is rolled back automatically.
+
+- Run the command again after you change `OCTANE_*` in `.env`, it restarts the server and updates the NGINX port.
+- After each deploy run `php artisan octane:reload`.
+- If you set up SSL for a subdomain after enabling Octane, run `laravel:octane --remove` and enable it again, so the new HTTPS section is proxied too.
+- PHP-FPM pool settings (`php_admin_value[...]` like `memory_limit`, `upload_max_filesize` or `open_basedir`) **do not apply** to Octane and queue workers. They run as PHP CLI processes and use `/etc/php/{ver}/cli/php.ini`.
+
+---
+
 ## Updating
 
 ```bash
@@ -551,12 +622,15 @@ docker compose exec vpsmanager bash -c '
     sed -i "s#/var/www/$DOMAIN:/tmp#/var/www/$DOMAIN:$PROJECT:$PACKAGES:/tmp#" /etc/php/8.5/fpm/pool.d/*$DOMAIN*
 
     service nginx restart && service php8.5-fpm restart
+
+    # 5. Start Octane again (settings are kept in the project .env)
+    vpsmanager laravel:octane $DOMAIN --path=web --nginx
 '
 ```
 
 > **Never run `hosting:create` while `data/web` points to the project.** It writes the welcome `public/index.php` into `data/web/public`, which would overwrite the project's `index.php` on the Mac. Always create the hosting first, then replace `data/web` with the symlink.
 
-Steps 3 and 4 are local test tweaks only; they are not generated by VPS Manager.
+Step 5 is needed only when the project runs under Octane; without it, the project is served by PHP-FPM. Steps 3 and 4 are local test tweaks only; they are not generated by VPS Manager.
 
 **3. Valet on the Mac** (only once, it survives container rebuilds):
 
