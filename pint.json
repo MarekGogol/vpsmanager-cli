@@ -214,5 +214,8 @@
         "node_modules",
         "src/Stub",
         "src/Resources"
+    ],
+    "notPath": [
+        "src/config.php"
     ]
 }

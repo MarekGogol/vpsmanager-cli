@@ -158,9 +158,9 @@ class Nginx extends Application
         );
         $stub->replace('{from-host}', $first_level_domain);
 
-        // We use $host instead of www.domain, because redirect must point
-        // to the same domain first (then to the https version) for enhanced security
-        $stub->replace('{to-host}', '$host');
+        // Plain http redirects to the www host. After SSL is set up, Certbot rewrites
+        // this redirect to https on the same host first, for enhanced security (HSTS)
+        $stub->replace('{to-host}', 'www.'.$first_level_domain);
 
         // Add default nginx host configuration
         $stub->addLine("\n".(clone $host_stub)->addLineBefore('# Default host configuration'));
