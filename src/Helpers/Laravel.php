@@ -68,16 +68,27 @@ class Laravel extends Application
     }
 
     /**
-     * Get the PHP version used by the hosting.
+     * Get the PHP version used by the hosting, or by the given application of the hosting.
      *
      * @param  string  $domain
+     * @param  string|null  $app
      * @return string|null
      */
-    public function getPHPVersion(string $domain): ?string
+    public function getPHPVersion(string $domain, ?string $app = null): ?string
     {
-        // Use the version of FPM socket from NGINX configuration first
         if ($this->nginx()->exists($domain)) {
             $conf = file_get_contents($this->nginx()->getAvailablePath($domain));
+
+            // Applications of one hosting may use different PHP versions, so use FPM socket of the application host first
+            if ($app && ($path = $this->getApps($domain)[$app] ?? null)) {
+                preg_match_all('#(?<=^|\n)server\s?\{[\s\S]*?\n\}#', $conf, $sections);
+
+                foreach ($sections[0] as $section) {
+                    if (str_contains($section, 'root '.$path.'/public;') && preg_match('/php(\d+\.\d+)-fpm-/', $section, $matches)) {
+                        return $matches[1];
+                    }
+                }
+            }
 
             if (preg_match('/php(\d+\.\d+)-fpm-/', $conf, $matches) && $this->php()->poolExists($domain, $matches[1])) {
                 return $matches[1];

@@ -129,16 +129,17 @@ abstract class LaravelCommand extends Command
     }
 
     /**
-     * Get the PHP version of the hosting.
+     * Get the PHP version of the hosting application.
      *
      * @param  string  $domain
+     * @param  string  $app
      * @return string
      *
      * @throws \Exception
      */
-    protected function getPHPVersion(string $domain): string
+    protected function getPHPVersion(string $domain, string $app): string
     {
-        if (! ($version = vpsManager()->laravel()->getPHPVersion($domain))) {
+        if (! ($version = vpsManager()->laravel()->getPHPVersion($domain, $app))) {
             throw new \Exception('PHP-FPM pool of hosting '.$domain.' has not been found.');
         }
 

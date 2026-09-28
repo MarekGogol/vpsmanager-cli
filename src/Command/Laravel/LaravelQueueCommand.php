@@ -55,7 +55,7 @@ class LaravelQueueCommand extends LaravelCommand
             ->replace('{program}', $program)
             ->replace('{app}', $app)
             ->replace('{user}', $domain)
-            ->replace('{php_bin}', vpsManager()->php()->getPhpBinPath($this->getPHPVersion($domain)))
+            ->replace('{php_bin}', vpsManager()->php()->getPhpBinPath($this->getPHPVersion($domain, $app)))
             ->replace('{path}', vpsManager()->laravel()->getApps($domain)[$app])
             ->replace('{queue}', $queue ? ' --queue='.escapeshellarg($queue) : '')
             ->replace('{workers}', $workers);

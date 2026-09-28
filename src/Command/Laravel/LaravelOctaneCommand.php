@@ -69,7 +69,7 @@ class LaravelOctaneCommand extends LaravelCommand
             ->replace('{program}', $program)
             ->replace('{app}', $app)
             ->replace('{user}', $domain)
-            ->replace('{php_bin}', vpsManager()->php()->getPhpBinPath($this->getPHPVersion($domain)))
+            ->replace('{php_bin}', vpsManager()->php()->getPhpBinPath($this->getPHPVersion($domain, $app)))
             ->replace('{path}', $path);
 
         if (! $this->writeResponse(vpsManager()->supervisor()->save($domain, $program, $section))) {
