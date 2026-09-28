@@ -117,7 +117,8 @@ class LaravelOctaneCommand extends LaravelCommand
         // Octane settings are already in .env, but the port must not collide with other applications
         if ($port = $laravel->getOctanePort($path)) {
             foreach ($laravel->getUsedOctanePorts() as $otherPath => $otherPort) {
-                if ($otherPort === $port && $otherPath !== $path) {
+                // Symlinked directories of the same application share one .env
+                if ($otherPort === $port && realpath($otherPath) !== realpath($path)) {
                     throw new \Exception('OCTANE_PORT='.$port.' is already used by '.$otherPath.'.');
                 }
             }
