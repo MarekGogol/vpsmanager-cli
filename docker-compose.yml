@@ -18,9 +18,7 @@ services:
       - '2200:22'
     volumes:
       - .:/root/vpsmanager
-      - www:/var/www
       - mysql:/var/lib/mysql
 
 volumes:
-  www:
   mysql:

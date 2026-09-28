@@ -229,6 +229,19 @@ class Hosting extends Application
      */
     public function remove(string $domain, bool $remove_data = false, bool $remove_mysql = false): Response
     {
+        // Stop queue workers and Octane servers first, they use the hosting data
+        if (file_exists($this->supervisor()->getConfPath($domain))) {
+            if ($this->supervisor()->removeAll($domain)) {
+                $this->response()
+                    ->success('<comment>Supervisor</comment> <info>programs have been successfully stopped and removed.</info>')
+                    ->writeln();
+            } else {
+                $this->response()
+                    ->error('<error>Supervisor programs could not be removed.</error>')
+                    ->writeln(null, true);
+            }
+        }
+
         // Remove nginx host
         if ($this->nginx()->removeHost($domain)) {
             $this->response()

@@ -11,7 +11,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg locales software-properties-common \
-        zip unzip rsync ssh ssl-cert nano less git cron sudo socat \
+        zip unzip rsync ssh ssl-cert nano less git cron sudo socat supervisor \
         gcc make libpng-dev imagemagick \
         jpegoptim optipng pngquant gifsicle webp \
         nginx mysql-server certbot python3-certbot-nginx \

@@ -13,6 +13,8 @@ use Gogol\VpsManagerCLI\Command\Chroot\ChrootUpdateCommand;
 use Gogol\VpsManagerCLI\Command\Hosting\HostingCreateCommand;
 use Gogol\VpsManagerCLI\Command\Hosting\HostingRemoveCommand;
 use Gogol\VpsManagerCLI\Command\InstallManagerCommand;
+use Gogol\VpsManagerCLI\Command\Laravel\LaravelOctaneCommand;
+use Gogol\VpsManagerCLI\Command\Laravel\LaravelQueueCommand;
 use Gogol\VpsManagerCLI\Command\Mysql\MysqlCreateCommand;
 use Gogol\VpsManagerCLI\Command\Mysql\MysqlRemoveCommand;
 use Gogol\VpsManagerCLI\Command\Mysql\MysqlResetPasswordCommand;
@@ -35,5 +37,7 @@ $application->addCommand(new MysqlRemoveCommand());
 $application->addCommand(new ChrootCreateCommand());
 $application->addCommand(new ChrootUpdateCommand());
 $application->addCommand(new ChrootRemoveCommand());
+$application->addCommand(new LaravelQueueCommand());
+$application->addCommand(new LaravelOctaneCommand());
 
 $application->run();

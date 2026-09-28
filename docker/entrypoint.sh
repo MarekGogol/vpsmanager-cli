@@ -16,6 +16,7 @@ fi
 service "php${PHP_VERSION}-fpm" start || true
 service nginx start || true
 service cron start || true
+service supervisor start || true
 
 # Install composer dependencies of the mounted package on first start.
 if [ -f composer.json ] && [ ! -d vendor ]; then

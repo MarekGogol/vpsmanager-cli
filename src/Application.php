@@ -6,6 +6,7 @@ use Gogol\VpsManagerCLI\Helpers\Backup;
 use Gogol\VpsManagerCLI\Helpers\Certbot;
 use Gogol\VpsManagerCLI\Helpers\Chroot;
 use Gogol\VpsManagerCLI\Helpers\Hosting;
+use Gogol\VpsManagerCLI\Helpers\Laravel;
 use Gogol\VpsManagerCLI\Helpers\MySQLHelper;
 use Gogol\VpsManagerCLI\Helpers\Nginx;
 use Gogol\VpsManagerCLI\Helpers\PHP;
@@ -13,6 +14,7 @@ use Gogol\VpsManagerCLI\Helpers\Response;
 use Gogol\VpsManagerCLI\Helpers\Server;
 use Gogol\VpsManagerCLI\Helpers\SSH;
 use Gogol\VpsManagerCLI\Helpers\Stub;
+use Gogol\VpsManagerCLI\Helpers\Supervisor;
 use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -284,6 +286,26 @@ class Application
     public function php(): PHP
     {
         return $this->boot(PHP::class);
+    }
+
+    /**
+     * Get the supervisor helper.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\Supervisor
+     */
+    public function supervisor(): Supervisor
+    {
+        return $this->boot(Supervisor::class);
+    }
+
+    /**
+     * Get the Laravel helper.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\Laravel
+     */
+    public function laravel(): Laravel
+    {
+        return $this->boot(Laravel::class);
     }
 
     /**

@@ -186,6 +186,21 @@ else
     fi
 fi
 
+# Check if supervisor is installed (Laravel queues and Octane)
+dpkg -s supervisor &> /dev/null
+IS_SUPERVISOR=$?
+if [ $IS_SUPERVISOR -eq 0 ]; then
+    echo -e "\e[32mSupervisor is installed\e[0m"
+else
+    read -p 'Do you want to install Supervisor (Laravel queues and Octane)? [Y/n]:' answer
+    answer=${answer:Y}
+
+    if [[ $answer =~ [Yy] ]]; then
+        apt install -y supervisor
+        systemctl enable --now supervisor
+    fi
+fi
+
 # Check if nodejs is installed
 dpkg -s nodejs &> /dev/null
 IS_CERTBOT=$?

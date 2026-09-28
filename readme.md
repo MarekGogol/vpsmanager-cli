@@ -495,7 +495,7 @@ vpsmanager hosting:create example.test
 
 - The repository is mounted to **`/root/vpsmanager`**, so your local changes are live inside the container.
 - Ports: **`8000` → 80** (HTTP), **`8443` → 443** (HTTPS), **`2200` → 22** (SSH, for testing chroot logins).
-- `/var/www` and `/var/lib/mysql` are stored in named volumes (`www`, `mysql`), so they survive rebuilds.
+- Only `/var/lib/mysql` is stored in a named volume (`mysql`). `/var/www` is not persisted on purpose: linux users in `/etc` are recreated with different UIDs, so persisted hosting data would belong to wrong users.
 - `docker/entrypoint.sh` starts ssh, mysql, php-fpm, nginx and cron (there is no systemd in the container). On the first start it runs `composer install` if `vendor/` is missing.
 - The container runs with `SYS_ADMIN` and no AppArmor profile, so `mount --bind /proc` for chroot works.
 - Real Let's Encrypt certificates cannot be issued for local domains, so `hosting:ssl` will fail locally.
@@ -527,7 +527,7 @@ services:
 - Mount the project and the packages under **the same absolute path as on the Mac**. `vendor/` symlinks of composer path repositories and Laravel's `bootstrap/cache` contain absolute Mac paths.
 - With `MYSQL_FORWARD_HOST` set, the entrypoint does not start the local MySQL server and forwards `127.0.0.1:3306` to the Mac instead, so the project's `.env` (`DB_HOST=127.0.0.1`) works without changes. Remove the variable to use MySQL inside the container again.
 
-**2. Hosting inside the container.** Only `/var/www` and `/var/lib/mysql` are stored in volumes. The linux user, the PHP-FPM pool and the NGINX host live in `/etc`, so **they are gone whenever the container is recreated** (`docker compose up` after a change of the compose files, `--build`, `docker compose down`). Recreate them with:
+**2. Hosting inside the container.** Only `/var/lib/mysql` is stored in a volume. The linux user, the PHP-FPM pool, the NGINX host and `/var/www` are not persisted, so **they are gone whenever the container is recreated** (`docker compose up` after a change of the compose files, `--build`, `docker compose down`). Recreate them with:
 
 ```bash
 docker compose up -d --build
