@@ -38,7 +38,7 @@ Everything is ready out of the box. You configure the features with the installa
 
 - **Ubuntu server** (other Debian based systems may work). The tool is built around `apt`, `systemd`/`service`, `useradd` and `/etc/*` paths.
 - **root access.** Every command checks `whoami` and refuses to run as any user other than `root`.
-- **PHP ^8.4** for running the CLI itself (Composer dependencies: Symfony Console 8, Carbon 3, PHPMailer 7).
+- **PHP 8.3 or newer** (8.3, 8.4, 8.5) for running the CLI itself (Composer dependencies: Symfony Console 7.4 LTS, Carbon 3, PHPMailer 7). `composer.json` pins the platform to PHP 8.3, so Composer resolves the same packages on every supported version and `composer install` / `composer update` work on all of them.
 - **NGINX**
 - **PHP-FPM** in one or more supported versions: `8.2`, `8.3`, `8.4`, `8.5`
 - **MySQL** (the installer offers MySQL 9.7 LTS)
