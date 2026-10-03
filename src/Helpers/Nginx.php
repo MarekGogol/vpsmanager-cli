@@ -160,8 +160,9 @@ class Nginx extends Application
     }
 
     /**
-     * Include the vpsmanager configuration file after general.conf in every server section of the host.
-     * Sections serving WordPress keep their configuration.
+     * Include the vpsmanager configuration file in every server section of the host which serves an application:
+     * after general.conf, or at the end of the section without it (e.g. Nuxt or other proxied applications).
+     * Sections only redirecting (no location) and sections serving WordPress keep their configuration.
      *
      * @param  string  $conf
      * @param  string  $file  e.g. scanners.conf
@@ -174,12 +175,21 @@ class Nginx extends Application
                 return $section;
             }
 
-            return preg_replace(
-                '#^([ \t]*)include vpsmanager/general\.conf;$#m',
-                '$0'."\n".'$1include vpsmanager/'.$file.';',
-                $section,
-                1,
-            );
+            if (preg_match('#^[ \t]*include vpsmanager/general\.conf;$#m', $section)) {
+                return preg_replace(
+                    '#^([ \t]*)include vpsmanager/general\.conf;$#m',
+                    '$0'."\n".'$1include vpsmanager/'.$file.';',
+                    $section,
+                    1,
+                );
+            }
+
+            if (! preg_match('#^[ \t]*location\s#m', $section)) {
+                return $section;
+            }
+
+            // The rules run before any location, so the end of the section is as good as any other place
+            return preg_replace('#\n\}$#', "\n\n    include vpsmanager/".$file.";\n}", rtrim($section));
         });
     }
 
@@ -192,7 +202,8 @@ class Nginx extends Application
      */
     public function removeVpsManagerInclude(string $conf, string $file): string
     {
-        return preg_replace('#\n[ \t]*include vpsmanager/'.preg_quote($file, '#').';[ \t]*(?=\n)#', '', $conf);
+        // A blank line before the include belongs to it, when it was added at the end of a section
+        return preg_replace('#\n(?:[ \t]*\n)?[ \t]*include vpsmanager/'.preg_quote($file, '#').';[ \t]*(?=\n)#', '', $conf);
     }
 
     /**
