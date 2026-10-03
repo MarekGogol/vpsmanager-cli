@@ -233,6 +233,94 @@ class Fail2ban extends Application
     }
 
     /**
+     * Check if the fail2ban server is running.
+     *
+     * @return bool
+     */
+    public function isRunning(): bool
+    {
+        exec('fail2ban-client ping 2> /dev/null', $output, $return_var);
+
+        return $return_var === 0;
+    }
+
+    /**
+     * Get names of the running jails.
+     *
+     * @return array
+     */
+    public function getJails(): array
+    {
+        exec('fail2ban-client status 2> /dev/null', $output);
+
+        foreach ($output as $line) {
+            if (preg_match('/Jail list:\s*(.*)$/', $line, $matches)) {
+                return array_values(array_filter(array_map('trim', explode(',', $matches[1]))));
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Get banned addresses of the jail with the time of the ban and of its end.
+     *
+     * @param  string  $jail
+     * @return array list of ['ip' => ..., 'banned_at' => ..., 'expires_at' => ...]
+     */
+    public function getBans(string $jail): array
+    {
+        exec('fail2ban-client get '.escapeshellarg($jail).' banip --with-time 2> /dev/null', $output);
+
+        $bans = [];
+
+        foreach ($output as $line) {
+            // 203.0.113.10 	2026-10-03 16:15:53 + 3600 = 2026-10-03 17:15:53
+            if (preg_match('/^(\S+)\s+(\S+ \S+)\s+\+\s+-?\d+\s+=\s+(\S+ \S+)/', trim($line), $matches)) {
+                $bans[] = ['ip' => $matches[1], 'banned_at' => $matches[2], 'expires_at' => $matches[3]];
+            }
+        }
+
+        return $bans;
+    }
+
+    /**
+     * Unban the address in all jails, or only in the given one.
+     *
+     * @param  string  $ip
+     * @param  string|null  $jail
+     * @return int|null number of removed bans, null when fail2ban failed
+     */
+    public function unban(string $ip, ?string $jail = null): ?int
+    {
+        $command = $jail
+            ? 'fail2ban-client set '.escapeshellarg($jail).' unbanip '.escapeshellarg($ip)
+            : 'fail2ban-client unban '.escapeshellarg($ip);
+
+        exec($command.' 2> /dev/null', $output, $return_var);
+
+        return $return_var === 0 ? (int) trim(implode('', $output)) : null;
+    }
+
+    /**
+     * Count requests of the address blocked by vpsmanager/scanners.conf in the current log.
+     *
+     * @param  string  $ip
+     * @return int
+     */
+    public function countScannerRequests(string $ip): int
+    {
+        if (! is_readable(self::SCANNERS_LOG)) {
+            return 0;
+        }
+
+        // The address starts the line of the combined log format
+        exec('grep -c -E '.escapeshellarg('^'.preg_quote($ip).' ').' '.escapeshellarg(self::SCANNERS_LOG).' 2> /dev/null', $output);
+
+        return (int) ($output[0] ?? 0);
+    }
+
+    /**
      * Get the status of the jail, e.g. number of banned addresses.
      *
      * @param  string  $jail

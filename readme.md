@@ -357,10 +357,21 @@ ignoreip = %(known/ignoreip)s 203.0.113.10
 
 Debian 12 logs into journald only, so the default `sshd` jail does not find `/var/log/auth.log` and fail2ban does not start at all. When the file is missing, the command installs `rsyslog`, which writes the classic log files again (`wamp_setup.sh` installs it on new servers).
 
+### Banned addresses
+
 ```bash
-fail2ban-client status vpsmanager-scanners
-fail2ban-client set vpsmanager-scanners unbanip 203.0.113.10
+sudo php vpsmanager fail2ban:show
+sudo php vpsmanager fail2ban:show --jail=vpsmanager-scanners
 ```
+
+Lists the banned addresses of all running jails (also `sshd`) with the time of the ban and of its end. For the jails against scanners it also counts the blocked requests of the address in `/var/log/nginx/vpsmanager-scanners.log`, `grep "^203.0.113.10 " /var/log/nginx/vpsmanager-scanners.log` shows them.
+
+```bash
+sudo php vpsmanager fail2ban:remove-ip 203.0.113.10
+sudo php vpsmanager fail2ban:remove-ip 203.0.113.10 --jail=sshd
+```
+
+Unbans the address in all jails, or only in the given one. The address is banned again when it keeps sending blocked requests, an address which must never be banned belongs into `vpsmanager-scanners.local` (see above).
 
 ---
 
