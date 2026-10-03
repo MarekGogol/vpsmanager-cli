@@ -321,15 +321,16 @@ The rules match only paths which no Laravel or plain PHP application serves:
 
 | Rule | Examples |
 | --- | --- |
+| Dot files, except Let's Encrypt challenges (`.well-known`) | `/.env`, `/.git/config`, `/.aws/credentials`, `/.htaccess` |
 | WordPress, also under a directory | `/wp-admin`, `/wp-content/…`, `/blog/wp-includes/…`, `/wp-login.php`, `/xmlrpc.php`, `?rest_route=` |
 | Backups and leftovers of editors, in any directory | `*.sql`, `*.sql.gz`, `*.bak`, `*.old`, `*.orig`, `*.save`, `*.swp`, `*~` |
 | Archives of the whole site in the root | `/backup.zip`, `/www.tar.gz`, `/public_html.zip` |
 | Secrets and project files in the root | `/id_rsa`, `/credentials.txt`, `/docker-compose.yml`, `/composer.json`, `/package.json`, `/artisan`, `/phpinfo.php` |
 | Exploits of other software | `/cgi-bin/…`, `/vendor/phpunit/…`, `eval-stdin.php` |
 
-Dot files (`.env`, `.git`) are already denied by `general.conf`. Other `.php` files, uploads and downloads (`/uploads/export.zip`) are not touched.
+`general.conf` denies dot files too, with the default NGINX page, for hosts without this file. Other `.php` files, uploads and downloads (`/uploads/export.zip`, `/uploads/archive.zip`) are not touched.
 
-New hosts include the file after `vpsmanager/general.conf`. `nginx:scanners` copies the missing files of `Resources/nginx/vpsmanager` into the NGINX directory and adds the include to every server section of the enabled hosts. Then it tests and reloads NGINX, and when the configuration is not valid it restores all hosts. Sections serving WordPress (`include vpsmanager/wordpress.conf`) are skipped, the rules would block them. `--dry-run` only lists the hosts which would be changed, `--remove` removes the include from all hosts.
+New hosts include the file after `vpsmanager/general.conf`. `nginx:scanners` copies the missing files of `Resources/nginx/vpsmanager` into the NGINX directory, replaces `scanners.conf` and `scanners.html` when this version changes them (other files such as `general.conf` may be edited on the server and are kept), and adds the include to every server section of the enabled hosts. Then it tests and reloads NGINX, and when the configuration is not valid it restores all hosts and files. Run it again after every update of VPS Manager to get new versions of the rules. Sections serving WordPress (`include vpsmanager/wordpress.conf`) are skipped, the rules would block them. `--dry-run` only lists the hosts which would be changed, `--remove` removes the include from all hosts.
 
 The rules run in the rewrite phase of the server, before any `location`, so the position of the include in the host does not matter. `418` is only an internal marker of the rules, the visitor receives `403`.
 

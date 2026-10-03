@@ -91,24 +91,54 @@ class Nginx extends Application
 
     /**
      * Copy vpsmanager configuration files added after the installation. Existing files are kept,
-     * they may be edited on the server.
+     * they may be edited on the server, except the given files fully managed by vpsmanager, which
+     * are replaced when they differ.
      *
-     * @return array names of the copied files
+     * @param  array  $managed  names of the files which are always replaced, e.g. scanners.conf
+     * @param  bool  $dryRun  only return the files which would be written
+     * @return array name => previous content (null for a new file)
      */
-    public function syncNginxSettings(): array
+    public function syncNginxSettings(array $managed = [], bool $dryRun = false): array
     {
         $target = $this->config('nginx_path').'/vpsmanager';
-        $copied = [];
+        $written = [];
 
         foreach (glob(__DIR__.'/../Resources/nginx/vpsmanager/*') as $file) {
-            $path = $target.'/'.basename($file);
+            $name = basename($file);
+            $path = $target.'/'.$name;
+            $exists = file_exists($path);
 
-            if (! file_exists($path) && copy($file, $path)) {
-                $copied[] = basename($file);
+            if ($exists && (! in_array($name, $managed) || file_get_contents($path) === file_get_contents($file))) {
+                continue;
+            }
+
+            $previous = $exists ? file_get_contents($path) : null;
+
+            if ($dryRun || copy($file, $path)) {
+                $written[$name] = $previous;
             }
         }
 
-        return $copied;
+        return $written;
+    }
+
+    /**
+     * Restore vpsmanager configuration files written by syncNginxSettings().
+     *
+     * @param  array  $written  name => previous content (null for a new file)
+     * @return void
+     */
+    public function restoreNginxSettings(array $written): void
+    {
+        $target = $this->config('nginx_path').'/vpsmanager';
+
+        foreach ($written as $name => $previous) {
+            if ($previous === null) {
+                @unlink($target.'/'.$name);
+            } else {
+                file_put_contents($target.'/'.$name, $previous);
+            }
+        }
     }
 
     /**

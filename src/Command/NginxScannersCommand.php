@@ -15,6 +15,11 @@ class NginxScannersCommand extends Command
     const FILE = 'scanners.conf';
 
     /**
+     * Files fully managed by vpsmanager, replaced on the server when a new version changes them.
+     */
+    const MANAGED = ['scanners.conf', 'scanners.html'];
+
+    /**
      * Configure the command.
      *
      * @return void
@@ -42,10 +47,10 @@ class NginxScannersCommand extends Command
         $dryRun = (bool) $input->getOption('dry-run');
         $remove = (bool) $input->getOption('remove');
 
-        if (! $dryRun && ! $remove) {
-            foreach ($nginx->syncNginxSettings() as $file) {
-                $output->writeln('Copied <comment>vpsmanager/'.$file.'</comment> into the NGINX directory.');
-            }
+        $written = $remove ? [] : $nginx->syncNginxSettings(self::MANAGED, $dryRun);
+
+        foreach ($written as $file => $previous) {
+            $output->writeln(($dryRun ? 'Would write' : 'Wrote').' <comment>vpsmanager/'.$file.'</comment>'.($previous === null ? ' (new file)' : ' (new version)'));
         }
 
         $changes = [];
@@ -67,7 +72,7 @@ class NginxScannersCommand extends Command
             }
         }
 
-        if (count($changes) === 0) {
+        if (count($changes) === 0 && count($written) === 0) {
             $output->writeln('<info>All hosts are already up to date.</info>');
 
             return Command::SUCCESS;
@@ -87,18 +92,20 @@ class NginxScannersCommand extends Command
             file_put_contents($path, $updated);
         }
 
-        // Invalid configuration restores all hosts, so NGINX keeps running with the previous one
+        // Invalid configuration restores all hosts and files, so NGINX keeps running with the previous one
         if (! $nginx->reload()) {
             foreach ($changes as $path => [$conf, $updated]) {
                 file_put_contents($path, $conf);
             }
+
+            $nginx->restoreNginxSettings($written);
 
             $output->writeln('<error>NGINX configuration is not valid or NGINX could not be reloaded, previous configuration of all hosts has been restored.</error>');
 
             return Command::FAILURE;
         }
 
-        $output->writeln('<info>'.($remove ? 'Rules against scanners have been removed from' : 'Rules against scanners have been added to').' '.count($changes).' hosts and NGINX has been reloaded.</info>');
+        $output->writeln('<info>'.($remove ? 'Rules against scanners have been removed from' : 'Rules against scanners are active in').' '.count($changes).' updated hosts and NGINX has been reloaded.</info>');
 
         return Command::SUCCESS;
     }
