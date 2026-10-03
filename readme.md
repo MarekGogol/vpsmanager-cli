@@ -323,7 +323,7 @@ The rules match only paths which no Laravel or plain PHP application serves:
 | --- | --- |
 | Dot files, except Let's Encrypt challenges (`.well-known`) | `/.env`, `/.git/config`, `/.aws/credentials`, `/.htaccess` |
 | WordPress, also under a directory | `/wp-admin`, `/wp-content/…`, `/blog/wp-includes/…`, `/wp-login.php`, `/xmlrpc.php`, `?rest_route=` |
-| Backups and leftovers of editors, in any directory | `*.sql`, `*.sql.gz`, `*.bak`, `*.old`, `*.orig`, `*.save`, `*.swp`, `*~` |
+| Backups and leftovers of editors, in any directory except the storage of uploads (`/uploads/{table}/{field}/…`) | `*.sql`, `*.sql.gz`, `*.bak`, `*.old`, `*.orig`, `*.save`, `*.swp`, `*~` |
 | Archives of the whole site in the root | `/backup.zip`, `/www.tar.gz`, `/public_html.zip` |
 | Secrets and project files in the root | `/id_rsa`, `/credentials.txt`, `/docker-compose.yml`, `/composer.json`, `/package.json`, `/artisan`, `/phpinfo.php` |
 | Exploits of other software | `/cgi-bin/…`, `/vendor/phpunit/…`, `eval-stdin.php` |
