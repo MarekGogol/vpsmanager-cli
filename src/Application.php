@@ -5,6 +5,7 @@ namespace Gogol\VpsManagerCLI;
 use Gogol\VpsManagerCLI\Helpers\Backup;
 use Gogol\VpsManagerCLI\Helpers\Certbot;
 use Gogol\VpsManagerCLI\Helpers\Chroot;
+use Gogol\VpsManagerCLI\Helpers\Fail2ban;
 use Gogol\VpsManagerCLI\Helpers\Hosting;
 use Gogol\VpsManagerCLI\Helpers\Laravel;
 use Gogol\VpsManagerCLI\Helpers\MySQLHelper;
@@ -256,6 +257,16 @@ class Application
     public function nginx(): Nginx
     {
         return $this->boot(Nginx::class);
+    }
+
+    /**
+     * Get the fail2ban helper.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\Fail2ban
+     */
+    public function fail2ban(): Fail2ban
+    {
+        return $this->boot(Fail2ban::class);
     }
 
     /**

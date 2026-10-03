@@ -21,6 +21,9 @@ apt install -y make
 apt install -y software-properties-common
 apt install -y fail2ban && systemctl enable fail2ban
 
+# Debian 12 logs into journald only, fail2ban does not start without /var/log/auth.log of the sshd jail
+apt install -y rsyslog && systemctl enable --now rsyslog
+
 # Install locales
 locale-gen sk_SK
 locale-gen sk_SK.UTF-8

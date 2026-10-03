@@ -27,9 +27,9 @@ class NginxScannersCommand extends Command
     protected function configure(): void
     {
         $this->setName('nginx:scanners')
-            ->setDescription('Answer requests of vulnerability scanners in NGINX for all hosts, without reaching PHP')
-            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Only list the hosts which would be changed')
-            ->addOption('remove', null, InputOption::VALUE_NONE, 'Remove the rules from all hosts');
+            ->setDescription('Answer requests of vulnerability scanners in NGINX for all hosts and ban the scanners with fail2ban')
+            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Only list the hosts and files which would be changed')
+            ->addOption('remove', null, InputOption::VALUE_NONE, 'Remove the rules from all hosts and the fail2ban jails');
     }
 
     /**
@@ -43,9 +43,29 @@ class NginxScannersCommand extends Command
     {
         vpsManager()->bootConsole($output, $input, $this->getHelper('question'));
 
-        $nginx = vpsManager()->nginx();
         $dryRun = (bool) $input->getOption('dry-run');
         $remove = (bool) $input->getOption('remove');
+
+        if (! $this->updateNginx($output, $dryRun, $remove)) {
+            return Command::FAILURE;
+        }
+
+        $output->writeln('');
+
+        return $this->updateFail2ban($output, $dryRun, $remove) ? Command::SUCCESS : Command::FAILURE;
+    }
+
+    /**
+     * Add the rules to all hosts (or remove them) and reload NGINX.
+     *
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  bool  $dryRun
+     * @param  bool  $remove
+     * @return bool
+     */
+    protected function updateNginx(OutputInterface $output, bool $dryRun, bool $remove): bool
+    {
+        $nginx = vpsManager()->nginx();
 
         $written = $remove ? [] : $nginx->syncNginxSettings(self::MANAGED, $dryRun);
 
@@ -73,9 +93,9 @@ class NginxScannersCommand extends Command
         }
 
         if (count($changes) === 0 && count($written) === 0) {
-            $output->writeln('<info>All hosts are already up to date.</info>');
+            $output->writeln('<info>NGINX hosts are already up to date.</info>');
 
-            return Command::SUCCESS;
+            return true;
         }
 
         foreach ($changes as $path => [$conf, $updated]) {
@@ -85,7 +105,7 @@ class NginxScannersCommand extends Command
         }
 
         if ($dryRun) {
-            return Command::SUCCESS;
+            return true;
         }
 
         foreach ($changes as $path => [$conf, $updated]) {
@@ -102,11 +122,89 @@ class NginxScannersCommand extends Command
 
             $output->writeln('<error>NGINX configuration is not valid or NGINX could not be reloaded, previous configuration of all hosts has been restored.</error>');
 
-            return Command::FAILURE;
+            return false;
         }
 
         $output->writeln('<info>'.($remove ? 'Rules against scanners have been removed from' : 'Rules against scanners are active in').' '.count($changes).' updated hosts and NGINX has been reloaded.</info>');
 
-        return Command::SUCCESS;
+        return true;
+    }
+
+    /**
+     * Ban the scanners logged by NGINX with fail2ban (or remove the jails) and reload fail2ban.
+     *
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  bool  $dryRun
+     * @param  bool  $remove
+     * @return bool
+     */
+    protected function updateFail2ban(OutputInterface $output, bool $dryRun, bool $remove): bool
+    {
+        $fail2ban = vpsManager()->fail2ban();
+
+        if (! $fail2ban->isInstalled()) {
+            $output->writeln('<comment>fail2ban is not installed, scanners are not banned. Install it with</comment> apt install fail2ban');
+
+            return true;
+        }
+
+        $written = $remove
+            ? $fail2ban->removeScannersFiles($dryRun)
+            : $fail2ban->writeFiles($fail2ban->getScannersFiles(), $dryRun);
+
+        foreach ($written as $path => $previous) {
+            $action = $dryRun ? ($remove ? 'Would remove' : 'Would write') : ($remove ? 'Removed' : 'Wrote');
+
+            $output->writeln($action.' <comment>'.$path.'</comment>');
+        }
+
+        if (count($written) === 0) {
+            $output->writeln('<info>fail2ban configuration is already up to date.</info>');
+        }
+
+        // fail2ban does not start without the log of the default sshd jail
+        if (! $fail2ban->hasAuthLog()) {
+            $output->writeln(($dryRun ? 'Would install' : 'Installing').' <comment>rsyslog</comment>, there is no /var/log/auth.log for the sshd jail of fail2ban.');
+
+            if (! $dryRun && ! $fail2ban->installAuthLog()) {
+                $output->writeln('<error>rsyslog could not be installed, fail2ban does not start without /var/log/auth.log.</error>');
+
+                return false;
+            }
+        }
+
+        if ($dryRun) {
+            return true;
+        }
+
+        if (! $remove) {
+            $fail2ban->ensureScannersLog();
+        }
+
+        // Invalid configuration restores all files, fail2ban keeps running with the previous one
+        if (count($written) && ! $fail2ban->test()) {
+            $fail2ban->restoreFiles($written);
+
+            $output->writeln('<error>fail2ban configuration is not valid, previous configuration has been restored.</error>');
+
+            return false;
+        }
+
+        if (! $fail2ban->reload()) {
+            $output->writeln('<error>fail2ban could not be started or reloaded, check</error> journalctl -u fail2ban');
+
+            return false;
+        }
+
+        if ($remove) {
+            $output->writeln('<info>fail2ban jails against scanners have been removed.</info>');
+
+            return true;
+        }
+
+        $output->writeln('<info>fail2ban bans scanners for all websites of the server (jail '.$fail2ban::SCANNERS_JAIL.').</info>');
+        $output->writeln($fail2ban->status($fail2ban::SCANNERS_JAIL) ?: '');
+
+        return true;
     }
 }
