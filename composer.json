@@ -3,9 +3,9 @@
     "description": "CLI for LEMP VPS management: hostings, PHP-FPM pools, MySQL, SSL, chroot and backups",
     "type": "library",
     "require": {
-        "php": "^8.4",
-        "symfony/console": "^8.1",
-        "symfony/var-dumper": "^8.1",
+        "php": "^8.3",
+        "symfony/console": "^7.4|^8.1",
+        "symfony/var-dumper": "^7.4|^8.1",
         "phpmailer/phpmailer": "^7.1",
         "nesbot/carbon": "^3.14"
     },
@@ -32,6 +32,9 @@
         "format": "pint"
     },
     "config": {
-        "sort-packages": true
+        "sort-packages": true,
+        "platform": {
+            "php": "8.3.0"
+        }
     }
 }
