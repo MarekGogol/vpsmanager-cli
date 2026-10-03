@@ -23,13 +23,14 @@ Everything is ready out of the box. You configure the features with the installa
 4. [How it works (architecture)](#how-it-works-architecture)
 5. [Managing hostings](#managing-hostings)
 6. [SSL certificates](#ssl-certificates)
-7. [Chroot environments](#chroot-environments)
-8. [MySQL databases](#mysql-databases)
-9. [Backups](#backups)
-10. [Laravel queues and Octane](#laravel-queues-and-octane)
-11. [Updating](#updating)
-12. [Local development with Docker](#local-development-with-docker)
-13. [Code style](#code-style)
+7. [Protection against scanners](#protection-against-scanners)
+8. [Chroot environments](#chroot-environments)
+9. [MySQL databases](#mysql-databases)
+10. [Backups](#backups)
+11. [Laravel queues and Octane](#laravel-queues-and-octane)
+12. [Updating](#updating)
+13. [Local development with Docker](#local-development-with-docker)
+14. [Code style](#code-style)
 
 ---
 
@@ -186,7 +187,8 @@ src/
 ├── Resources/nginx/        # shared NGINX config copied into /etc/nginx
 │   ├── nginx.conf
 │   ├── conf.d/webp.conf
-│   └── vpsmanager/         # general.conf, fastcgi-php.conf, cors-preflight.conf
+│   └── vpsmanager/         # general.conf, fastcgi-php.conf, cors-preflight.conf,
+│                           #   scanners.conf, scanners.html
 └── Traits/
     └── PHPSettingsTrait.php # supported PHP versions and per-pool php_admin_value settings
 ```
@@ -303,6 +305,33 @@ This command generates Let's Encrypt certificates with certbot and updates the N
 4. Tests and restarts NGINX.
 
 Certificate renewal is handled by certbot's own systemd timer or cron job.
+
+---
+
+## Protection against scanners
+
+```bash
+sudo php vpsmanager nginx:scanners --dry-run
+sudo php vpsmanager nginx:scanners
+```
+
+Bots scan every domain of the server for WordPress paths, backups and secrets. Without protection each such request boots the application in PHP-FPM, and a scan of a few dozen paths occupies all workers of a small pool for a moment. `vpsmanager/scanners.conf` answers them in NGINX with `403` and the static page `vpsmanager/scanners.html` (English and Slovak, with a link to the homepage), without reaching PHP.
+
+The rules match only paths which no Laravel or plain PHP application serves:
+
+| Rule | Examples |
+| --- | --- |
+| WordPress, also under a directory | `/wp-admin`, `/wp-content/…`, `/blog/wp-includes/…`, `/wp-login.php`, `/xmlrpc.php`, `?rest_route=` |
+| Backups and leftovers of editors, in any directory | `*.sql`, `*.sql.gz`, `*.bak`, `*.old`, `*.orig`, `*.save`, `*.swp`, `*~` |
+| Archives of the whole site in the root | `/backup.zip`, `/www.tar.gz`, `/public_html.zip` |
+| Secrets and project files in the root | `/id_rsa`, `/credentials.txt`, `/docker-compose.yml`, `/composer.json`, `/package.json`, `/artisan`, `/phpinfo.php` |
+| Exploits of other software | `/cgi-bin/…`, `/vendor/phpunit/…`, `eval-stdin.php` |
+
+Dot files (`.env`, `.git`) are already denied by `general.conf`. Other `.php` files, uploads and downloads (`/uploads/export.zip`) are not touched.
+
+New hosts include the file after `vpsmanager/general.conf`. `nginx:scanners` copies the missing files of `Resources/nginx/vpsmanager` into the NGINX directory and adds the include to every server section of the enabled hosts. Then it tests and reloads NGINX, and when the configuration is not valid it restores all hosts. Sections serving WordPress (`include vpsmanager/wordpress.conf`) are skipped, the rules would block them. `--dry-run` only lists the hosts which would be changed, `--remove` removes the include from all hosts.
+
+The rules run in the rewrite phase of the server, before any `location`, so the position of the include in the host does not matter. `418` is only an internal marker of the rules, the visitor receives `403`.
 
 ---
 

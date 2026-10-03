@@ -90,6 +90,94 @@ class Nginx extends Application
     }
 
     /**
+     * Copy vpsmanager configuration files added after the installation. Existing files are kept,
+     * they may be edited on the server.
+     *
+     * @return array names of the copied files
+     */
+    public function syncNginxSettings(): array
+    {
+        $target = $this->config('nginx_path').'/vpsmanager';
+        $copied = [];
+
+        foreach (glob(__DIR__.'/../Resources/nginx/vpsmanager/*') as $file) {
+            $path = $target.'/'.basename($file);
+
+            if (! file_exists($path) && copy($file, $path)) {
+                $copied[] = basename($file);
+            }
+        }
+
+        return $copied;
+    }
+
+    /**
+     * Get paths of the configuration files of all enabled hosts.
+     *
+     * @return array
+     */
+    public function getEnabledHostPaths(): array
+    {
+        $paths = [];
+
+        foreach (glob($this->config('nginx_path').'/sites-enabled/*') as $path) {
+            if ($real = realpath($path)) {
+                $paths[] = $real;
+            }
+        }
+
+        return array_values(array_unique($paths));
+    }
+
+    /**
+     * Include the vpsmanager configuration file after general.conf in every server section of the host.
+     * Sections serving WordPress keep their configuration.
+     *
+     * @param  string  $conf
+     * @param  string  $file  e.g. scanners.conf
+     * @return string
+     */
+    public function addVpsManagerInclude(string $conf, string $file): string
+    {
+        return $this->mapServerSections($conf, function ($section) use ($file) {
+            if (str_contains($section, 'vpsmanager/'.$file) || str_contains($section, 'vpsmanager/wordpress.conf')) {
+                return $section;
+            }
+
+            return preg_replace(
+                '#^([ \t]*)include vpsmanager/general\.conf;$#m',
+                '$0'."\n".'$1include vpsmanager/'.$file.';',
+                $section,
+                1,
+            );
+        });
+    }
+
+    /**
+     * Remove the include of the vpsmanager configuration file from all server sections of the host.
+     *
+     * @param  string  $conf
+     * @param  string  $file  e.g. scanners.conf
+     * @return string
+     */
+    public function removeVpsManagerInclude(string $conf, string $file): string
+    {
+        return preg_replace('#\n[ \t]*include vpsmanager/'.preg_quote($file, '#').';[ \t]*(?=\n)#', '', $conf);
+    }
+
+    /**
+     * Call the callback with every server {} section of the configuration.
+     *
+     * @param  string  $conf
+     * @param  callable  $callback
+     * @return string
+     */
+    private function mapServerSections(string $conf, callable $callback): string
+    {
+        return preg_replace_callback('#(?<=^|\n)server\s?\{[\s\S]*?\n\}#', fn ($matches) => $callback($matches[0]), $conf);
+    }
+
+    /**
      * Create new nginx host.
      *
      * @param  string  $domain
@@ -287,6 +375,22 @@ class Nginx extends Application
         if ($return_var !== 0) {
             exec('nginx -t');
         }
+
+        return $return_var === 0;
+    }
+
+    /**
+     * Reload nginx configuration without dropping open connections.
+     *
+     * @return bool
+     */
+    public function reload(): bool
+    {
+        if (! $this->test()) {
+            return false;
+        }
+
+        exec('service nginx reload', $output, $return_var);
 
         return $return_var === 0;
     }

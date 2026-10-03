@@ -18,6 +18,7 @@ use Gogol\VpsManagerCLI\Command\Laravel\LaravelQueueCommand;
 use Gogol\VpsManagerCLI\Command\Mysql\MysqlCreateCommand;
 use Gogol\VpsManagerCLI\Command\Mysql\MysqlRemoveCommand;
 use Gogol\VpsManagerCLI\Command\Mysql\MysqlResetPasswordCommand;
+use Gogol\VpsManagerCLI\Command\NginxScannersCommand;
 use Gogol\VpsManagerCLI\Command\SSLCreateCommand;
 use Symfony\Component\Console\Application;
 
@@ -27,6 +28,7 @@ $application->addCommand(new InstallManagerCommand());
 $application->addCommand(new HostingCreateCommand());
 $application->addCommand(new HostingRemoveCommand());
 $application->addCommand(new SSLCreateCommand());
+$application->addCommand(new NginxScannersCommand());
 $application->addCommand(new BackupSetupCommand());
 $application->addCommand(new BackupPerformCommand());
 $application->addCommand(new BackupTestRemoteServer());
