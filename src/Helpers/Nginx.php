@@ -236,6 +236,37 @@ class Nginx extends Application
     }
 
     /**
+     * Add the includes of the monitor to the host, the same as monitor:install does for all hosts: rules against
+     * scanners, rules against .php files (not in sections with a password) and the access log. Only the parts
+     * installed on the server are added, so new hosts and sections (hosting:create, hosting:ssl, laravel:octane)
+     * are protected and logged without running monitor:install again, and servers without the monitor keep
+     * a valid configuration.
+     *
+     * @param  string  $conf
+     * @return string
+     */
+    public function addMonitorIncludes(string $conf): string
+    {
+        $path = $this->config('nginx_path');
+
+        // The rules need their log format of conf.d
+        if (file_exists($path.'/conf.d/vpsmanager-scanners.conf') && file_exists($path.'/vpsmanager/scanners.conf')) {
+            $conf = $this->addVpsManagerInclude($conf, 'scanners.conf');
+
+            if (file_exists($path.'/vpsmanager/scanners-php.conf')) {
+                $conf = $this->syncVpsManagerIncludeAfter($conf, 'scanners-php.conf', 'scanners.conf');
+            }
+        }
+
+        // The access log needs its log format and maps of conf.d
+        if (file_exists($path.'/conf.d/vpsmanager-monitor.conf') && file_exists($path.'/vpsmanager/monitor.conf')) {
+            $conf = $this->disableServerAccessLogOff($this->addVpsManagerInclude($conf, 'monitor.conf', false), 'monitor.conf');
+        }
+
+        return $conf;
+    }
+
+    /**
      * Remove the include of the vpsmanager configuration file from all server sections of the host.
      *
      * @param  string  $conf
@@ -346,12 +377,9 @@ class Nginx extends Application
 
         $this->cloneNginxSettings();
 
-        // Files included by the template which were added after the installation (e.g. scanners-php.conf)
-        $this->syncNginxSettings();
-
         $stub = $this->generateNginxHostStub($domain, $config, $php_version);
 
-        if (! $stub->save($this->getAvailablePath($domain))) {
+        if (file_put_contents($this->getAvailablePath($domain), $this->addMonitorIncludes((string) $stub)) === false) {
             return $this->response()->error('NGINX host file could not be saved.');
         }
 

@@ -391,7 +391,8 @@ class Laravel extends Application
     {
         $backup = file_get_contents($confPath);
 
-        file_put_contents($confPath, $conf);
+        // New sections (e.g. Octane hosts) get the monitor too
+        file_put_contents($confPath, $this->nginx()->addMonitorIncludes($conf));
 
         if (! $this->nginx()->test()) {
             file_put_contents($confPath, $backup);

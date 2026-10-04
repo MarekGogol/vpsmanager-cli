@@ -284,8 +284,8 @@ class Certbot extends Application
             $nginx_conf = $this->addSubdomainSSLSection($domain, $cert_name, $nginx_conf);
         }
 
-        // Update host configuration
-        file_put_contents($this->nginx()->getAvailablePath($domain), $nginx_conf);
+        // Update host configuration, new sections get the monitor too
+        file_put_contents($this->nginx()->getAvailablePath($domain), $this->nginx()->addMonitorIncludes($nginx_conf));
 
         $this->hosting()->rebootNginx();
 

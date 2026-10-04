@@ -336,6 +336,8 @@ sudo php vpsmanager monitor:install
 
 Run `monitor:install` on every server after every update of VPS Manager. It writes only what changed and is safe to run again: the second run reports `already up to date` three times. The output has three parts, `Rules against scanners`, `Access log` and `fail2ban`.
 
+New hosts and sections need no other run: `hosting:create`, `hosting:ssl` (HTTPS sections of subdomains) and `laravel:octane` add the same includes as `monitor:install` (rules, rules against `.php` files without a password, access log). Only the parts installed on the server are added, recognized by their files in `conf.d`, so a server without the monitor creates hosts without it.
+
 - Every part tests its configuration first (`nginx -t`, `fail2ban-client -t`) and restores all hosts and files when it is not valid, so NGINX and fail2ban keep running with the previous configuration.
 - `--without-access-log` installs the rules and fail2ban only.
 - `--remove` removes everything: includes from the hosts, fail2ban jails, the access log with its rotation. It brings back `access_log off;` of the hosts.
@@ -381,7 +383,7 @@ What is never blocked:
 
 The include is added to every server section of the enabled hosts which serves an application: after `include vpsmanager/general.conf;`, or at the end of sections without it (Nuxt, Node and other applications behind `proxy_pass`). Sections without any `location` (redirects to https or www) are skipped. Sections serving WordPress (`include vpsmanager/wordpress.conf`) keep their configuration, the rules would block WordPress itself; `Skipped WordPress sections of …` is printed for them. A WordPress which does not include `wordpress.conf` is not recognized, include the file in its host before running the command. `general.conf` also denies dot files with the default NGINX page, for hosts without the rules.
 
-`include vpsmanager/scanners-php.conf;` follows right after `include vpsmanager/scanners.conf;` in every section without `auth_basic` of the server level; `Sections of … protected by a password serve all .php files.` is printed for the others. When a password is added to a section later, the next `monitor:install` removes the include from it. New hosts created by VPS Manager include both files.
+`include vpsmanager/scanners-php.conf;` follows right after `include vpsmanager/scanners.conf;` in every section without `auth_basic` of the server level; `Sections of … protected by a password serve all .php files.` is printed for the others. When a password is added to a section later, the next `monitor:install` removes the include from it.
 
 New rules belong into `src/Resources/nginx/vpsmanager/scanners.conf` of this repository, never into the file on a server: `monitor:install` replaces the managed files on every run. After a change, test the rules in a local NGINX (both blocked and allowed paths), commit, `git pull` and `monitor:install` on the servers.
 
