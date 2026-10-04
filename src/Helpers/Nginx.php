@@ -124,7 +124,36 @@ class Nginx extends Application
     }
 
     /**
-     * Restore vpsmanager configuration files written by syncNginxSettings().
+     * Remove vpsmanager configuration files fully managed by vpsmanager, e.g. when the monitor is removed.
+     * New hosts recognize the monitor by these files, so they must not stay on the server.
+     *
+     * @param  array  $managed  paths relative to the NGINX directory, e.g. vpsmanager/scanners.conf
+     * @param  bool  $dryRun  only return the files which would be removed
+     * @return array relative path => previous content
+     */
+    public function removeNginxSettings(array $managed, bool $dryRun = false): array
+    {
+        $removed = [];
+
+        foreach ($managed as $relative) {
+            $path = $this->config('nginx_path').'/'.$relative;
+
+            if (! file_exists($path)) {
+                continue;
+            }
+
+            $previous = file_get_contents($path);
+
+            if ($dryRun || @unlink($path)) {
+                $removed[$relative] = $previous;
+            }
+        }
+
+        return $removed;
+    }
+
+    /**
+     * Restore vpsmanager configuration files written by syncNginxSettings() or removed by removeNginxSettings().
      *
      * @param  array  $written  relative path => previous content (null for a new file)
      * @return void

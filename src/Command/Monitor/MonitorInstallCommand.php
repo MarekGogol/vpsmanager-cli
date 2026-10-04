@@ -96,11 +96,10 @@ class MonitorInstallCommand extends Command
     {
         $nginx = vpsManager()->nginx();
 
-        $written = $remove ? [] : $nginx->syncNginxSettings(self::MANAGED, $dryRun);
+        // Removed files are restored like written ones when the configuration is not valid
+        $written = $remove ? $nginx->removeNginxSettings(self::MANAGED, $dryRun) : $nginx->syncNginxSettings(self::MANAGED, $dryRun);
 
-        foreach ($written as $file => $previous) {
-            $output->writeln(($dryRun ? 'Would write' : 'Wrote').' <comment>'.$file.'</comment>'.($previous === null ? ' (new file)' : ' (new version)'));
-        }
+        $this->writeFiles($output, $written, $dryRun, $remove);
 
         $changes = [];
 
@@ -166,6 +165,24 @@ class MonitorInstallCommand extends Command
     }
 
     /**
+     * Print the NGINX files written or removed by the command.
+     *
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  array  $files  relative path => previous content (null for a new file)
+     * @param  bool  $dryRun
+     * @param  bool  $remove
+     * @return void
+     */
+    protected function writeFiles(OutputInterface $output, array $files, bool $dryRun, bool $remove): void
+    {
+        foreach ($files as $file => $previous) {
+            $output->writeln($remove
+                ? ($dryRun ? 'Would remove' : 'Removed').' <comment>'.$file.'</comment>'
+                : ($dryRun ? 'Would write' : 'Wrote').' <comment>'.$file.'</comment>'.($previous === null ? ' (new file)' : ' (new version)'));
+        }
+    }
+
+    /**
      * Describe the number of added or removed includes of the file, null when it did not change.
      *
      * @param  string  $conf
@@ -193,11 +210,9 @@ class MonitorInstallCommand extends Command
     {
         $nginx = vpsManager()->nginx();
         $monitor = vpsManager()->monitor();
-        $written = $remove ? [] : $nginx->syncNginxSettings(self::ACCESS_LOG_MANAGED, $dryRun);
+        $written = $remove ? $nginx->removeNginxSettings(self::ACCESS_LOG_MANAGED, $dryRun) : $nginx->syncNginxSettings(self::ACCESS_LOG_MANAGED, $dryRun);
 
-        foreach ($written as $file => $previous) {
-            $output->writeln(($dryRun ? 'Would write' : 'Wrote').' <comment>'.$file.'</comment>'.($previous === null ? ' (new file)' : ' (new version)'));
-        }
+        $this->writeFiles($output, $written, $dryRun, $remove);
 
         $changes = [];
 
