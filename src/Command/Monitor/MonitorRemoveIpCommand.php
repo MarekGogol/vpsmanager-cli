@@ -1,6 +1,6 @@
 <?php
 
-namespace Gogol\VpsManagerCLI\Command\Fail2ban;
+namespace Gogol\VpsManagerCLI\Command\Monitor;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -8,7 +8,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class Fail2banRemoveIpCommand extends Command
+class MonitorRemoveIpCommand extends Command
 {
     /**
      * Configure the command.
@@ -17,7 +17,7 @@ class Fail2banRemoveIpCommand extends Command
      */
     protected function configure(): void
     {
-        $this->setName('fail2ban:remove-ip')
+        $this->setName('monitor:remove-ip')
             ->setDescription('Unban the address in all fail2ban jails')
             ->addArgument('ip', InputArgument::REQUIRED, 'Banned IP address')
             ->addOption('jail', null, InputOption::VALUE_REQUIRED, 'Unban only in the given jail, e.g. sshd');

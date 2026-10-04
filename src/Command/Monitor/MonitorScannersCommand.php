@@ -1,13 +1,13 @@
 <?php
 
-namespace Gogol\VpsManagerCLI\Command;
+namespace Gogol\VpsManagerCLI\Command\Monitor;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class NginxScannersCommand extends Command
+class MonitorScannersCommand extends Command
 {
     /**
      * Configuration file with the rules against scanners, in the vpsmanager directory of NGINX.
@@ -26,7 +26,7 @@ class NginxScannersCommand extends Command
      */
     protected function configure(): void
     {
-        $this->setName('nginx:scanners')
+        $this->setName('monitor:scanners')
             ->setDescription('Answer requests of vulnerability scanners in NGINX for all hosts and ban the scanners with fail2ban')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Only list the hosts and files which would be changed')
             ->addOption('remove', null, InputOption::VALUE_NONE, 'Remove the rules from all hosts and the fail2ban jails');

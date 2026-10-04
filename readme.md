@@ -23,7 +23,7 @@ Everything is ready out of the box. You configure the features with the installa
 4. [How it works (architecture)](#how-it-works-architecture)
 5. [Managing hostings](#managing-hostings)
 6. [SSL certificates](#ssl-certificates)
-7. [Protection against scanners](#protection-against-scanners)
+7. [Monitor: protection against scanners](#monitor-protection-against-scanners)
 8. [Chroot environments](#chroot-environments)
 9. [MySQL databases](#mysql-databases)
 10. [Backups](#backups)
@@ -186,9 +186,9 @@ src/
 │                           #   php-pool.conf, hello.php, banner.txt
 ├── Resources/nginx/        # shared NGINX config copied into /etc/nginx
 │   ├── nginx.conf
-│   ├── conf.d/webp.conf, conf.d/vpsmanager-scanners.conf
+│   ├── conf.d/webp.conf, conf.d/vpsmanager-scanners.conf, conf.d/vpsmanager-monitor.conf
 │   └── vpsmanager/         # general.conf, fastcgi-php.conf, cors-preflight.conf,
-│                           #   scanners.conf, scanners.html
+│                           #   scanners.conf, scanners.html, monitor.conf
 └── Traits/
     └── PHPSettingsTrait.php # supported PHP versions and per-pool php_admin_value settings
 ```
@@ -308,11 +308,11 @@ Certificate renewal is handled by certbot's own systemd timer or cron job.
 
 ---
 
-## Protection against scanners
+## Monitor: protection against scanners
 
 ```bash
-sudo php vpsmanager nginx:scanners --dry-run
-sudo php vpsmanager nginx:scanners
+sudo php vpsmanager monitor:scanners --dry-run
+sudo php vpsmanager monitor:scanners
 ```
 
 Bots scan every domain of the server for WordPress paths, backups and secrets. Without protection each such request boots the application in PHP-FPM, and a scan of a few dozen paths occupies all workers of a small pool for a moment. `vpsmanager/scanners.conf` answers them in NGINX with `403` and the static page `vpsmanager/scanners.html` (English and Slovak, with a link to the homepage), without reaching PHP.
@@ -330,7 +330,7 @@ The rules match only paths which no Laravel or plain PHP application serves:
 
 `general.conf` denies dot files too, with the default NGINX page, for hosts without this file. Other `.php` files, uploads and downloads (`/uploads/export.zip`, `/uploads/archive.zip`) are not touched.
 
-New hosts include the file after `vpsmanager/general.conf`. `nginx:scanners` copies the missing files of `Resources/nginx/vpsmanager` into the NGINX directory, replaces `scanners.conf` and `scanners.html` when this version changes them (other files such as `general.conf` may be edited on the server and are kept), and adds the include to every server section of the enabled hosts which serves an application: after `include vpsmanager/general.conf;`, or at the end of sections without it, such as Nuxt or other applications behind `proxy_pass`. Sections without any `location` (redirects to https or www) are skipped. Then it tests and reloads NGINX, and when the configuration is not valid it restores all hosts and files. Run it again after every update of VPS Manager to get new versions of the rules. Sections serving WordPress (`include vpsmanager/wordpress.conf`) are skipped, the rules would block them. `--dry-run` only lists the hosts which would be changed, `--remove` removes the include from all hosts.
+New hosts include the file after `vpsmanager/general.conf`. `monitor:scanners` copies the missing files of `Resources/nginx/vpsmanager` into the NGINX directory, replaces `scanners.conf` and `scanners.html` when this version changes them (other files such as `general.conf` may be edited on the server and are kept), and adds the include to every server section of the enabled hosts which serves an application: after `include vpsmanager/general.conf;`, or at the end of sections without it, such as Nuxt or other applications behind `proxy_pass`. Sections without any `location` (redirects to https or www) are skipped. Then it tests and reloads NGINX, and when the configuration is not valid it restores all hosts and files. Run it again after every update of VPS Manager to get new versions of the rules. Sections serving WordPress (`include vpsmanager/wordpress.conf`) are skipped, the rules would block them. `--dry-run` only lists the hosts which would be changed, `--remove` removes the include from all hosts.
 
 The rules run in the rewrite phase of the server, before any `location`, so the position of the include in the host does not matter. `418` is only an internal marker of the rules, the visitor receives `403`.
 
@@ -341,7 +341,7 @@ Every blocked request is written into `/var/log/nginx/vpsmanager-scanners.log`, 
 ```bash
 awk -F'"' '{print $(NF-1)}' /var/log/nginx/vpsmanager-scanners.log | sort | uniq -c | sort -rn
 ```
- `nginx:scanners` installs two fail2ban jails which ban the addresses from this log in the firewall, so a scanner stops reaching every website of the server, not only the one it scans:
+ `monitor:scanners` installs two fail2ban jails which ban the addresses from this log in the firewall, so a scanner stops reaching every website of the server, not only the one it scans:
 
 | Jail | Ban | Ports |
 | --- | --- | --- |
@@ -350,7 +350,7 @@ awk -F'"' '{print $(NF-1)}' /var/log/nginx/vpsmanager-scanners.log | sort | uniq
 
 Files written into `/etc/fail2ban` (managed, overwritten by every run): `filter.d/vpsmanager-scanners.conf`, `filter.d/vpsmanager-scanners-recidive.conf`, `jail.d/vpsmanager-scanners.conf` and `fail2ban.d/vpsmanager.conf` (`dbpurgeage = 8d`, the database keeps the bans for the week of the recidive jail). The command tests the configuration (`fail2ban-client -t`) and restores the previous files when it is not valid. When the files changed it restarts fail2ban, which applies the bans of the database again with the current actions (a reload would only flush the bans of a changed action), otherwise it reloads fail2ban, or starts it when it does not run.
 
-The recidive jail bans in the iptables chain `f2b-vpsm-recidive`, chain names may have 28 characters at most. Servers set up before this fix logged `chain name too long` and did not block the recidive bans; `git pull` and `nginx:scanners` fix them.
+The recidive jail bans in the iptables chain `f2b-vpsm-recidive`, chain names may have 28 characters at most. Servers set up before this fix logged `chain name too long` and did not block the recidive bans; `git pull` and `monitor:scanners` fix them.
 
 Localhost and all addresses of the server (`hostname -I`) are never banned, the server calls its own websites. Own addresses belong into `/etc/fail2ban/jail.d/vpsmanager-scanners.local`, which is never overwritten:
 
@@ -367,18 +367,40 @@ Debian 12 logs into journald only, so the default `sshd` jail does not find `/va
 ### Banned addresses
 
 ```bash
-sudo php vpsmanager fail2ban:show
-sudo php vpsmanager fail2ban:show --jail=vpsmanager-scanners
+sudo php vpsmanager monitor:list
+sudo php vpsmanager monitor:list --jail=vpsmanager-scanners
 ```
 
 Lists the banned addresses of all running jails (also `sshd`) with the time of the ban and of its end. For the jails against scanners it also counts the blocked requests of the address in `/var/log/nginx/vpsmanager-scanners.log`, `grep "^203.0.113.10 " /var/log/nginx/vpsmanager-scanners.log` shows them.
 
 ```bash
-sudo php vpsmanager fail2ban:remove-ip 203.0.113.10
-sudo php vpsmanager fail2ban:remove-ip 203.0.113.10 --jail=sshd
+sudo php vpsmanager monitor:remove-ip 203.0.113.10
+sudo php vpsmanager monitor:remove-ip 203.0.113.10 --jail=sshd
 ```
 
 Unbans the address in all jails, or only in the given one. The address is banned again when it keeps sending blocked requests, an address which must never be banned belongs into `vpsmanager-scanners.local` (see above).
+
+
+### Access log for the analysis
+
+```bash
+sudo php vpsmanager monitor:access-log --dry-run
+sudo php vpsmanager monitor:access-log
+sudo php vpsmanager monitor:report
+sudo php vpsmanager monitor:report --hours=168 --json
+```
+
+`monitor:access-log` logs the requests of all hosts into `/var/log/vpsmanager/access.log`, to find addresses and urls which should be banned too, e.g. by an analysis of AI. Each line holds the address, time, host, method and url, status, size, duration, referer and user agent (format `vpsmanager_monitor` in `conf.d/vpsmanager-monitor.conf`).
+
+- Static files (images, CSS, JS, fonts, video) are not logged, they are most of the requests. Requests blocked by `scanners.conf` stay in `vpsmanager-scanners.log` only.
+- Query strings with secrets (`token`, `code`, `pass`, `secret`, `key`, `hash`, `signature`, `auth` in a parameter name) are logged as `?[masked]`.
+- The log never fills the disk: `/etc/cron.hourly/vpsmanager-monitor` runs logrotate with `/etc/vpsmanager/logrotate-monitor.conf` every hour. The log is rotated every day and whenever it grows over 100 MB, rotated logs are compressed and deleted after 7 days. The configuration is outside of `/etc/logrotate.d`, so the daily logrotate does not rotate it twice.
+- The include `vpsmanager/monitor.conf` is added to every server section serving an application, WordPress included. `access_log off;` of the server level would cancel it, so it is commented out (`# access_log off; (replaced by vpsmanager/monitor.conf)`); `access_log off` of locations stays.
+- `--remove` removes the includes, brings back `access_log off;`, removes the rotation and deletes the log.
+
+The log holds addresses of visitors for a week, mention it in the privacy policy of the websites.
+
+`monitor:report` summarizes the requests of the last day (`--hours`): requests by host and status, addresses with failed requests which are not banned, failed paths (candidates for `scanners.conf`), the busiest addresses with their peak of requests per minute and user agents of failed requests. `--json` prints it for an analysis by AI.
 
 ---
 

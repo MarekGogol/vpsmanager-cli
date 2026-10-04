@@ -167,12 +167,13 @@ class Nginx extends Application
      *
      * @param  string  $conf
      * @param  string  $file  e.g. scanners.conf
+     * @param  bool  $skipWordpress  WordPress sections keep their configuration
      * @return string
      */
-    public function addVpsManagerInclude(string $conf, string $file): string
+    public function addVpsManagerInclude(string $conf, string $file, bool $skipWordpress = true): string
     {
-        return $this->mapServerSections($conf, function ($section) use ($file) {
-            if (str_contains($section, 'vpsmanager/'.$file) || str_contains($section, 'vpsmanager/wordpress.conf')) {
+        return $this->mapServerSections($conf, function ($section) use ($file, $skipWordpress) {
+            if (str_contains($section, 'vpsmanager/'.$file) || ($skipWordpress && str_contains($section, 'vpsmanager/wordpress.conf'))) {
                 return $section;
             }
 
@@ -205,6 +206,65 @@ class Nginx extends Application
     {
         // A blank line before the include belongs to it, when it was added at the end of a section
         return preg_replace('#\n(?:[ \t]*\n)?[ \t]*include vpsmanager/'.preg_quote($file, '#').';[ \t]*(?=\n)#', '', $conf);
+    }
+
+    /**
+     * Comment out "access_log off" of the server level in the sections including the given file, it would cancel
+     * the access log of the file. "access_log off" of locations (e.g. static files) stays.
+     *
+     * @param  string  $conf
+     * @param  string  $file  e.g. monitor.conf
+     * @return string
+     */
+    public function disableServerAccessLogOff(string $conf, string $file): string
+    {
+        return $this->mapServerSections($conf, function ($section) use ($file) {
+            if (! str_contains($section, 'vpsmanager/'.$file)) {
+                return $section;
+            }
+
+            return $this->mapServerLevelLines($section, function ($line) use ($file) {
+                return preg_replace('#^([ \t]*)access_log off;[ \t]*$#', '$1# access_log off; (replaced by vpsmanager/'.$file.')', $line);
+            });
+        });
+    }
+
+    /**
+     * Bring back "access_log off" commented out by disableServerAccessLogOff().
+     *
+     * @param  string  $conf
+     * @param  string  $file  e.g. monitor.conf
+     * @return string
+     */
+    public function restoreServerAccessLogOff(string $conf, string $file): string
+    {
+        return preg_replace('#^([ \t]*)\# access_log off; \(replaced by vpsmanager/'.preg_quote($file, '#').'\)$#m', '$1access_log off;', $conf);
+    }
+
+    /**
+     * Call the callback with every line of the server {} section which is not nested in a block (location, if...).
+     *
+     * @param  string  $section
+     * @param  callable  $callback
+     * @return string
+     */
+    private function mapServerLevelLines(string $section, callable $callback): string
+    {
+        $depth = 0;
+        $lines = explode("\n", $section);
+
+        foreach ($lines as $i => $line) {
+            // Comments do not open or close blocks
+            $code = preg_replace('/#.*$/', '', $line);
+
+            if ($depth === 1) {
+                $lines[$i] = $callback($line);
+            }
+
+            $depth += substr_count($code, '{') - substr_count($code, '}');
+        }
+
+        return implode("\n", $lines);
     }
 
     /**

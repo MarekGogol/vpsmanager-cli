@@ -8,6 +8,7 @@ use Gogol\VpsManagerCLI\Helpers\Chroot;
 use Gogol\VpsManagerCLI\Helpers\Fail2ban;
 use Gogol\VpsManagerCLI\Helpers\Hosting;
 use Gogol\VpsManagerCLI\Helpers\Laravel;
+use Gogol\VpsManagerCLI\Helpers\Monitor;
 use Gogol\VpsManagerCLI\Helpers\MySQLHelper;
 use Gogol\VpsManagerCLI\Helpers\Nginx;
 use Gogol\VpsManagerCLI\Helpers\PHP;
@@ -267,6 +268,16 @@ class Application
     public function fail2ban(): Fail2ban
     {
         return $this->boot(Fail2ban::class);
+    }
+
+    /**
+     * Get the monitor helper.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\Monitor
+     */
+    public function monitor(): Monitor
+    {
+        return $this->boot(Monitor::class);
     }
 
     /**

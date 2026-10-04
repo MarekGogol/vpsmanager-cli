@@ -1,6 +1,6 @@
 <?php
 
-namespace Gogol\VpsManagerCLI\Command\Fail2ban;
+namespace Gogol\VpsManagerCLI\Command\Monitor;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\Table;
@@ -8,7 +8,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class Fail2banShowCommand extends Command
+class MonitorListCommand extends Command
 {
     /**
      * Configure the command.
@@ -17,7 +17,7 @@ class Fail2banShowCommand extends Command
      */
     protected function configure(): void
     {
-        $this->setName('fail2ban:show')
+        $this->setName('monitor:list')
             ->setDescription('List addresses banned by fail2ban in all jails')
             ->addOption('jail', null, InputOption::VALUE_REQUIRED, 'Only the given jail, e.g. vpsmanager-scanners');
     }
@@ -81,7 +81,7 @@ class Fail2banShowCommand extends Command
 
         $output->writeln('');
         $output->writeln('Requests of an address: <comment>grep "^IP " '.$fail2ban::SCANNERS_LOG.'</comment>');
-        $output->writeln('Unban an address: <comment>php vpsmanager fail2ban:remove-ip IP</comment>');
+        $output->writeln('Unban an address: <comment>php vpsmanager monitor:remove-ip IP</comment>');
 
         return Command::SUCCESS;
     }
