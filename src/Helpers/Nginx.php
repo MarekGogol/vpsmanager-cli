@@ -196,6 +196,46 @@ class Nginx extends Application
     }
 
     /**
+     * Include the vpsmanager configuration file right after the include of another one, in every server section
+     * which has it and is not protected by a password (auth_basic of the server level). The include is removed
+     * from the other sections, e.g. when a password has been added to the section.
+     *
+     * @param  string  $conf
+     * @param  string  $file  e.g. scanners-php.conf
+     * @param  string  $after  e.g. scanners.conf
+     * @return string
+     */
+    public function syncVpsManagerIncludeAfter(string $conf, string $file, string $after): string
+    {
+        return $this->mapServerSections($conf, function ($section) use ($file, $after) {
+            $protected = false;
+
+            $this->mapServerLevelLines($section, function ($line) use (&$protected) {
+                $protected = $protected || preg_match('#^[ \t]*auth_basic[ \t]+(?!off;)\S#', $line);
+
+                return $line;
+            });
+
+            $included = str_contains($section, 'vpsmanager/'.$file);
+
+            if ($protected || ! str_contains($section, 'vpsmanager/'.$after)) {
+                return $included ? $this->removeVpsManagerInclude($section, $file) : $section;
+            }
+
+            if ($included) {
+                return $section;
+            }
+
+            return preg_replace(
+                '#^([ \t]*)include vpsmanager/'.preg_quote($after, '#').';$#m',
+                '$0'."\n".'$1include vpsmanager/'.$file.';',
+                $section,
+                1,
+            );
+        });
+    }
+
+    /**
      * Remove the include of the vpsmanager configuration file from all server sections of the host.
      *
      * @param  string  $conf
@@ -305,6 +345,9 @@ class Nginx extends Application
         }
 
         $this->cloneNginxSettings();
+
+        // Files included by the template which were added after the installation (e.g. scanners-php.conf)
+        $this->syncNginxSettings();
 
         $stub = $this->generateNginxHostStub($domain, $config, $php_version);
 

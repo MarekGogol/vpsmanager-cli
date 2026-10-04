@@ -16,9 +16,14 @@ class MonitorInstallCommand extends Command
     const FILE = 'scanners.conf';
 
     /**
+     * Rules against other .php files than index.php, included after FILE in sections without a password.
+     */
+    const PHP_FILE = 'scanners-php.conf';
+
+    /**
      * Files fully managed by vpsmanager, replaced on the server when a new version changes them.
      */
-    const MANAGED = ['vpsmanager/scanners.conf', 'vpsmanager/scanners.html', 'conf.d/vpsmanager-scanners.conf'];
+    const MANAGED = ['vpsmanager/scanners.conf', 'vpsmanager/scanners-php.conf', 'vpsmanager/scanners.html', 'conf.d/vpsmanager-scanners.conf'];
 
     /**
      * Configuration file of the access log in the vpsmanager directory of NGINX.
@@ -103,8 +108,8 @@ class MonitorInstallCommand extends Command
             $conf = file_get_contents($path);
 
             $updated = $remove
-                ? $nginx->removeVpsManagerInclude($conf, self::FILE)
-                : $nginx->addVpsManagerInclude($conf, self::FILE);
+                ? $nginx->removeVpsManagerInclude($nginx->removeVpsManagerInclude($conf, self::PHP_FILE), self::FILE)
+                : $nginx->syncVpsManagerIncludeAfter($nginx->addVpsManagerInclude($conf, self::FILE), self::PHP_FILE, self::FILE);
 
             if ($updated !== $conf) {
                 $changes[$path] = [$conf, $updated];
@@ -113,6 +118,11 @@ class MonitorInstallCommand extends Command
             // WordPress hosts keep their configuration, the rules would block their paths
             if (! $remove && str_contains($conf, 'vpsmanager/wordpress.conf')) {
                 $output->writeln('Skipped WordPress sections of <comment>'.basename($path).'</comment>.');
+            }
+
+            // Tools behind a password (phpMyAdmin, adminer) serve their own PHP files
+            if (! $remove && substr_count($updated, 'vpsmanager/'.self::FILE.';') > substr_count($updated, 'vpsmanager/'.self::PHP_FILE.';')) {
+                $output->writeln('Sections of <comment>'.basename($path).'</comment> protected by a password serve all .php files.');
             }
         }
 
@@ -123,9 +133,10 @@ class MonitorInstallCommand extends Command
         }
 
         foreach ($changes as $path => [$conf, $updated]) {
-            $count = abs(substr_count($updated, 'vpsmanager/'.self::FILE) - substr_count($conf, 'vpsmanager/'.self::FILE));
-
-            $output->writeln(($dryRun ? 'Would update' : 'Updating').' <comment>'.$path.'</comment> ('.$count.' server sections)');
+            $output->writeln(($dryRun ? 'Would update' : 'Updating').' <comment>'.$path.'</comment> ('.implode(', ', array_filter([
+                $this->countIncludes($conf, $updated, self::FILE, 'server sections'),
+                $this->countIncludes($conf, $updated, self::PHP_FILE, 'with rules against .php files'),
+            ])).')');
         }
 
         if ($dryRun) {
@@ -152,6 +163,22 @@ class MonitorInstallCommand extends Command
         $output->writeln('<info>'.($remove ? 'Rules against scanners have been removed from' : 'Rules against scanners are active in').' '.count($changes).' updated hosts and NGINX has been reloaded.</info>');
 
         return true;
+    }
+
+    /**
+     * Describe the number of added or removed includes of the file, null when it did not change.
+     *
+     * @param  string  $conf
+     * @param  string  $updated
+     * @param  string  $file
+     * @param  string  $label
+     * @return string|null
+     */
+    protected function countIncludes(string $conf, string $updated, string $file, string $label): ?string
+    {
+        $count = substr_count($updated, 'vpsmanager/'.$file.';') - substr_count($conf, 'vpsmanager/'.$file.';');
+
+        return $count === 0 ? null : sprintf('%+d %s', $count, $label);
     }
 
     /**

@@ -354,7 +354,7 @@ request ─▶ firewall (iptables) ─▶ NGINX server section ─▶ location �
             └── fail2ban reads vpsmanager-scanners.log, bans repeating addresses for all websites
 ```
 
-1. **NGINX rules** (`vpsmanager/scanners.conf`) answer paths which no Laravel or plain PHP application serves with `403` and a static page in English and Slovak (`vpsmanager/scanners.html`, a link to the homepage). The request never reaches PHP. The rules are `if` blocks of the server level, they run in the rewrite phase before any `location`, so the position of the include does not matter. `418` is only an internal marker of the rules (`error_page 418 =403`), the visitor receives `403`, other `403` pages of the hosts are not changed.
+1. **NGINX rules** (`vpsmanager/scanners.conf` and `vpsmanager/scanners-php.conf`) answer paths which no Laravel application serves with `403` and a static page in English and Slovak (`vpsmanager/scanners.html`, a link to the homepage). The request never reaches PHP. The rules are `if` blocks of the server level, they run in the rewrite phase before any `location`, so the position of the include does not matter. `418` is only an internal marker of the rules (`error_page 418 =403`), the visitor receives `403`, other `403` pages of the hosts are not changed. The block page has `auth_basic off`, hosts protected by a password show it too instead of asking for the password.
 2. **fail2ban** reads the log of the blocked requests and bans an address in the firewall for every website of the server: an hour after 5 blocked requests in 10 minutes, a week after 3 such bans in a day.
 3. **Access log** (`vpsmanager/monitor.conf`) logs all other requests for a week, `monitor:report` turns it into a summary of addresses and paths which may need a ban.
 
@@ -367,16 +367,21 @@ request ─▶ firewall (iptables) ─▶ NGINX server section ─▶ location �
 | Backups and leftovers of editors, in any directory except uploads | `*.sql`, `*.sql.gz`, `*.sql.zip`, `*.bak`, `*.old`, `*.orig`, `*.save`, `*.swp`, `*~` |
 | Archives of the whole site, in the root only | `/backup.zip`, `/www.tar.gz`, `/public_html.zip`, `/db.zip` |
 | Secrets and project files, in the root only | `/id_rsa`, `/credentials.txt`, `/docker-compose.yml`, `/composer.json`, `/package.json`, `/artisan`, `/phpinfo.php` |
-| Exploits of other software | `/cgi-bin/…`, `/vendor/phpunit/…`, `eval-stdin.php` |
+| Deployment and AI gateway configuration, in the root only | `/serverless.yml`, `/template.yaml`, `/samconfig.toml`, `/main.tf`, `/terraform.tfvars.json`, `/terraform.tfstate`, `/litellm_config.yaml`, `/litellm/config.yaml` |
+| Exploits of other software | `/cgi-bin/…`, `/vendor/phpunit/…`, `eval-stdin.php`, `/rest/api/1.0/application-properties` (Jira, Confluence) |
+| Other `.php` files than `index.php` (`scanners-php.conf`) | `/worksec.php`, `/r5t.php`, `/admin/simple.php`, `/info.php` |
 
 What is never blocked:
 
-- Other `.php` files (`/index.php`, `/test.php`), legacy PHP websites keep working.
+- `index.php` in any directory (`/index.php`, `/index.php/produkt/x`, `/pma/index.php`) and PHP files of CrudAdmin under `/vendor/crudadmin/` (the connector of CKFinder).
+- Any `.php` file in sections protected by a password (`auth_basic` of the server level, e.g. phpMyAdmin, adminer and `php/83/info.php` of `tools.*`) and in WordPress sections, they do not get `scanners-php.conf`. A legacy PHP website with other entry files than `index.php` needs a password, or the include of `scanners-php.conf` has to be removed from its section after every `monitor:install`.
 - Uploads and downloads: `.zip`, `.gz`, `.pdf` anywhere (`/uploads/export.zip`, `/admin/files/imports_files/file/import.zip`).
 - Backups in the storage of uploads of the applications, at least three directories deep with `uploads`: `/uploads/{table}/{field}/dump.sql.gz` is served, `/uploads/dump.sql` and `/uploads/x/dump.sql` are blocked.
 - Paths which only resemble a rule: `/blog`, `/wordpress`, `/data`, `/backup`, `/search?q=wp-admin`, `/zmluva.old.pdf`.
 
 The include is added to every server section of the enabled hosts which serves an application: after `include vpsmanager/general.conf;`, or at the end of sections without it (Nuxt, Node and other applications behind `proxy_pass`). Sections without any `location` (redirects to https or www) are skipped. Sections serving WordPress (`include vpsmanager/wordpress.conf`) keep their configuration, the rules would block WordPress itself; `Skipped WordPress sections of …` is printed for them. A WordPress which does not include `wordpress.conf` is not recognized, include the file in its host before running the command. `general.conf` also denies dot files with the default NGINX page, for hosts without the rules.
+
+`include vpsmanager/scanners-php.conf;` follows right after `include vpsmanager/scanners.conf;` in every section without `auth_basic` of the server level; `Sections of … protected by a password serve all .php files.` is printed for the others. When a password is added to a section later, the next `monitor:install` removes the include from it. New hosts created by VPS Manager include both files.
 
 New rules belong into `src/Resources/nginx/vpsmanager/scanners.conf` of this repository, never into the file on a server: `monitor:install` replaces the managed files on every run. After a change, test the rules in a local NGINX (both blocked and allowed paths), commit, `git pull` and `monitor:install` on the servers.
 
@@ -428,10 +433,10 @@ The access log holds addresses of visitors for a week, mention it in the privacy
 
 | File | Owner |
 | --- | --- |
-| `/etc/nginx/vpsmanager/scanners.conf`, `scanners.html`, `monitor.conf` | managed, replaced by `monitor:install` |
+| `/etc/nginx/vpsmanager/scanners.conf`, `scanners-php.conf`, `scanners.html`, `monitor.conf` | managed, replaced by `monitor:install` |
 | `/etc/nginx/conf.d/vpsmanager-scanners.conf`, `vpsmanager-monitor.conf` | managed (log formats and maps of the `http` context) |
 | `/etc/nginx/vpsmanager/general.conf`, `wordpress.conf`, other files | yours, copied only when missing, never replaced |
-| `/etc/nginx/sites-available/*` | yours, the command only adds or removes `include vpsmanager/scanners.conf;`, `include vpsmanager/monitor.conf;` and comments out `access_log off;` |
+| `/etc/nginx/sites-available/*` | yours, the command only adds or removes `include vpsmanager/scanners.conf;`, `include vpsmanager/scanners-php.conf;`, `include vpsmanager/monitor.conf;` and comments out `access_log off;` |
 | `/etc/fail2ban/filter.d/vpsmanager-scanners.conf`, `vpsmanager-scanners-recidive.conf`, `jail.d/vpsmanager-scanners.conf`, `fail2ban.d/vpsmanager.conf` | managed |
 | `/etc/fail2ban/jail.d/vpsmanager-scanners.local` | yours (own addresses never banned) |
 | `/etc/vpsmanager/logrotate-monitor.conf`, `/etc/cron.hourly/vpsmanager-monitor` | managed |
