@@ -159,12 +159,14 @@ class Monitor extends Application
      *
      * @param  int  $since  unix timestamp
      * @param  array  $banned  addresses banned by fail2ban now
+     * @param  array  $ignored  addresses of the server, never suspicious (fail2ban ignores them too)
      * @param  int  $limit  rows of each list
      * @return array
      */
-    public function report(int $since, array $banned, int $limit = 20): array
+    public function report(int $since, array $banned, array $ignored = [], int $limit = 20): array
     {
         $banned = array_flip($banned);
+        $ignored = array_flip($ignored);
         $total = 0;
         $statuses = $hosts = $ips = $errors = $paths = $agents = $minutes = [];
 
@@ -210,7 +212,7 @@ class Monitor extends Application
 
         $notBanned = array_filter($ips, fn ($data, $ip) => ! isset($banned[$ip]), ARRAY_FILTER_USE_BOTH);
 
-        $suspicious = array_filter($notBanned, fn ($data) => $data['errors'] > 0);
+        $suspicious = array_filter($notBanned, fn ($data, $ip) => $data['errors'] > 0 && ! isset($ignored[$ip]) && ! str_starts_with($ip, '127.'), ARRAY_FILTER_USE_BOTH);
         uasort($suspicious, fn ($a, $b) => $b['errors'] <=> $a['errors']);
 
         uasort($paths, fn ($a, $b) => count($b['ips']) <=> count($a['ips']) ?: $b['requests'] <=> $a['requests']);
@@ -221,7 +223,7 @@ class Monitor extends Application
         ksort($errors);
 
         return [
-            'since' => date('Y-m-d H:i', $since),
+            'since' => $this->formatTime($since),
             'requests' => $total,
             'addresses' => count($ips),
             'banned_addresses_seen' => count($ips) - count($notBanned),
@@ -251,5 +253,18 @@ class Monitor extends Application
             ], array_slice($peaks, 0, $limit, true), array_keys(array_slice($peaks, 0, $limit, true))),
             'failing_agents' => array_slice($agents, 0, $limit, true),
         ];
+    }
+
+    /**
+     * Format the time in the timezone of the server, PHP CLI often runs in UTC.
+     *
+     * @param  int  $time
+     * @return string
+     */
+    public function formatTime(int $time): string
+    {
+        exec('date -d @'.$time.' "+%Y-%m-%d %H:%M %Z" 2> /dev/null', $output, $return_var);
+
+        return $return_var === 0 && isset($output[0]) ? $output[0] : date('Y-m-d H:i T', $time);
     }
 }

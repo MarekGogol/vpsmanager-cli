@@ -45,7 +45,9 @@ class MonitorReportCommand extends Command
         $hours = max(1, (int) $input->getOption('hours'));
         $limit = max(1, (int) $input->getOption('limit'));
 
-        $report = vpsManager()->monitor()->report(time() - $hours * 3600, $this->getBannedIps(), $limit);
+        $ignored = array_filter(vpsManager()->fail2ban()->getIgnoredIps(), fn ($ip) => ! str_contains($ip, '/'));
+
+        $report = vpsManager()->monitor()->report(time() - $hours * 3600, $this->getBannedIps(), $ignored, $limit);
 
         if ($input->getOption('json')) {
             $output->writeln(json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
