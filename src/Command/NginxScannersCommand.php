@@ -190,10 +190,15 @@ class NginxScannersCommand extends Command
             return false;
         }
 
-        if (! $fail2ban->reload()) {
+        // Changed jails need a restart: reload flushes the bans of a changed action, the start applies them again
+        if (! (count($written) ? $fail2ban->restart() : $fail2ban->reload())) {
             $output->writeln('<error>fail2ban could not be started or reloaded, check</error> journalctl -u fail2ban');
 
             return false;
+        }
+
+        if (count($written)) {
+            $output->writeln('fail2ban has been restarted, bans of the database are applied with the current configuration.');
         }
 
         if ($remove) {

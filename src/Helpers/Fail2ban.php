@@ -45,6 +45,7 @@ class Fail2ban extends Application
         $files = [
             self::PATH.'/filter.d/vpsmanager-scanners.conf' => file_get_contents($resources.'/filter.d/vpsmanager-scanners.conf'),
             self::PATH.'/filter.d/vpsmanager-scanners-recidive.conf' => file_get_contents($resources.'/filter.d/vpsmanager-scanners-recidive.conf'),
+            self::PATH.'/fail2ban.d/vpsmanager.conf' => file_get_contents($resources.'/fail2ban.d/vpsmanager.conf'),
             self::PATH.'/jail.d/vpsmanager-scanners.conf' => (string) $this->getStub('fail2ban.scanners.conf')
                 ->replace('{log_path}', self::SCANNERS_LOG)
                 ->replace('{ignoreip}', implode(' ', $this->getIgnoredIps())),
@@ -84,6 +85,10 @@ class Fail2ban extends Application
 
             if ($previous === $content) {
                 continue;
+            }
+
+            if (! $dryRun && ! is_dir(dirname($path))) {
+                mkdir(dirname($path), 0755, true);
             }
 
             if ($dryRun || file_put_contents($path, $content) !== false) {
@@ -214,22 +219,7 @@ class Fail2ban extends Application
 
         exec($active === 0 ? 'fail2ban-client reload 2>&1' : 'systemctl enable --now fail2ban 2>&1', $output, $return_var);
 
-        if ($return_var !== 0) {
-            return false;
-        }
-
-        // Starting server needs a moment before it answers
-        for ($i = 0; $i < 10; $i++) {
-            exec('fail2ban-client ping 2> /dev/null', $ping, $pong);
-
-            if ($pong === 0) {
-                return true;
-            }
-
-            sleep(1);
-        }
-
-        return false;
+        return $return_var === 0 && $this->waitForServer();
     }
 
     /**
@@ -318,6 +308,37 @@ class Fail2ban extends Application
         exec('grep -c -E '.escapeshellarg('^'.preg_quote($ip).' ').' '.escapeshellarg(self::SCANNERS_LOG).' 2> /dev/null', $output);
 
         return (int) ($output[0] ?? 0);
+    }
+
+    /**
+     * Restart fail2ban. Unlike reload, the start applies the bans of the database again with the current actions
+     * of the jails, which reload only flushes when an action changes.
+     *
+     * @return bool
+     */
+    public function restart(): bool
+    {
+        exec('systemctl enable fail2ban 2>&1 && systemctl restart fail2ban 2>&1', $output, $return_var);
+
+        return $return_var === 0 && $this->waitForServer();
+    }
+
+    /**
+     * Wait until the started fail2ban server answers.
+     *
+     * @return bool
+     */
+    protected function waitForServer(): bool
+    {
+        for ($i = 0; $i < 15; $i++) {
+            if ($this->isRunning()) {
+                return true;
+            }
+
+            sleep(1);
+        }
+
+        return false;
     }
 
     /**

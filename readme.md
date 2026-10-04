@@ -343,7 +343,9 @@ Every blocked request is written into `/var/log/nginx/vpsmanager-scanners.log`, 
 | `vpsmanager-scanners` | 5 blocked requests in 10 minutes, banned for an hour | http, https |
 | `vpsmanager-scanners-recidive` | 3 bans in a day, banned for a week | http, https (SSH stays reachable from a shared address) |
 
-Files written into `/etc/fail2ban` (managed, overwritten by every run): `filter.d/vpsmanager-scanners.conf`, `filter.d/vpsmanager-scanners-recidive.conf` and `jail.d/vpsmanager-scanners.conf`. The command tests the configuration (`fail2ban-client -t`), restores the previous files when it is not valid, and reloads fail2ban, or starts it when it does not run.
+Files written into `/etc/fail2ban` (managed, overwritten by every run): `filter.d/vpsmanager-scanners.conf`, `filter.d/vpsmanager-scanners-recidive.conf`, `jail.d/vpsmanager-scanners.conf` and `fail2ban.d/vpsmanager.conf` (`dbpurgeage = 8d`, the database keeps the bans for the week of the recidive jail). The command tests the configuration (`fail2ban-client -t`) and restores the previous files when it is not valid. When the files changed it restarts fail2ban, which applies the bans of the database again with the current actions (a reload would only flush the bans of a changed action), otherwise it reloads fail2ban, or starts it when it does not run.
+
+The recidive jail bans in the iptables chain `f2b-vpsm-recidive`, chain names may have 28 characters at most. Servers set up before this fix logged `chain name too long` and did not block the recidive bans; `git pull` and `nginx:scanners` fix them.
 
 Localhost and all addresses of the server (`hostname -I`) are never banned, the server calls its own websites. Own addresses belong into `/etc/fail2ban/jail.d/vpsmanager-scanners.local`, which is never overwritten:
 
