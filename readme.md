@@ -168,12 +168,17 @@ src/
 │   ├── Hosting/            # hosting:create, hosting:remove
 │   ├── Chroot/             # chroot:create, chroot:update, chroot:remove
 │   ├── Mysql/              # mysql:create, mysql:reset, mysql:remove
-│   └── Backup/             # backup:setup, backup:run, backup:test-mail, backup:test-remote
+│   ├── Backup/             # backup:setup, backup:run, backup:test-mail, backup:test-remote
+│   ├── Laravel/            # laravel:queue, laravel:octane
+│   └── Monitor/            # monitor:install, monitor:list, monitor:remove-ip, monitor:report
 ├── Helpers/                # the actual server logic
 │   ├── helpers.php         # global functions (vpsManager(), isValidDomain(), createDirectories()...)
 │   ├── Hosting.php         # orchestrates create/remove of a whole hosting
 │   ├── Server.php          # linux users, groups and the domain directory tree
-│   ├── Nginx.php           # NGINX hosts, sites-enabled symlinks, config test/restart
+│   ├── Nginx.php           # NGINX hosts, sites-enabled symlinks, config test/reload/restart,
+│   │                       #   managed vpsmanager files and includes in the hosts (monitor)
+│   ├── Fail2ban.php        # jails against scanners, bans, unbans, rsyslog for auth.log
+│   ├── Monitor.php         # access log rotation and the report of monitor:report
 │   ├── PHP.php             # PHP-FPM pools, versions, restart, default CLI version
 │   ├── MySQLHelper.php     # databases and users via mysqli
 │   ├── Certbot.php         # Let's Encrypt certificates + NGINX HTTPS rewrite
@@ -183,12 +188,14 @@ src/
 │   ├── Stub.php            # tiny template engine for files in src/Stub
 │   └── Response.php        # success/error result object with console output
 ├── Stub/                   # templates: nginx.template.conf, nginx.redirect.conf,
-│                           #   php-pool.conf, hello.php, banner.txt
+│                           #   php-pool.conf, hello.php, banner.txt, fail2ban.scanners.conf
 ├── Resources/nginx/        # shared NGINX config copied into /etc/nginx
 │   ├── nginx.conf
 │   ├── conf.d/webp.conf, conf.d/vpsmanager-scanners.conf, conf.d/vpsmanager-monitor.conf
 │   └── vpsmanager/         # general.conf, fastcgi-php.conf, cors-preflight.conf,
 │                           #   scanners.conf, scanners.html, monitor.conf
+├── Resources/fail2ban/     # filter.d and fail2ban.d files of the monitor
+├── Resources/monitor/      # logrotate configuration and hourly cron of the access log
 └── Traits/
     └── PHPSettingsTrait.php # supported PHP versions and per-pool php_admin_value settings
 ```
@@ -310,98 +317,172 @@ Certificate renewal is handled by certbot's own systemd timer or cron job.
 
 ## Monitor: protection against scanners
 
+Bots scan every domain of a server all day: WordPress paths (`/wp-login.php`, `/wp-content/plugins/…`), secrets (`/.env`, `/.git/config`), backups (`/backup.sql`) and known exploits. Without protection every such request boots the application in PHP-FPM, and a scan of a few dozen paths occupies all workers of a small pool for a moment. The monitor answers them in NGINX without PHP, bans the scanners in the firewall for all websites of the server, and keeps a week of access log to find what else should be banned.
+
+| Command | What it does |
+| --- | --- |
+| `monitor:install` | Installs or updates the whole monitor: NGINX rules, fail2ban jails, access log. `--dry-run`, `--without-access-log`, `--remove` |
+| `monitor:list` | Banned addresses of all fail2ban jails (also `sshd`) with the time of the ban and its end. `--jail=` |
+| `monitor:remove-ip <ip>` | Unbans the address in all jails, or one with `--jail=` |
+| `monitor:report` | Summary of the access log for an analysis (also by AI). `--hours=24`, `--limit=20`, `--json` |
+
+### Install and update
+
 ```bash
+cd /root/vpsmanager-cli && git pull
 sudo php vpsmanager monitor:install --dry-run
 sudo php vpsmanager monitor:install
 ```
 
-`monitor:install` installs the whole monitor at once: the NGINX rules against scanners, the fail2ban jails which ban them and the access log for the analysis (each described below). `--without-access-log` skips the access log, `--remove` removes all of it. Run it again after every update of VPS Manager, it writes only what changed.
+Run `monitor:install` on every server after every update of VPS Manager. It writes only what changed and is safe to run again: the second run reports `already up to date` three times. The output has three parts, `Rules against scanners`, `Access log` and `fail2ban`.
 
-Bots scan every domain of the server for WordPress paths, backups and secrets. Without protection each such request boots the application in PHP-FPM, and a scan of a few dozen paths occupies all workers of a small pool for a moment. `vpsmanager/scanners.conf` answers them in NGINX with `403` and the static page `vpsmanager/scanners.html` (English and Slovak, with a link to the homepage), without reaching PHP.
+- Every part tests its configuration first (`nginx -t`, `fail2ban-client -t`) and restores all hosts and files when it is not valid, so NGINX and fail2ban keep running with the previous configuration.
+- `--without-access-log` installs the rules and fail2ban only.
+- `--remove` removes everything: includes from the hosts, fail2ban jails, the access log with its rotation. It brings back `access_log off;` of the hosts.
+- It works on Debian 12 and Ubuntu 20.04+ (NGINX 1.18+, fail2ban 0.11+), the server needs `fail2ban` (installed by `wamp_setup.sh`).
 
-The rules match only paths which no Laravel or plain PHP application serves:
+### How it works
+
+```text
+request ─▶ firewall (iptables) ─▶ NGINX server section ─▶ location ─▶ PHP-FPM / proxy
+            │                       │
+            │  f2b-vpsm-recidive    │  vpsmanager/scanners.conf (rewrite phase, before any location)
+            │  f2b-vpsmanager-…     │    scanner path ─▶ 403 + scanners.html, line in vpsmanager-scanners.log
+            │  (banned → rejected)  │  vpsmanager/monitor.conf
+            │                       │    other request ─▶ line in /var/log/vpsmanager/access.log
+            ▲                       │
+            └── fail2ban reads vpsmanager-scanners.log, bans repeating addresses for all websites
+```
+
+1. **NGINX rules** (`vpsmanager/scanners.conf`) answer paths which no Laravel or plain PHP application serves with `403` and a static page in English and Slovak (`vpsmanager/scanners.html`, a link to the homepage). The request never reaches PHP. The rules are `if` blocks of the server level, they run in the rewrite phase before any `location`, so the position of the include does not matter. `418` is only an internal marker of the rules (`error_page 418 =403`), the visitor receives `403`, other `403` pages of the hosts are not changed.
+2. **fail2ban** reads the log of the blocked requests and bans an address in the firewall for every website of the server: an hour after 5 blocked requests in 10 minutes, a week after 3 such bans in a day.
+3. **Access log** (`vpsmanager/monitor.conf`) logs all other requests for a week, `monitor:report` turns it into a summary of addresses and paths which may need a ban.
+
+### Blocked paths
 
 | Rule | Examples |
 | --- | --- |
-| Dot files, except Let's Encrypt challenges (`.well-known`) | `/.env`, `/.git/config`, `/.aws/credentials`, `/.htaccess` |
+| Dot files, except Let's Encrypt challenges (`.well-known`) | `/.env`, `/api/.env`, `/.git/config`, `/.aws/credentials`, `/.htaccess` |
 | WordPress, also under a directory | `/wp-admin`, `/wp-content/…`, `/blog/wp-includes/…`, `/wp-login.php`, `/xmlrpc.php`, `?rest_route=` |
-| Backups and leftovers of editors, in any directory except the storage of uploads (`/uploads/{table}/{field}/…`) | `*.sql`, `*.sql.gz`, `*.bak`, `*.old`, `*.orig`, `*.save`, `*.swp`, `*~` |
-| Archives of the whole site in the root | `/backup.zip`, `/www.tar.gz`, `/public_html.zip` |
-| Secrets and project files in the root | `/id_rsa`, `/credentials.txt`, `/docker-compose.yml`, `/composer.json`, `/package.json`, `/artisan`, `/phpinfo.php` |
+| Backups and leftovers of editors, in any directory except uploads | `*.sql`, `*.sql.gz`, `*.sql.zip`, `*.bak`, `*.old`, `*.orig`, `*.save`, `*.swp`, `*~` |
+| Archives of the whole site, in the root only | `/backup.zip`, `/www.tar.gz`, `/public_html.zip`, `/db.zip` |
+| Secrets and project files, in the root only | `/id_rsa`, `/credentials.txt`, `/docker-compose.yml`, `/composer.json`, `/package.json`, `/artisan`, `/phpinfo.php` |
 | Exploits of other software | `/cgi-bin/…`, `/vendor/phpunit/…`, `eval-stdin.php` |
 
-`general.conf` denies dot files too, with the default NGINX page, for hosts without this file. Other `.php` files, uploads and downloads (`/uploads/export.zip`, `/uploads/archive.zip`) are not touched.
+What is never blocked:
 
-New hosts include the file after `vpsmanager/general.conf`. `monitor:install` copies the missing files of `Resources/nginx/vpsmanager` into the NGINX directory, replaces `scanners.conf` and `scanners.html` when this version changes them (other files such as `general.conf` may be edited on the server and are kept), and adds the include to every server section of the enabled hosts which serves an application: after `include vpsmanager/general.conf;`, or at the end of sections without it, such as Nuxt or other applications behind `proxy_pass`. Sections without any `location` (redirects to https or www) are skipped. Then it tests and reloads NGINX, and when the configuration is not valid it restores all hosts and files. Run it again after every update of VPS Manager to get new versions of the rules. Sections serving WordPress (`include vpsmanager/wordpress.conf`) are skipped, the rules would block them. `--dry-run` only lists the hosts which would be changed, `--remove` removes the include from all hosts.
+- Other `.php` files (`/index.php`, `/test.php`), legacy PHP websites keep working.
+- Uploads and downloads: `.zip`, `.gz`, `.pdf` anywhere (`/uploads/export.zip`, `/admin/files/imports_files/file/import.zip`).
+- Backups in the storage of uploads of the applications, at least three directories deep with `uploads`: `/uploads/{table}/{field}/dump.sql.gz` is served, `/uploads/dump.sql` and `/uploads/x/dump.sql` are blocked.
+- Paths which only resemble a rule: `/blog`, `/wordpress`, `/data`, `/backup`, `/search?q=wp-admin`, `/zmluva.old.pdf`.
 
-The rules run in the rewrite phase of the server, before any `location`, so the position of the include in the host does not matter. `418` is only an internal marker of the rules, the visitor receives `403`.
+The include is added to every server section of the enabled hosts which serves an application: after `include vpsmanager/general.conf;`, or at the end of sections without it (Nuxt, Node and other applications behind `proxy_pass`). Sections without any `location` (redirects to https or www) are skipped. Sections serving WordPress (`include vpsmanager/wordpress.conf`) keep their configuration, the rules would block WordPress itself; `Skipped WordPress sections of …` is printed for them. A WordPress which does not include `wordpress.conf` is not recognized, include the file in its host before running the command. `general.conf` also denies dot files with the default NGINX page, for hosts without the rules.
 
-### Banning scanners with fail2ban
+New rules belong into `src/Resources/nginx/vpsmanager/scanners.conf` of this repository, never into the file on a server: `monitor:install` replaces the managed files on every run. After a change, test the rules in a local NGINX (both blocked and allowed paths), commit, `git pull` and `monitor:install` on the servers.
 
-Every blocked request is written into `/var/log/nginx/vpsmanager-scanners.log`, also in hosts with `access_log off`. The format `vpsmanager_scanners` (`conf.d/vpsmanager-scanners.conf`, managed) is the combined format with the host of the request at the end, so the log tells which websites are scanned:
+### fail2ban jails
 
-```bash
-awk -F'"' '{print $(NF-1)}' /var/log/nginx/vpsmanager-scanners.log | sort | uniq -c | sort -rn
-```
- `monitor:install` installs two fail2ban jails which ban the addresses from this log in the firewall, so a scanner stops reaching every website of the server, not only the one it scans:
+| Jail | Ban | Ports | iptables chain |
+| --- | --- | --- | --- |
+| `vpsmanager-scanners` | 5 blocked requests in 10 minutes, banned for an hour | http, https | `f2b-vpsmanager-scanners` |
+| `vpsmanager-scanners-recidive` | 3 bans of the jail above in a day, banned for a week | http, https (SSH stays reachable from a shared address) | `f2b-vpsm-recidive` |
+| `sshd` (default of fail2ban) | default of the distribution | ssh | `f2b-sshd` |
 
-| Jail | Ban | Ports |
+- iptables chains are named `f2b-<name>` and may have 28 characters at most. The recidive jail therefore bans with `name=vpsm-recidive`; servers set up before this fix logged `chain name too long` into `/var/log/fail2ban.log` and their recidive bans were not blocked. `git pull` and `monitor:install` fix them.
+- A chain is created at the first ban of its jail. `iptables -S f2b-sshd` of a jail without bans prints `chain … is incompatible, use 'nft' tool`: iptables-nft prints this also for a chain which does not exist, it is not an error.
+- When fail2ban files change, `monitor:install` **restarts** fail2ban. A reload flushes the bans of a changed action and creates the chain only at the next ban; the start applies the bans of the database again with the current actions.
+- `fail2ban.d/vpsmanager.conf` sets `dbpurgeage = 8d`. The default of Debian is one day, the database would forget the week bans of the recidive jail and a restart would not apply them again.
+- Localhost and all addresses of the server (`hostname -I`) are never banned, the server calls its own websites (e.g. an API of one hosting from another one). Own addresses which must never be banned (office, home, CI) belong into `/etc/fail2ban/jail.d/vpsmanager-scanners.local`, which is never overwritten, then `fail2ban-client reload`:
+
+  ```ini
+  [vpsmanager-scanners]
+  ignoreip = %(known/ignoreip)s 203.0.113.10
+
+  [vpsmanager-scanners-recidive]
+  ignoreip = %(known/ignoreip)s 203.0.113.10
+  ```
+
+- Debian 12 logs into journald only, so the default `sshd` jail does not find `/var/log/auth.log` and fail2ban does not start at all (`Have not found any log file for sshd jail`). When the file is missing, `monitor:install` installs `rsyslog`, which writes the classic log files again. `wamp_setup.sh` installs it on new servers.
+
+### Logs
+
+| Log | Content | Rotation |
 | --- | --- | --- |
-| `vpsmanager-scanners` | 5 blocked requests in 10 minutes, banned for an hour | http, https |
-| `vpsmanager-scanners-recidive` | 3 bans in a day, banned for a week | http, https (SSH stays reachable from a shared address) |
+| `/var/log/nginx/vpsmanager-scanners.log` | blocked requests: `IP - - [time] "request" 403 size "referer" "agent" "host"` (format `vpsmanager_scanners`, the combined format with the host at the end) | NGINX logrotate of the distribution (daily, 14 days) |
+| `/var/log/vpsmanager/access.log` | other requests: `IP [time] "host" "METHOD url" status size duration "referer" "agent"` (format `vpsmanager_monitor`) | hourly by VPS Manager: daily and over 100 MB, compressed, deleted after 7 days |
+| `/var/log/fail2ban.log` | bans and unbans of all jails | logrotate of the distribution |
 
-Files written into `/etc/fail2ban` (managed, overwritten by every run): `filter.d/vpsmanager-scanners.conf`, `filter.d/vpsmanager-scanners-recidive.conf`, `jail.d/vpsmanager-scanners.conf` and `fail2ban.d/vpsmanager.conf` (`dbpurgeage = 8d`, the database keeps the bans for the week of the recidive jail). The command tests the configuration (`fail2ban-client -t`) and restores the previous files when it is not valid. When the files changed it restarts fail2ban, which applies the bans of the database again with the current actions (a reload would only flush the bans of a changed action), otherwise it reloads fail2ban, or starts it when it does not run.
+The address starts every line, fail2ban and the commands rely on it.
 
-The recidive jail bans in the iptables chain `f2b-vpsm-recidive`, chain names may have 28 characters at most. Servers set up before this fix logged `chain name too long` and did not block the recidive bans; `git pull` and `monitor:install` fix them.
+The access log:
 
-Localhost and all addresses of the server (`hostname -I`) are never banned, the server calls its own websites. Own addresses belong into `/etc/fail2ban/jail.d/vpsmanager-scanners.local`, which is never overwritten:
+- does not log static files which exist (images, CSS, JS, fonts, video), they are most of the requests. A missing static file is rewritten to the application and logged, its `404` is useful for the analysis;
+- logs the url as requested by the client (`$request_uri`), not the one rewritten to `/index.php` by `try_files`;
+- masks query strings with secrets: a parameter name containing `token`, `code`, `pass`, `secret`, `key`, `hash`, `signature` or `auth` turns the query into `?[masked]` (e.g. `access_token` of a socialite pairing);
+- never fills the disk: `/etc/cron.hourly/vpsmanager-monitor` runs logrotate with `/etc/vpsmanager/logrotate-monitor.conf` and its own state file every hour. The configuration is outside of `/etc/logrotate.d`, so the daily logrotate does not rotate it twice. At most about 100 MB of the current log and 7 compressed logs exist;
+- needs the hosts to log: `access_log off;` of the server level would cancel it, so `monitor:install` comments it out (`# access_log off; (replaced by vpsmanager/monitor.conf)`) and `--remove` brings it back. `access_log off` of locations stays. WordPress hosts are logged too.
 
-```ini
-[vpsmanager-scanners]
-ignoreip = %(known/ignoreip)s 203.0.113.10
+The access log holds addresses of visitors for a week, mention it in the privacy policy of the websites.
 
-[vpsmanager-scanners-recidive]
-ignoreip = %(known/ignoreip)s 203.0.113.10
-```
+### Files on the server
 
-Debian 12 logs into journald only, so the default `sshd` jail does not find `/var/log/auth.log` and fail2ban does not start at all. When the file is missing, the command installs `rsyslog`, which writes the classic log files again (`wamp_setup.sh` installs it on new servers).
+| File | Owner |
+| --- | --- |
+| `/etc/nginx/vpsmanager/scanners.conf`, `scanners.html`, `monitor.conf` | managed, replaced by `monitor:install` |
+| `/etc/nginx/conf.d/vpsmanager-scanners.conf`, `vpsmanager-monitor.conf` | managed (log formats and maps of the `http` context) |
+| `/etc/nginx/vpsmanager/general.conf`, `wordpress.conf`, other files | yours, copied only when missing, never replaced |
+| `/etc/nginx/sites-available/*` | yours, the command only adds or removes `include vpsmanager/scanners.conf;`, `include vpsmanager/monitor.conf;` and comments out `access_log off;` |
+| `/etc/fail2ban/filter.d/vpsmanager-scanners.conf`, `vpsmanager-scanners-recidive.conf`, `jail.d/vpsmanager-scanners.conf`, `fail2ban.d/vpsmanager.conf` | managed |
+| `/etc/fail2ban/jail.d/vpsmanager-scanners.local` | yours (own addresses never banned) |
+| `/etc/vpsmanager/logrotate-monitor.conf`, `/etc/cron.hourly/vpsmanager-monitor` | managed |
 
-### Banned addresses
+### Everyday operations
 
 ```bash
+# banned addresses and their blocked requests
 sudo php vpsmanager monitor:list
-sudo php vpsmanager monitor:list --jail=vpsmanager-scanners
-```
+grep "^203.0.113.10 " /var/log/nginx/vpsmanager-scanners.log
 
-Lists the banned addresses of all running jails (also `sshd`) with the time of the ban and of its end. For the jails against scanners it also counts the blocked requests of the address in `/var/log/nginx/vpsmanager-scanners.log`, `grep "^203.0.113.10 " /var/log/nginx/vpsmanager-scanners.log` shows them.
-
-```bash
+# unban, e.g. an office behind a shared address
 sudo php vpsmanager monitor:remove-ip 203.0.113.10
-sudo php vpsmanager monitor:remove-ip 203.0.113.10 --jail=sshd
+
+# which websites and paths are scanned most
+awk -F'"' '{print $(NF-1)}' /var/log/nginx/vpsmanager-scanners.log | sort | uniq -c | sort -rn
+awk '{print $7}' /var/log/nginx/vpsmanager-scanners.log | sed 's/?.*//' | sort | uniq -c | sort -rn | head -30
+
+# bans of the last days and the state of the firewall
+grep -E "\] (Ban|Unban) " /var/log/fail2ban.log | tail -50
+iptables -S f2b-vpsm-recidive
+iptables -L INPUT -n --line-numbers
 ```
 
-Unbans the address in all jails, or only in the given one. The address is banned again when it keeps sending blocked requests, an address which must never be banned belongs into `vpsmanager-scanners.local` (see above).
+`monitor:list` prints the jails with the number of banned addresses and a table of the bans. The numbers of a jail and of REJECT rules in its iptables chain must be equal; when a jail has bans and its chain is missing, check `ERROR` lines of `/var/log/fail2ban.log`.
 
+### Analysis by AI
 
-### Access log for the analysis
+`monitor:report` summarizes the access log of the last `--hours` (24 by default, the log keeps a week):
+
+- requests by host and status;
+- addresses with failed requests which are not banned (addresses of the server and localhost are skipped), with their peak of requests per minute, number of hosts and failed paths;
+- failed paths with the number of addresses, candidates for new rules of `scanners.conf`;
+- the busiest addresses, banned ones marked;
+- user agents of failed requests.
 
 ```bash
-sudo php vpsmanager monitor:report
-sudo php vpsmanager monitor:report --hours=168 --json
+sudo php vpsmanager monitor:report --hours=168 --limit=50 --json > report.json
 ```
 
-`monitor:install` also logs the requests of all hosts into `/var/log/vpsmanager/access.log`, to find addresses and urls which should be banned too, e.g. by an analysis of AI. Each line holds the address, time, host, method and url, status, size, duration, referer and user agent (format `vpsmanager_monitor` in `conf.d/vpsmanager-monitor.conf`).
+An analysis by AI should look for: paths requested by many different addresses which no application of the server serves (new rule for `scanners.conf`), addresses with many failed requests over several hosts (scanners which the rules do not catch yet), very high peaks per minute (crawlers or brute force), and user agents of tools (`python-requests`, `Go-http-client`, `curl`, empty). Before adding a rule, check that no application serves the path: a rule must never block real users, and uploads under `/uploads/{table}/{field}/` must stay downloadable.
 
-- Static files (images, CSS, JS, fonts, video) are not logged, they are most of the requests. Requests blocked by `scanners.conf` stay in `vpsmanager-scanners.log` only.
-- Query strings with secrets (`token`, `code`, `pass`, `secret`, `key`, `hash`, `signature`, `auth` in a parameter name) are logged as `?[masked]`.
-- The log never fills the disk: `/etc/cron.hourly/vpsmanager-monitor` runs logrotate with `/etc/vpsmanager/logrotate-monitor.conf` every hour. The log is rotated every day and whenever it grows over 100 MB, rotated logs are compressed and deleted after 7 days. The configuration is outside of `/etc/logrotate.d`, so the daily logrotate does not rotate it twice.
-- The include `vpsmanager/monitor.conf` is added to every server section serving an application, WordPress included. `access_log off;` of the server level would cancel it, so it is commented out (`# access_log off; (replaced by vpsmanager/monitor.conf)`); `access_log off` of locations stays.
-- `monitor:install --remove` removes the includes, brings back `access_log off;`, removes the rotation and deletes the log.
+### Rules for working on a server (also for AI agents)
 
-The log holds addresses of visitors for a week, mention it in the privacy policy of the websites.
-
-`monitor:report` summarizes the requests of the last day (`--hours`): requests by host and status, addresses with failed requests which are not banned, failed paths (candidates for `scanners.conf`), the busiest addresses with their peak of requests per minute and user agents of failed requests. `--json` prints it for an analysis by AI.
-
+- Run `--dry-run` first and read what would change.
+- Never edit managed files on a server, they are overwritten. Change them in this repository.
+- Test from the server itself, the address of the tester is not banned then: `curl -sk --resolve api.example.com:443:127.0.0.1 https://api.example.com/.env` must print the block page with `403`, `/admin` of the same host its usual status.
+- Testing bans: use a documentation address, e.g. `fail2ban-client set sshd banip 203.0.113.250` and `monitor:remove-ip 203.0.113.250`. Never ban real addresses for a test.
+- Do not enable or start `nftables.service`: its start loads `/etc/nftables.conf` and flushes the whole ruleset, the bans of fail2ban included. The `nft` command itself is safe for reading (`nft list chain ip filter INPUT`).
+- `iptables-legacy` commands load empty legacy tables, then iptables warns `iptables-legacy tables present`; it is harmless and disappears after a reboot.
+- After `monitor:install` check: the second run reports `already up to date`, websites answer as before, blocked paths answer `403`, jails and iptables chains have the same numbers of bans.
 ---
 
 ## Chroot environments
@@ -642,6 +723,8 @@ cd /root/vpsmanager-cli
 git pull
 composer install --no-plugins --no-scripts
 ```
+
+After an update run `php vpsmanager monitor:install` on servers with the monitor, it brings the new versions of the rules, jails and log formats (see [Monitor](#monitor-protection-against-scanners)).
 
 `src/config.php` is git-ignored, so updates keep your configuration. If a new version adds config keys, run `php vpsmanager install` or `php vpsmanager backup:setup` again. Your current values are offered as defaults. After PHP or NodeJS upgrades, run `php vpsmanager chroot:update` to refresh the binaries inside chroot environments.
 
