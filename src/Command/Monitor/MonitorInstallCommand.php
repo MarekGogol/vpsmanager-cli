@@ -2,12 +2,13 @@
 
 namespace Gogol\VpsManagerCLI\Command\Monitor;
 
+use Gogol\VpsManagerCLI\Helpers\Monitor;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class MonitorScannersCommand extends Command
+class MonitorInstallCommand extends Command
 {
     /**
      * Configuration file with the rules against scanners, in the vpsmanager directory of NGINX.
@@ -20,16 +21,27 @@ class MonitorScannersCommand extends Command
     const MANAGED = ['vpsmanager/scanners.conf', 'vpsmanager/scanners.html', 'conf.d/vpsmanager-scanners.conf'];
 
     /**
+     * Configuration file of the access log in the vpsmanager directory of NGINX.
+     */
+    const ACCESS_LOG_FILE = 'monitor.conf';
+
+    /**
+     * NGINX files of the access log fully managed by vpsmanager.
+     */
+    const ACCESS_LOG_MANAGED = ['vpsmanager/monitor.conf', 'conf.d/vpsmanager-monitor.conf'];
+
+    /**
      * Configure the command.
      *
      * @return void
      */
     protected function configure(): void
     {
-        $this->setName('monitor:scanners')
-            ->setDescription('Answer requests of vulnerability scanners in NGINX for all hosts and ban the scanners with fail2ban')
+        $this->setName('monitor:install')
+            ->setDescription('Install the monitor: NGINX rules against scanners, fail2ban jails which ban them and a week of access log')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Only list the hosts and files which would be changed')
-            ->addOption('remove', null, InputOption::VALUE_NONE, 'Remove the rules from all hosts and the fail2ban jails');
+            ->addOption('without-access-log', null, InputOption::VALUE_NONE, 'Do not install the access log')
+            ->addOption('remove', null, InputOption::VALUE_NONE, 'Remove the monitor: rules, fail2ban jails and the access log with its files');
     }
 
     /**
@@ -46,11 +58,23 @@ class MonitorScannersCommand extends Command
         $dryRun = (bool) $input->getOption('dry-run');
         $remove = (bool) $input->getOption('remove');
 
+        $output->writeln('<comment>Rules against scanners</comment>');
+
         if (! $this->updateNginx($output, $dryRun, $remove)) {
             return Command::FAILURE;
         }
 
+        if (! $input->getOption('without-access-log')) {
+            $output->writeln('');
+            $output->writeln('<comment>Access log</comment>');
+
+            if (! $this->updateAccessLog($output, $dryRun, $remove)) {
+                return Command::FAILURE;
+            }
+        }
+
         $output->writeln('');
+        $output->writeln('<comment>fail2ban</comment>');
 
         return $this->updateFail2ban($output, $dryRun, $remove) ? Command::SUCCESS : Command::FAILURE;
     }
@@ -126,6 +150,99 @@ class MonitorScannersCommand extends Command
         }
 
         $output->writeln('<info>'.($remove ? 'Rules against scanners have been removed from' : 'Rules against scanners are active in').' '.count($changes).' updated hosts and NGINX has been reloaded.</info>');
+
+        return true;
+    }
+
+    /**
+     * Log requests of all hosts for a week (or remove the log) and reload NGINX.
+     *
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  bool  $dryRun
+     * @param  bool  $remove
+     * @return bool
+     */
+    protected function updateAccessLog(OutputInterface $output, bool $dryRun, bool $remove): bool
+    {
+        $nginx = vpsManager()->nginx();
+        $monitor = vpsManager()->monitor();
+        $written = $remove ? [] : $nginx->syncNginxSettings(self::ACCESS_LOG_MANAGED, $dryRun);
+
+        foreach ($written as $file => $previous) {
+            $output->writeln(($dryRun ? 'Would write' : 'Wrote').' <comment>'.$file.'</comment>'.($previous === null ? ' (new file)' : ' (new version)'));
+        }
+
+        $changes = [];
+
+        foreach ($nginx->getEnabledHostPaths() as $path) {
+            $conf = file_get_contents($path);
+
+            // WordPress is logged too, it is the most attacked application
+            $updated = $remove
+                ? $nginx->restoreServerAccessLogOff($nginx->removeVpsManagerInclude($conf, self::ACCESS_LOG_FILE), self::ACCESS_LOG_FILE)
+                : $nginx->disableServerAccessLogOff($nginx->addVpsManagerInclude($conf, self::ACCESS_LOG_FILE, false), self::ACCESS_LOG_FILE);
+
+            if ($updated !== $conf) {
+                $changes[$path] = [$conf, $updated];
+
+                $output->writeln(($dryRun ? 'Would update' : 'Updating').' <comment>'.$path.'</comment>');
+            }
+        }
+
+        $rotation = $remove ? [] : $monitor->writeFiles(true);
+
+        foreach ($rotation as $path => $previous) {
+            $output->writeln(($dryRun ? 'Would write' : 'Writing').' <comment>'.$path.'</comment>');
+        }
+
+        if ($dryRun) {
+            return true;
+        }
+
+        if (count($changes) === 0 && count($written) === 0 && count($rotation) === 0 && ! $remove) {
+            $output->writeln('<info>Access log is already up to date: '.Monitor::LOG.'</info>');
+
+            return true;
+        }
+
+        if (! $remove) {
+            $monitor->ensureLogDirectory();
+            $monitor->writeFiles();
+        }
+
+        foreach ($changes as $path => [$conf, $updated]) {
+            file_put_contents($path, $updated);
+        }
+
+        // Invalid configuration restores all hosts and files, so NGINX keeps running with the previous one
+        if (! $nginx->reload()) {
+            foreach ($changes as $path => [$conf, $updated]) {
+                file_put_contents($path, $conf);
+            }
+
+            $nginx->restoreNginxSettings($written);
+
+            $output->writeln('<error>NGINX configuration is not valid or NGINX could not be reloaded, previous configuration of all hosts has been restored.</error>');
+
+            return false;
+        }
+
+        if ($remove) {
+            $monitor->removeFiles();
+
+            foreach (glob(Monitor::LOG.'*') as $file) {
+                @unlink($file);
+            }
+
+            $output->writeln('<info>Access log has been removed from '.count($changes).' hosts and deleted.</info>');
+
+            return true;
+        }
+
+        $output->writeln('<info>Requests of all hosts are logged into '.Monitor::LOG.' ('.count($changes).' updated hosts).</info>');
+        $output->writeln('Static files are not logged, secrets in query strings are masked. The log is rotated every hour when it');
+        $output->writeln('grows over '.Monitor::MAX_SIZE.' and every day, rotated logs are compressed and deleted after a week.');
+        $output->writeln('Summary for the analysis: <comment>php vpsmanager monitor:report</comment>');
 
         return true;
     }

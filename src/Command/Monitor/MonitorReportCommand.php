@@ -37,7 +37,7 @@ class MonitorReportCommand extends Command
         vpsManager()->bootConsole($output, $input, $this->getHelper('question'));
 
         if (! glob(Monitor::LOG.'*')) {
-            $output->writeln('<error>There is no access log, enable it with</error> php vpsmanager monitor:access-log');
+            $output->writeln('<error>There is no access log, enable it with</error> php vpsmanager monitor:install');
 
             return Command::FAILURE;
         }
