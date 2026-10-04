@@ -92,30 +92,31 @@ class Nginx extends Application
     /**
      * Copy vpsmanager configuration files added after the installation. Existing files are kept,
      * they may be edited on the server, except the given files fully managed by vpsmanager, which
-     * are replaced when they differ.
+     * are written when they are missing or differ, also outside of the vpsmanager directory.
      *
-     * @param  array  $managed  names of the files which are always replaced, e.g. scanners.conf
+     * @param  array  $managed  paths relative to the NGINX directory, e.g. vpsmanager/scanners.conf
      * @param  bool  $dryRun  only return the files which would be written
-     * @return array name => previous content (null for a new file)
+     * @return array relative path => previous content (null for a new file)
      */
     public function syncNginxSettings(array $managed = [], bool $dryRun = false): array
     {
-        $target = $this->config('nginx_path').'/vpsmanager';
+        $resources = __DIR__.'/../Resources/nginx';
+        $paths = array_map(fn ($file) => 'vpsmanager/'.basename($file), glob($resources.'/vpsmanager/*'));
         $written = [];
 
-        foreach (glob(__DIR__.'/../Resources/nginx/vpsmanager/*') as $file) {
-            $name = basename($file);
-            $path = $target.'/'.$name;
+        foreach (array_unique([...$paths, ...$managed]) as $relative) {
+            $source = $resources.'/'.$relative;
+            $path = $this->config('nginx_path').'/'.$relative;
             $exists = file_exists($path);
 
-            if ($exists && (! in_array($name, $managed) || file_get_contents($path) === file_get_contents($file))) {
+            if ($exists && (! in_array($relative, $managed) || file_get_contents($path) === file_get_contents($source))) {
                 continue;
             }
 
             $previous = $exists ? file_get_contents($path) : null;
 
-            if ($dryRun || copy($file, $path)) {
-                $written[$name] = $previous;
+            if ($dryRun || copy($source, $path)) {
+                $written[$relative] = $previous;
             }
         }
 
@@ -125,18 +126,18 @@ class Nginx extends Application
     /**
      * Restore vpsmanager configuration files written by syncNginxSettings().
      *
-     * @param  array  $written  name => previous content (null for a new file)
+     * @param  array  $written  relative path => previous content (null for a new file)
      * @return void
      */
     public function restoreNginxSettings(array $written): void
     {
-        $target = $this->config('nginx_path').'/vpsmanager';
+        foreach ($written as $relative => $previous) {
+            $path = $this->config('nginx_path').'/'.$relative;
 
-        foreach ($written as $name => $previous) {
             if ($previous === null) {
-                @unlink($target.'/'.$name);
+                @unlink($path);
             } else {
-                file_put_contents($target.'/'.$name, $previous);
+                file_put_contents($path, $previous);
             }
         }
     }

@@ -186,7 +186,7 @@ src/
 │                           #   php-pool.conf, hello.php, banner.txt
 ├── Resources/nginx/        # shared NGINX config copied into /etc/nginx
 │   ├── nginx.conf
-│   ├── conf.d/webp.conf
+│   ├── conf.d/webp.conf, conf.d/vpsmanager-scanners.conf
 │   └── vpsmanager/         # general.conf, fastcgi-php.conf, cors-preflight.conf,
 │                           #   scanners.conf, scanners.html
 └── Traits/
@@ -336,7 +336,12 @@ The rules run in the rewrite phase of the server, before any `location`, so the 
 
 ### Banning scanners with fail2ban
 
-Every blocked request is written into `/var/log/nginx/vpsmanager-scanners.log`, also in hosts with `access_log off`. `nginx:scanners` installs two fail2ban jails which ban the addresses from this log in the firewall, so a scanner stops reaching every website of the server, not only the one it scans:
+Every blocked request is written into `/var/log/nginx/vpsmanager-scanners.log`, also in hosts with `access_log off`. The format `vpsmanager_scanners` (`conf.d/vpsmanager-scanners.conf`, managed) is the combined format with the host of the request at the end, so the log tells which websites are scanned:
+
+```bash
+awk -F'"' '{print $(NF-1)}' /var/log/nginx/vpsmanager-scanners.log | sort | uniq -c | sort -rn
+```
+ `nginx:scanners` installs two fail2ban jails which ban the addresses from this log in the firewall, so a scanner stops reaching every website of the server, not only the one it scans:
 
 | Jail | Ban | Ports |
 | --- | --- | --- |

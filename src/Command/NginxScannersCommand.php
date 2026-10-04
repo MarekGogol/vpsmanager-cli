@@ -17,7 +17,7 @@ class NginxScannersCommand extends Command
     /**
      * Files fully managed by vpsmanager, replaced on the server when a new version changes them.
      */
-    const MANAGED = ['scanners.conf', 'scanners.html'];
+    const MANAGED = ['vpsmanager/scanners.conf', 'vpsmanager/scanners.html', 'conf.d/vpsmanager-scanners.conf'];
 
     /**
      * Configure the command.
@@ -70,7 +70,7 @@ class NginxScannersCommand extends Command
         $written = $remove ? [] : $nginx->syncNginxSettings(self::MANAGED, $dryRun);
 
         foreach ($written as $file => $previous) {
-            $output->writeln(($dryRun ? 'Would write' : 'Wrote').' <comment>vpsmanager/'.$file.'</comment>'.($previous === null ? ' (new file)' : ' (new version)'));
+            $output->writeln(($dryRun ? 'Would write' : 'Wrote').' <comment>'.$file.'</comment>'.($previous === null ? ' (new file)' : ' (new version)'));
         }
 
         $changes = [];
