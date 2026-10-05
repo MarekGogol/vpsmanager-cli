@@ -99,16 +99,30 @@ class Monitor extends Application
     }
 
     /**
-     * Create the directory of the log, NGINX creates the file itself.
+     * Create the directory of the log, NGINX creates the file itself. Workers of NGINX (www-data) reopen the log
+     * after the rotation, they need to enter the directory, otherwise they keep writing into the rotated log.
      *
-     * @return void
+     * @param  bool  $dryRun  only check if the directory would be created or fixed
+     * @return bool true when the directory has been (or would be) created or fixed
      */
-    public function ensureLogDirectory(): void
+    public function ensureLogDirectory(bool $dryRun = false): bool
     {
-        if (! is_dir(dirname(static::LOG))) {
-            mkdir(dirname(static::LOG), 0750, true);
-            @chgrp(dirname(static::LOG), 'adm');
+        $directory = dirname(static::LOG);
+
+        if (is_dir($directory) && (fileperms($directory) & 0777) === 0755) {
+            return false;
         }
+
+        if (! $dryRun) {
+            if (! is_dir($directory)) {
+                mkdir($directory, 0755, true);
+            }
+
+            chmod($directory, 0755);
+            @chgrp($directory, 'adm');
+        }
+
+        return true;
     }
 
     /**

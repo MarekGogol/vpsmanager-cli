@@ -237,11 +237,18 @@ class MonitorInstallCommand extends Command
             $output->writeln(($dryRun ? 'Would write' : 'Writing').' <comment>'.$path.'</comment>');
         }
 
+        // The reload lets the workers of NGINX open the log again in the fixed directory
+        $directory = ! $remove && $monitor->ensureLogDirectory(true);
+
+        if ($directory) {
+            $output->writeln(($dryRun ? 'Would fix' : 'Fixing').' <comment>'.dirname(Monitor::LOG).'</comment> (0755, workers of NGINX open the log after the rotation)');
+        }
+
         if ($dryRun) {
             return true;
         }
 
-        if (count($changes) === 0 && count($written) === 0 && count($rotation) === 0 && ! $remove) {
+        if (count($changes) === 0 && count($written) === 0 && count($rotation) === 0 && ! $directory && ! $remove) {
             $output->writeln('<info>Access log is already up to date: '.Monitor::LOG.'</info>');
 
             return true;
