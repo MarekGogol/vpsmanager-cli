@@ -370,7 +370,8 @@ request ─▶ firewall (iptables) ─▶ NGINX server section ─▶ location �
 | Archives of the whole site, in the root only | `/backup.zip`, `/www.tar.gz`, `/public_html.zip`, `/db.zip` |
 | Secrets and project files, in the root only | `/id_rsa`, `/credentials.txt`, `/docker-compose.yml`, `/composer.json`, `/package.json`, `/artisan`, `/phpinfo.php` |
 | Deployment and AI gateway configuration, in the root only | `/serverless.yml`, `/template.yaml`, `/samconfig.toml`, `/main.tf`, `/terraform.tfvars.json`, `/terraform.tfstate`, `/litellm_config.yaml`, `/litellm/config.yaml` |
-| Exploits of other software | `/cgi-bin/…`, `/vendor/phpunit/…`, `eval-stdin.php`, `/rest/api/1.0/application-properties` (Jira, Confluence) |
+| Private keys, certificates, secrets and Docker files, in the root only | `/server.key`, `/key.pem`, `/secrets.json`, `/credentials.json`, `/Dockerfile` |
+| Exploits of other software | `/cgi-bin/…`, `/vendor/phpunit/…`, `eval-stdin.php`, `/rest/api/1.0/application-properties` (Jira, Confluence), `/_profiler/…` (Symfony) |
 | Other `.php` files than `index.php` (`scanners-php.conf`) | `/worksec.php`, `/r5t.php`, `/admin/simple.php`, `/info.php` |
 
 What is never blocked:
@@ -392,9 +393,12 @@ New rules belong into `src/Resources/nginx/vpsmanager/scanners.conf` of this rep
 | Jail | Ban | Ports | iptables chain |
 | --- | --- | --- | --- |
 | `vpsmanager-scanners` | 5 blocked requests in 10 minutes, banned for an hour | http, https | `f2b-vpsmanager-scanners` |
-| `vpsmanager-scanners-recidive` | 3 bans of the jail above in a day, banned for a week | http, https (SSH stays reachable from a shared address) | `f2b-vpsm-recidive` |
+| `vpsmanager-http-auth` | 30 requests refused by `auth_basic` (wrong or missing password) in 10 minutes, banned for an hour | http, https | `f2b-vpsmanager-http-auth` |
+| `vpsmanager-scanners-recidive` | 3 bans of the jails above in a day, banned for a week | http, https (SSH stays reachable from a shared address) | `f2b-vpsm-recidive` |
 | `sshd` (default of fail2ban) | default of the distribution | ssh | `f2b-sshd` |
 
+- `vpsmanager-http-auth` reads `/var/log/nginx/vpsmanager-auth.log`, written by `vpsmanager/monitor.conf` (it needs the access log part). Only refusals of NGINX itself are logged (`$status:$upstream_status` is `401:`), `401` of the applications (API without a token) have the status of their upstream and never count. A browser is refused once before it asks for the password, a bot guessing passwords is refused thousands of times (6 115 refusals in 10 minutes on `dev.trinityfinance.sk`).
+- Servers with nftables (`banaction = nftables` of the distribution, e.g. wms) ban into the sets of `nft list table inet f2b-table` instead of iptables chains, `iptables -S f2b-…` prints nothing there.
 - iptables chains are named `f2b-<name>` and may have 28 characters at most. The recidive jail therefore bans with `name=vpsm-recidive`; servers set up before this fix logged `chain name too long` into `/var/log/fail2ban.log` and their recidive bans were not blocked. `git pull` and `monitor:install` fix them.
 - A chain is created at the first ban of its jail. `iptables -S f2b-sshd` of a jail without bans prints `chain … is incompatible, use 'nft' tool`: iptables-nft prints this also for a chain which does not exist, it is not an error.
 - When fail2ban files change, `monitor:install` **restarts** fail2ban. A reload flushes the bans of a changed action and creates the chain only at the next ban; the start applies the bans of the database again with the current actions.
@@ -403,6 +407,9 @@ New rules belong into `src/Resources/nginx/vpsmanager/scanners.conf` of this rep
 
   ```ini
   [vpsmanager-scanners]
+  ignoreip = %(known/ignoreip)s 203.0.113.10
+
+  [vpsmanager-http-auth]
   ignoreip = %(known/ignoreip)s 203.0.113.10
 
   [vpsmanager-scanners-recidive]
@@ -439,7 +446,7 @@ The access log holds addresses of visitors for a week, mention it in the privacy
 | `/etc/nginx/conf.d/vpsmanager-scanners.conf`, `vpsmanager-monitor.conf` | managed (log formats and maps of the `http` context) |
 | `/etc/nginx/vpsmanager/general.conf`, `wordpress.conf`, other files | yours, copied only when missing, never replaced |
 | `/etc/nginx/sites-available/*` | yours, the command only adds or removes `include vpsmanager/scanners.conf;`, `include vpsmanager/scanners-php.conf;`, `include vpsmanager/monitor.conf;` and comments out `access_log off;` |
-| `/etc/fail2ban/filter.d/vpsmanager-scanners.conf`, `vpsmanager-scanners-recidive.conf`, `jail.d/vpsmanager-scanners.conf`, `fail2ban.d/vpsmanager.conf` | managed |
+| `/etc/fail2ban/filter.d/vpsmanager-scanners.conf`, `vpsmanager-scanners-recidive.conf`, `vpsmanager-http-auth.conf`, `jail.d/vpsmanager-scanners.conf`, `fail2ban.d/vpsmanager.conf` | managed |
 | `/etc/fail2ban/jail.d/vpsmanager-scanners.local` | yours (own addresses never banned) |
 | `/etc/vpsmanager/logrotate-monitor.conf`, `/etc/cron.hourly/vpsmanager-monitor` | managed |
 

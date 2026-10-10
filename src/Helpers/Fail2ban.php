@@ -17,6 +17,11 @@ class Fail2ban extends Application
     const SCANNERS_LOG = '/var/log/nginx/vpsmanager-scanners.log';
 
     /**
+     * Log of the requests refused by auth_basic, written by NGINX (vpsmanager/monitor.conf).
+     */
+    const AUTH_LOG = '/var/log/nginx/vpsmanager-auth.log';
+
+    /**
      * Jail of the scanners, the recidive jail is named with the -recidive suffix.
      */
     const SCANNERS_JAIL = 'vpsmanager-scanners';
@@ -45,9 +50,11 @@ class Fail2ban extends Application
         $files = [
             self::PATH.'/filter.d/vpsmanager-scanners.conf' => file_get_contents($resources.'/filter.d/vpsmanager-scanners.conf'),
             self::PATH.'/filter.d/vpsmanager-scanners-recidive.conf' => file_get_contents($resources.'/filter.d/vpsmanager-scanners-recidive.conf'),
+            self::PATH.'/filter.d/vpsmanager-http-auth.conf' => file_get_contents($resources.'/filter.d/vpsmanager-http-auth.conf'),
             self::PATH.'/fail2ban.d/vpsmanager.conf' => file_get_contents($resources.'/fail2ban.d/vpsmanager.conf'),
             self::PATH.'/jail.d/vpsmanager-scanners.conf' => (string) $this->getStub('fail2ban.scanners.conf')
                 ->replace('{log_path}', self::SCANNERS_LOG)
+                ->replace('{auth_log_path}', self::AUTH_LOG)
                 ->replace('{ignoreip}', implode(' ', $this->getIgnoredIps())),
         ];
 
@@ -178,17 +185,19 @@ class Fail2ban extends Application
     }
 
     /**
-     * Create the log of blocked requests, fail2ban does not start a jail without its log file.
+     * Create the logs of blocked and refused requests, fail2ban does not start a jail without its log file.
      *
      * @return void
      */
     public function ensureScannersLog(): void
     {
-        if (! file_exists(self::SCANNERS_LOG)) {
-            touch(self::SCANNERS_LOG);
-            chmod(self::SCANNERS_LOG, 0640);
-            @chown(self::SCANNERS_LOG, 'www-data');
-            @chgrp(self::SCANNERS_LOG, 'adm');
+        foreach ([self::SCANNERS_LOG, self::AUTH_LOG] as $log) {
+            if (! file_exists($log)) {
+                touch($log);
+                chmod($log, 0640);
+                @chown($log, 'www-data');
+                @chgrp($log, 'adm');
+            }
         }
     }
 
