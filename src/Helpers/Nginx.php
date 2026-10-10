@@ -7,6 +7,11 @@ use Gogol\VpsManagerCLI\Application;
 class Nginx extends Application
 {
     /**
+     * Comment of a server section which serves its own PHP files besides index.php, it gets no rules against .php files.
+     */
+    const ALLOW_PHP_MARKER = '# vpsmanager:allow-php';
+
+    /**
      * Check if nginx host of the given domain exists.
      *
      * @param  string  $domain
@@ -300,8 +305,8 @@ class Nginx extends Application
 
     /**
      * Include the vpsmanager configuration file right after the include of another one, in every server section
-     * which has it and is not protected by a password (auth_basic of the server level). The include is removed
-     * from the other sections, e.g. when a password has been added to the section.
+     * which has it, is not protected by a password (auth_basic of the server level) and is not marked by
+     * ALLOW_PHP_MARKER. The include is removed from the other sections, e.g. when a password has been added.
      *
      * @param  string  $conf
      * @param  string  $file  e.g. scanners-php.conf
@@ -318,6 +323,9 @@ class Nginx extends Application
 
                 return $line;
             });
+
+            // A section serving its own PHP files besides index.php (e.g. a proxy script) is marked by the comment
+            $protected = $protected || str_contains($section, self::ALLOW_PHP_MARKER);
 
             $included = str_contains($section, 'vpsmanager/'.$file);
 

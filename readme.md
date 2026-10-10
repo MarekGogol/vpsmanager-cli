@@ -378,6 +378,7 @@ request ─▶ firewall (iptables) ─▶ NGINX server section ─▶ location �
 What is never blocked:
 
 - `index.php` in any directory (`/index.php`, `/index.php/produkt/x`, `/pma/index.php`) and PHP files of CrudAdmin under `/vendor/crudadmin/` (the connector of CKFinder).
+- Any `.php` file in sections marked by the comment `# vpsmanager:allow-php` (an application serving its own PHP file besides `index.php`, e.g. `/booking/proxy.php` of owe.hu). The other rules stay.
 - Any `.php` file in sections protected by a password (`auth_basic` of the server level, e.g. phpMyAdmin, adminer and `php/83/info.php` of `tools.*`) and in WordPress sections, they do not get `scanners-php.conf`. A legacy PHP website with other entry files than `index.php` needs a password, or the include of `scanners-php.conf` has to be removed from its section after every `monitor:install`.
 - Uploads and downloads: `.zip`, `.gz`, `.pdf` anywhere (`/uploads/export.zip`, `/admin/files/imports_files/file/import.zip`).
 - Backups in the storage of uploads of the applications, at least three directories deep with `uploads`: `/uploads/{table}/{field}/dump.sql.gz` is served, `/uploads/dump.sql` and `/uploads/x/dump.sql` are blocked.

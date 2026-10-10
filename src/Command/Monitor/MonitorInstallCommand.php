@@ -4,6 +4,7 @@ namespace Gogol\VpsManagerCLI\Command\Monitor;
 
 use Gogol\VpsManagerCLI\Helpers\Fail2ban;
 use Gogol\VpsManagerCLI\Helpers\Monitor;
+use Gogol\VpsManagerCLI\Helpers\Nginx;
 use Gogol\VpsManagerCLI\Helpers\Router;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -149,7 +150,7 @@ class MonitorInstallCommand extends Command
 
             // Tools behind a password (phpMyAdmin, adminer) serve their own PHP files
             if (! $remove && substr_count($updated, 'vpsmanager/'.self::FILE.';') > substr_count($updated, 'vpsmanager/'.self::PHP_FILE.';')) {
-                $output->writeln('Sections of <comment>'.basename($path).'</comment> protected by a password serve all .php files.');
+                $output->writeln('Sections of <comment>'.basename($path).'</comment> protected by a password or marked '.Nginx::ALLOW_PHP_MARKER.' serve all .php files.');
             }
         }
 
