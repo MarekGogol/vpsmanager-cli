@@ -25,16 +25,23 @@
     },
     "license": "MIT",
     "require-dev": {
-        "laravel/pint": "^1.32"
+        "laravel/pint": "^1.32",
+        "phpunit/phpunit": "^12.5"
     },
     "scripts": {
         "lint": "pint --test",
-        "format": "pint"
+        "format": "pint",
+        "test": "phpunit"
     },
     "config": {
         "sort-packages": true,
         "platform": {
             "php": "8.3.0"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
         }
     }
 }

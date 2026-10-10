@@ -20,7 +20,8 @@ class MonitorRemoveIpCommand extends Command
         $this->setName('monitor:remove-ip')
             ->setDescription('Unban the address in all fail2ban jails')
             ->addArgument('ip', InputArgument::REQUIRED, 'Banned IP address')
-            ->addOption('jail', null, InputOption::VALUE_REQUIRED, 'Unban only in the given jail, e.g. sshd');
+            ->addOption('jail', null, InputOption::VALUE_REQUIRED, 'Unban only in the given jail, e.g. sshd')
+            ->addOption('everywhere', null, InputOption::VALUE_NONE, 'Also forget its previous bans and hide it in the monitor, all servers unban it with their next sync');
     }
 
     /**
@@ -82,6 +83,10 @@ class MonitorRemoveIpCommand extends Command
             return Command::FAILURE;
         }
 
+        if ($input->getOption('everywhere')) {
+            $this->removeEverywhere($output, $ip, $servers);
+        }
+
         if ($removed === 0) {
             $output->writeln('<comment>'.$ip.' is not banned'.($jail ? ' in '.$jail : '').'.</comment>');
 
@@ -94,5 +99,39 @@ class MonitorRemoveIpCommand extends Command
         $output->writeln('<comment>/etc/fail2ban/jail.d/vpsmanager-scanners.local</comment> (see readme, Banning scanners with fail2ban).');
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Forget the previous bans of the address (its next ban starts again from a day) and hide it in the monitor,
+     * so the other servers unban it with their next sync and its next reports do not share it again.
+     *
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  string  $ip
+     * @param  array  $servers  fail2ban of this server and of the routers
+     * @return void
+     */
+    protected function removeEverywhere(OutputInterface $output, string $ip, array $servers): void
+    {
+        foreach ($servers as $server) {
+            if (! $server->forgetIp($ip)) {
+                $output->writeln('<comment>Previous bans of '.$ip.' could not be forgotten by fail2ban of '.($server->isRouter() ? 'the router' : 'this server').'.</comment>');
+            }
+        }
+
+        $monitor = vpsManager()->monitor();
+
+        if (! ($url = $monitor->getSyncUrl())) {
+            $output->writeln('<comment>The monitor is not known, '.$ip.' stays shared by the monitor if it is shared.</comment>');
+
+            return;
+        }
+
+        if ($monitor->requestMonitor('DELETE', $url.'/'.rawurlencode($ip), null, $error) === null) {
+            $output->writeln('<error>The monitor did not hide '.$ip.' ('.$error.'), hide it in the administration of the monitor (Blokované IP).</error>');
+
+            return;
+        }
+
+        $output->writeln('<info>'.$ip.' is hidden in the monitor, all servers unban it with their next sync (within 3 hours).</info>');
     }
 }

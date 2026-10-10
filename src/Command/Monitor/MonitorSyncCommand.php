@@ -3,6 +3,7 @@
 namespace Gogol\VpsManagerCLI\Command\Monitor;
 
 use Gogol\VpsManagerCLI\Helpers\Fail2ban;
+use Gogol\VpsManagerCLI\Helpers\SharedBans;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -18,7 +19,7 @@ class MonitorSyncCommand extends Command
     protected function configure(): void
     {
         $this->setName('monitor:sync')
-            ->setDescription('Share banned addresses with the other servers through the monitor: report the 30 day bans, ban the addresses of the others')
+            ->setDescription('Share banned addresses with the other servers through the monitor: report the bans of repeated scanners with their level, ban the addresses of the others')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Only print what would be reported, banned and unbanned');
     }
 
@@ -49,12 +50,12 @@ class MonitorSyncCommand extends Command
             return Command::SUCCESS;
         }
 
-        // 30 day bans of the scanners banned again and again, the most certain ones
+        // Bans of the scanners banned again and again (1, 7 or 30 days), the most certain ones
         $reported = [];
 
         foreach ($servers as $fail2ban) {
-            foreach ($fail2ban->getBans(Fail2ban::RECIDIVE_JAIL) as $ban) {
-                $reported[$ban['ip']] = ['ip' => $ban['ip'], 'reason' => Fail2ban::RECIDIVE_JAIL];
+            foreach (SharedBans::report($fail2ban->getBans(Fail2ban::RECIDIVE_JAIL), $fail2ban->getTimezoneOffset(), Fail2ban::RECIDIVE_JAIL) as $row) {
+                $reported[$row['ip']] = $row;
             }
         }
 
@@ -72,7 +73,14 @@ class MonitorSyncCommand extends Command
             return Command::SUCCESS;
         }
 
-        $shared = array_values(array_unique(array_filter(array_column($response['data'], 'ip'), fn ($ip) => filter_var($ip, FILTER_VALIDATE_IP))));
+        // ip => days, the monitor without levels shares the longest ban
+        $shared = [];
+
+        foreach ($response['data'] as $row) {
+            if (filter_var($row['ip'] ?? null, FILTER_VALIDATE_IP)) {
+                $shared[$row['ip']] = (int) ($row['days'] ?? max(SharedBans::LEVELS));
+            }
+        }
 
         $output->writeln('The monitor shares '.count($shared).' addresses.');
 
@@ -84,12 +92,12 @@ class MonitorSyncCommand extends Command
     }
 
     /**
-     * Ban the new shared addresses and unban those the monitor does not share any more, in the shared jail of one server.
+     * Ban the shared addresses in the jail of their level and unban those the monitor does not share any more.
      *
      * @param  \Symfony\Component\Console\Output\OutputInterface  $output
      * @param  string  $label
      * @param  \Gogol\VpsManagerCLI\Helpers\Fail2ban  $fail2ban
-     * @param  array  $shared
+     * @param  array  $shared  ip => days
      * @param  bool  $dryRun
      * @return void
      */
@@ -98,32 +106,51 @@ class MonitorSyncCommand extends Command
         $ignored = $fail2ban->getIgnoredIps();
 
         // Own addresses and private networks are never banned, addresses of the recidive jail are banned already
-        $recidive = array_column($fail2ban->getBans(Fail2ban::RECIDIVE_JAIL), 'ip');
+        $skip = array_column($fail2ban->getBans(Fail2ban::RECIDIVE_JAIL), 'ip');
 
-        $wanted = array_values(array_filter($shared, fn ($ip) => ! in_array($ip, $recidive) && ! $fail2ban->isIgnoredIp($ip, $ignored)));
-        $current = array_column($fail2ban->getBans(Fail2ban::SHARED_JAIL), 'ip');
+        foreach (array_keys($shared) as $ip) {
+            if ($fail2ban->isIgnoredIp((string) $ip, $ignored)) {
+                $skip[] = (string) $ip;
+            }
+        }
 
-        $ban = array_values(array_diff($wanted, $current));
-        $unban = array_values(array_diff($current, $wanted));
+        $current = [];
 
-        if (count($ban) === 0 && count($unban) === 0) {
-            $output->writeln(ucfirst($label).': shared bans are up to date ('.count($current).').');
+        foreach (SharedBans::JAILS as $jail) {
+            $current[$jail] = array_column($fail2ban->getBans($jail), 'ip');
+        }
+
+        $plan = SharedBans::plan($shared, $current, $skip);
+
+        if (count($plan) === 0) {
+            $output->writeln(ucfirst($label).': shared bans are up to date ('.count(array_merge(...array_values($current))).').');
 
             return;
         }
 
-        if (! $dryRun && (! $fail2ban->setBans(Fail2ban::SHARED_JAIL, $ban) || ! $fail2ban->setBans(Fail2ban::SHARED_JAIL, $unban, false))) {
-            $output->writeln('<error>'.ucfirst($label).': fail2ban could not change the shared bans.</error>');
+        // Bans first, an address moving to the jail of another level is never unbanned meanwhile
+        foreach ($plan as $jail => $changes) {
+            if (! $dryRun && ! $fail2ban->setBans($jail, $changes['ban'])) {
+                $output->writeln('<error>'.ucfirst($label).': fail2ban could not ban the addresses of '.$jail.'.</error>');
 
-            return;
+                return;
+            }
         }
 
-        $output->writeln(ucfirst($label).': '.($dryRun ? 'would ban ' : 'banned ').count($ban).', '.($dryRun ? 'would unban ' : 'unbanned ').count($unban).' addresses.');
+        foreach ($plan as $jail => $changes) {
+            if (! $dryRun && ! $fail2ban->setBans($jail, $changes['unban'], false)) {
+                $output->writeln('<error>'.ucfirst($label).': fail2ban could not unban the addresses of '.$jail.'.</error>');
+
+                return;
+            }
+
+            $output->writeln(ucfirst($label).' '.$jail.': '.($dryRun ? 'would ban ' : 'banned ').count($changes['ban']).', '.($dryRun ? 'would unban ' : 'unbanned ').count($changes['unban']).'.');
+        }
     }
 
     /**
      * fail2ban which bans the scanners: of this server, or of every router in front of it. Servers without
-     * the shared jail are skipped until monitor:install adds it.
+     * the shared jails are skipped until monitor:install adds them.
      *
      * @param  \Symfony\Component\Console\Output\OutputInterface  $output
      * @return array label => \Gogol\VpsManagerCLI\Helpers\Fail2ban
@@ -142,8 +169,12 @@ class MonitorSyncCommand extends Command
         }
 
         foreach ($servers as $label => $fail2ban) {
-            if (! $fail2ban->isInstalled() || ! $fail2ban->isRunning() || ! in_array(Fail2ban::SHARED_JAIL, $fail2ban->getJails())) {
-                $output->writeln('<comment>'.ucfirst($label).' has no running jail '.Fail2ban::SHARED_JAIL.', run php vpsmanager monitor:install.</comment>');
+            $missing = $fail2ban->isInstalled() && $fail2ban->isRunning()
+                ? array_diff(SharedBans::JAILS, $fail2ban->getJails())
+                : SharedBans::JAILS;
+
+            if (count($missing)) {
+                $output->writeln('<comment>'.ucfirst($label).' has no running jails '.implode(', ', $missing).', run php vpsmanager monitor:install.</comment>');
 
                 unset($servers[$label]);
             }

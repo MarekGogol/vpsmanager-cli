@@ -44,11 +44,6 @@ class Fail2ban extends Application
     const RECIDIVE_JAIL = 'vpsmanager-scanners-recidive';
 
     /**
-     * Jail of the addresses banned by the other servers (monitor:sync).
-     */
-    const SHARED_JAIL = 'vpsmanager-shared';
-
-    /**
      * Private networks, never banned. No scanner of the internet comes from them, but a router or a load
      * balancer in front of the server does: its ban would drop all websites of the server.
      */
@@ -531,6 +526,42 @@ class Fail2ban extends Application
         $return_var = $this->run($command.' 2> /dev/null', $output);
 
         return $return_var === 0 ? (int) trim(implode('', $output)) : null;
+    }
+
+    /**
+     * Timezone offset of the server or router, the times of getBans() are in its local time.
+     *
+     * @return string e.g. +0200
+     */
+    public function getTimezoneOffset(): string
+    {
+        $this->run('date +%z', $output);
+
+        return preg_match('/^[+-]\d{4}$/', trim($output[0] ?? '')) ? trim($output[0]) : '+0000';
+    }
+
+    /**
+     * Forget the previous bans of the address in the database of fail2ban, so its next ban starts again from the first
+     * level of the recidive jail (bantime.increment). Used when an address is unbanned by hand.
+     *
+     * @param  string  $ip
+     * @return bool
+     */
+    public function forgetIp(string $ip): bool
+    {
+        $this->run('fail2ban-client get dbfile 2> /dev/null', $output);
+
+        $database = preg_match('#(/\S+\.sqlite3)#', implode("\n", $output), $matches) ? $matches[1] : null;
+
+        if (! $database || ! filter_var($ip, FILTER_VALIDATE_IP)) {
+            return false;
+        }
+
+        $script = 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1], timeout=10); '
+            .'[c.execute("DELETE FROM " + t + " WHERE ip = ?", (sys.argv[2],)) for t in ("bans", "bips") '
+            .'if c.execute("SELECT name FROM sqlite_master WHERE name = ?", (t,)).fetchone()]; c.commit()';
+
+        return $this->run('python3 -c '.escapeshellarg($script).' '.escapeshellarg($database).' '.escapeshellarg($ip).' 2> /dev/null') === 0;
     }
 
     /**
