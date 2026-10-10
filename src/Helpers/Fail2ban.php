@@ -62,8 +62,15 @@ class Fail2ban extends Application
     }
 
     /**
-     * Addresses which are never banned: localhost and all addresses of the server, which calls
-     * its own websites (e.g. an API of one hosting from another one).
+     * Private networks, never banned. No scanner of the internet comes from them, but a router or a load
+     * balancer in front of the server does: its ban would drop all websites of the server.
+     */
+    const PRIVATE_NETWORKS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', 'fc00::/7'];
+
+    /**
+     * Addresses which are never banned: localhost, all addresses of the server, which calls its own
+     * websites (e.g. an API of one hosting from another one), private networks and proxies trusted
+     * by NGINX (set_real_ip_from).
      *
      * @return array
      */
@@ -73,7 +80,26 @@ class Fail2ban extends Application
 
         $ips = array_filter(preg_split('/\s+/', trim(implode(' ', $output))), fn ($ip) => filter_var($ip, FILTER_VALIDATE_IP));
 
-        return array_values(array_unique(['127.0.0.1/8', '::1', ...$ips]));
+        return array_values(array_unique(['127.0.0.1/8', '::1', ...$ips, ...self::PRIVATE_NETWORKS, ...$this->getTrustedProxies()]));
+    }
+
+    /**
+     * Addresses of proxies in front of the server, whose requests carry the address of the visitor
+     * (set_real_ip_from of the NGINX configuration, e.g. a load balancer with a public address).
+     *
+     * @return array
+     */
+    public function getTrustedProxies(): array
+    {
+        exec('grep -rhoE '.escapeshellarg('^\s*set_real_ip_from\s+[^;]+').' '.escapeshellarg($this->config('nginx_path')).' 2> /dev/null', $output);
+
+        $proxies = array_map(fn ($line) => preg_replace('/^\s*set_real_ip_from\s+/', '', $line), $output);
+
+        return array_values(array_unique(array_filter($proxies, function ($proxy) {
+            [$ip, $mask] = array_pad(explode('/', $proxy, 2), 2, null);
+
+            return filter_var($ip, FILTER_VALIDATE_IP) && ($mask === null || ctype_digit($mask));
+        })));
     }
 
     /**
