@@ -12,6 +12,11 @@ class Nginx extends Application
     const ALLOW_PHP_MARKER = '# vpsmanager:allow-php';
 
     /**
+     * Comment of a server section without any rules against scanners and without their bans (e.g. tools behind a password).
+     */
+    const NO_SCANNERS_MARKER = '# vpsmanager:no-scanners';
+
+    /**
      * Check if nginx host of the given domain exists.
      *
      * @param  string  $domain
@@ -276,11 +281,16 @@ class Nginx extends Application
      * @param  string  $conf
      * @param  string  $file  e.g. scanners.conf
      * @param  bool  $skipWordpress  WordPress sections keep their configuration
+     * @param  string|null  $skipMarker  sections with this comment get no include, an existing one is removed
      * @return string
      */
-    public function addVpsManagerInclude(string $conf, string $file, bool $skipWordpress = true): string
+    public function addVpsManagerInclude(string $conf, string $file, bool $skipWordpress = true, ?string $skipMarker = null): string
     {
-        return $this->mapServerSections($conf, function ($section) use ($file, $skipWordpress) {
+        return $this->mapServerSections($conf, function ($section) use ($file, $skipWordpress, $skipMarker) {
+            if ($skipMarker && str_contains($section, $skipMarker)) {
+                return $this->removeVpsManagerInclude($section, $file);
+            }
+
             if (str_contains($section, 'vpsmanager/'.$file) || ($skipWordpress && str_contains($section, 'vpsmanager/wordpress.conf'))) {
                 return $section;
             }
@@ -362,7 +372,7 @@ class Nginx extends Application
 
         // The rules need their log format of conf.d
         if (file_exists($path.'/conf.d/vpsmanager-scanners.conf') && file_exists($path.'/vpsmanager/scanners.conf')) {
-            $conf = $this->addVpsManagerInclude($conf, 'scanners.conf');
+            $conf = $this->addVpsManagerInclude($conf, 'scanners.conf', true, self::NO_SCANNERS_MARKER);
 
             if (file_exists($path.'/vpsmanager/scanners-php.conf')) {
                 $conf = $this->syncVpsManagerIncludeAfter($conf, 'scanners-php.conf', 'scanners.conf');

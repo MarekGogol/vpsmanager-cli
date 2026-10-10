@@ -137,7 +137,7 @@ class MonitorInstallCommand extends Command
 
             $updated = $remove
                 ? $nginx->removeVpsManagerInclude($nginx->removeVpsManagerInclude($conf, self::PHP_FILE), self::FILE)
-                : $nginx->syncVpsManagerIncludeAfter($nginx->addVpsManagerInclude($conf, self::FILE), self::PHP_FILE, self::FILE);
+                : $nginx->syncVpsManagerIncludeAfter($nginx->addVpsManagerInclude($conf, self::FILE, true, Nginx::NO_SCANNERS_MARKER), self::PHP_FILE, self::FILE);
 
             if ($updated !== $conf) {
                 $changes[$path] = [$conf, $updated];
