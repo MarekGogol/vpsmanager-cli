@@ -50,6 +50,37 @@ class Fail2ban extends Application
     const PRIVATE_NETWORKS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', 'fc00::/7'];
 
     /**
+     * Published networks of search engines and AI crawlers, never banned. A real crawler follows links to blocked
+     * paths it finds on the web (it receives 403), scanners only pretend to be Googlebot in the user agent, so the
+     * crawlers are recognized by their networks. All lists have the format {"prefixes": [{"ipv4Prefix": ...}]}.
+     */
+    const CRAWLERS = [
+        'Googlebot' => 'https://developers.google.com/static/search/apis/ipranges/googlebot.json',
+        'Google special crawlers' => 'https://developers.google.com/static/search/apis/ipranges/special-crawlers.json',
+        'Bingbot' => 'https://www.bing.com/toolbox/bingbot.json',
+        'Applebot' => 'https://search.developer.apple.com/applebot.json',
+        'DuckDuckBot' => 'https://duckduckgo.com/duckduckbot.json',
+        'GPTBot' => 'https://openai.com/gptbot.json',
+        'OAI-SearchBot' => 'https://openai.com/searchbot.json',
+        'ChatGPT-User' => 'https://openai.com/chatgpt-user.json',
+        'ClaudeBot' => 'https://claude.com/crawling/bots.json',
+        'PerplexityBot' => 'https://www.perplexity.com/perplexitybot.json',
+        'Perplexity-User' => 'https://www.perplexity.com/perplexity-user.json',
+    ];
+
+    /**
+     * Copy of the networks of the crawlers, used when a list cannot be downloaded.
+     */
+    const CRAWLERS_FALLBACK = __DIR__.'/../Resources/fail2ban/crawlers.json';
+
+    /**
+     * Networks of the crawlers, downloaded once per run.
+     *
+     * @var array|null
+     */
+    protected ?array $crawlerNetworks = null;
+
+    /**
      * SSH destination of the router when this instance manages fail2ban of the router, e.g. ssh://root@192.168.1.1:1000.
      *
      * @var string|null
@@ -213,7 +244,8 @@ class Fail2ban extends Application
                 ->replace('{log_path}', $this->getScannersLog())
                 ->replace('{auth_log_path}', $this->getAuthLog())
                 ->replace('{shared_log_path}', self::SHARED_LOG)
-                ->replace('{ignoreip}', implode(' ', $this->getIgnoredIps())),
+                // One list for all jails ([DEFAULT] of the file), continuation lines keep it readable
+                ->replace('{ignoreip}', implode("\n    ", $this->getIgnoredIps())),
         ];
 
         return $files;
@@ -241,8 +273,8 @@ class Fail2ban extends Application
 
     /**
      * Addresses which are never banned: localhost, all addresses of the server, which calls its own
-     * websites (e.g. an API of one hosting from another one), private networks and proxies trusted
-     * by NGINX (set_real_ip_from).
+     * websites (e.g. an API of one hosting from another one), private networks, proxies trusted
+     * by NGINX (set_real_ip_from) and networks of search engines and AI crawlers.
      *
      * @return array
      */
@@ -253,7 +285,74 @@ class Fail2ban extends Application
 
         $ips = array_filter(preg_split('/\s+/', trim(implode(' ', $output))), fn ($ip) => filter_var($ip, FILTER_VALIDATE_IP));
 
-        return array_values(array_unique(['127.0.0.1/8', '::1', ...$ips, ...self::PRIVATE_NETWORKS, ...$this->getTrustedProxies()]));
+        return array_values(array_unique(['127.0.0.1/8', '::1', ...$ips, ...self::PRIVATE_NETWORKS, ...$this->getTrustedProxies(), ...$this->getCrawlerNetworks()]));
+    }
+
+    /**
+     * Networks of search engines and AI crawlers, downloaded from their published lists. A list which cannot be
+     * downloaded is taken from the copy in this repository (crawlers.json).
+     *
+     * @return array
+     */
+    public function getCrawlerNetworks(): array
+    {
+        if ($this->crawlerNetworks !== null) {
+            return $this->crawlerNetworks;
+        }
+
+        $fallback = json_decode((string) @file_get_contents(self::CRAWLERS_FALLBACK), true) ?: [];
+        $networks = [];
+
+        foreach ($this->downloadCrawlerNetworks() as $crawler => $prefixes) {
+            array_push($networks, ...($prefixes ?? $fallback[$crawler] ?? []));
+        }
+
+        return $this->crawlerNetworks = array_values(array_unique($networks));
+    }
+
+    /**
+     * Download the published networks of every crawler.
+     *
+     * @return array crawler => list of networks, null when the list could not be downloaded
+     */
+    public function downloadCrawlerNetworks(): array
+    {
+        $context = stream_context_create(['http' => ['timeout' => 10, 'user_agent' => 'VPS Manager']]);
+        $networks = [];
+
+        foreach (self::CRAWLERS as $crawler => $url) {
+            $networks[$crawler] = $this->parseCrawlerNetworks((string) @file_get_contents($url, false, $context));
+        }
+
+        return $networks;
+    }
+
+    /**
+     * Networks of a published list of crawler addresses, null when the list is not valid.
+     *
+     * @param  string  $json  {"prefixes": [{"ipv4Prefix": "66.249.64.0/27"}, {"ipv6Prefix": "2001:4860:4801:10::/64"}]}
+     * @return array|null
+     */
+    public function parseCrawlerNetworks(string $json): ?array
+    {
+        $prefixes = json_decode($json, true)['prefixes'] ?? null;
+
+        if (! is_array($prefixes)) {
+            return null;
+        }
+
+        $networks = [];
+
+        foreach ($prefixes as $prefix) {
+            $network = $prefix['ipv4Prefix'] ?? $prefix['ipv6Prefix'] ?? null;
+            [$ip, $mask] = array_pad(explode('/', (string) $network, 2), 2, null);
+
+            if (filter_var($ip, FILTER_VALIDATE_IP) && ($mask === null || ctype_digit($mask))) {
+                $networks[] = $network;
+            }
+        }
+
+        return count($networks) ? $networks : null;
     }
 
     /**
