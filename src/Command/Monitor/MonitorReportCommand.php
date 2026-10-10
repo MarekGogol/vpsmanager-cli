@@ -77,17 +77,24 @@ class MonitorReportCommand extends Command
      */
     protected function getBannedIps(): array
     {
-        $fail2ban = vpsManager()->fail2ban();
+        $servers = [vpsManager()->fail2ban()];
 
-        if (! $fail2ban->isInstalled() || ! $fail2ban->isRunning()) {
-            return [];
+        // Behind a router the router bans the scanners
+        if (($router = vpsManager()->router())->isEnabled() && $router->getDestination()) {
+            $servers[] = $router->fail2ban();
         }
 
         $ips = [];
 
-        foreach ($fail2ban->getJails() as $jail) {
-            foreach ($fail2ban->getBans($jail) as $ban) {
-                $ips[] = $ban['ip'];
+        foreach ($servers as $fail2ban) {
+            if (! $fail2ban->isInstalled() || ! $fail2ban->isRunning()) {
+                continue;
+            }
+
+            foreach ($fail2ban->getJails() as $jail) {
+                foreach ($fail2ban->getBans($jail) as $ban) {
+                    $ips[] = $ban['ip'];
+                }
             }
         }
 

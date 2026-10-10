@@ -44,22 +44,40 @@ class MonitorRemoveIpCommand extends Command
             return Command::FAILURE;
         }
 
-        if (! $fail2ban->isInstalled() || ! $fail2ban->isRunning()) {
-            $output->writeln('<error>fail2ban is not running, check</error> systemctl status fail2ban');
+        // Behind a router the router bans the scanners, this server only its own SSH
+        $servers = [$fail2ban];
 
-            return Command::FAILURE;
+        if (($router = vpsManager()->router())->isEnabled() && $router->getDestination()) {
+            $servers[] = $router->fail2ban();
         }
 
-        if ($jail && ! in_array($jail, $jails = $fail2ban->getJails())) {
-            $output->writeln('<error>Jail '.$jail.' does not exist. Jails: '.implode(', ', $jails).'</error>');
+        $removed = 0;
+        $found = ! $jail;
 
-            return Command::FAILURE;
+        foreach ($servers as $server) {
+            if (! $server->isInstalled() || ! $server->isRunning()) {
+                $output->writeln('<error>fail2ban of '.($server->isRouter() ? 'the router' : 'this server').' is not running.</error>');
+
+                return Command::FAILURE;
+            }
+
+            if ($jail && ! in_array($jail, $server->getJails())) {
+                continue;
+            }
+
+            $found = true;
+
+            if (($count = $server->unban($ip, $jail)) === null) {
+                $output->writeln('<error>fail2ban of '.($server->isRouter() ? 'the router' : 'this server').' could not unban '.$ip.'.</error>');
+
+                return Command::FAILURE;
+            }
+
+            $removed += $count;
         }
 
-        $removed = $fail2ban->unban($ip, $jail);
-
-        if ($removed === null) {
-            $output->writeln('<error>fail2ban could not unban '.$ip.'.</error>');
+        if (! $found) {
+            $output->writeln('<error>Jail '.$jail.' does not exist.</error>');
 
             return Command::FAILURE;
         }

@@ -22,9 +22,158 @@ class Fail2ban extends Application
     const AUTH_LOG = '/var/log/nginx/vpsmanager-auth.log';
 
     /**
+     * Logs of the router, written by rsyslog from the requests which NGINX of the servers behind it sends.
+     */
+    const ROUTER_SCANNERS_LOG = '/var/log/vpsmanager/scanners.log';
+
+    const ROUTER_AUTH_LOG = '/var/log/vpsmanager/auth.log';
+
+    /**
      * Jail of the scanners, the recidive jail is named with the -recidive suffix.
      */
     const SCANNERS_JAIL = 'vpsmanager-scanners';
+
+    /**
+     * Private networks, never banned. No scanner of the internet comes from them, but a router or a load
+     * balancer in front of the server does: its ban would drop all websites of the server.
+     */
+    const PRIVATE_NETWORKS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', 'fc00::/7'];
+
+    /**
+     * SSH destination of the router when this instance manages fail2ban of the router, e.g. ssh://root@192.168.1.1:1000.
+     *
+     * @var string|null
+     */
+    protected ?string $remote = null;
+
+    /**
+     * Get the fail2ban helper of the router in front of this server, all commands and files go over SSH.
+     *
+     * @param  string  $destination  e.g. ssh://root@192.168.1.1:1000
+     * @return static
+     */
+    public function onRouter(string $destination): static
+    {
+        $router = clone $this;
+        $router->remote = $destination;
+
+        return $router;
+    }
+
+    /**
+     * Check if this helper manages fail2ban of the router.
+     *
+     * @return bool
+     */
+    public function isRouter(): bool
+    {
+        return $this->remote !== null;
+    }
+
+    /**
+     * Run the shell command here, or on the router over SSH.
+     *
+     * @param  string  $command
+     * @param  array|null  $output
+     * @return int exit code
+     */
+    public function run(string $command, ?array &$output = null): int
+    {
+        $output = [];
+
+        if ($this->remote) {
+            $command = $this->ssh().' '.escapeshellarg($command);
+        }
+
+        exec($command, $output, $return_var);
+
+        return $return_var;
+    }
+
+    /**
+     * SSH command of the router, it never asks for a password.
+     *
+     * @return string
+     */
+    protected function ssh(): string
+    {
+        return 'ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new '.escapeshellarg($this->remote);
+    }
+
+    /**
+     * Check if the router answers over SSH.
+     *
+     * @return bool
+     */
+    public function isReachable(): bool
+    {
+        return $this->run('true 2> /dev/null') === 0;
+    }
+
+    /**
+     * Read the file, null when it does not exist.
+     *
+     * @param  string  $path
+     * @return string|null
+     */
+    public function readFile(string $path): ?string
+    {
+        if (! $this->remote) {
+            return file_exists($path) ? file_get_contents($path) : null;
+        }
+
+        // The marker keeps a trailing newline of the file, which exec() would drop
+        if ($this->run('[ -f '.escapeshellarg($path).' ] && cat '.escapeshellarg($path).' && echo __vpsm_eof__', $output) !== 0) {
+            return null;
+        }
+
+        array_pop($output);
+
+        return count($output) ? implode("\n", $output)."\n" : '';
+    }
+
+    /**
+     * Write the file, its directory is created when it is missing.
+     *
+     * @param  string  $path
+     * @param  string  $content
+     * @return bool
+     */
+    public function putFile(string $path, string $content): bool
+    {
+        if (! $this->remote) {
+            if (! is_dir(dirname($path))) {
+                mkdir(dirname($path), 0755, true);
+            }
+
+            return file_put_contents($path, $content) !== false;
+        }
+
+        $command = 'mkdir -p '.escapeshellarg(dirname($path)).' && cat > '.escapeshellarg($path);
+        $process = proc_open($this->ssh().' '.escapeshellarg($command), [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+
+        if (! is_resource($process)) {
+            return false;
+        }
+
+        fwrite($pipes[0], $content);
+        fclose($pipes[0]);
+        stream_get_contents($pipes[1]);
+        stream_get_contents($pipes[2]);
+
+        return proc_close($process) === 0;
+    }
+
+    /**
+     * Delete the file.
+     *
+     * @param  string  $path
+     * @return bool
+     */
+    public function deleteFile(string $path): bool
+    {
+        return $this->remote ? $this->run('rm -f '.escapeshellarg($path)) === 0 : @unlink($path);
+    }
 
     /**
      * Check if fail2ban is installed.
@@ -33,9 +182,7 @@ class Fail2ban extends Application
      */
     public function isInstalled(): bool
     {
-        exec('command -v fail2ban-client', $output, $return_var);
-
-        return $return_var === 0;
+        return $this->run('command -v fail2ban-client > /dev/null') === 0;
     }
 
     /**
@@ -53,8 +200,8 @@ class Fail2ban extends Application
             self::PATH.'/filter.d/vpsmanager-http-auth.conf' => file_get_contents($resources.'/filter.d/vpsmanager-http-auth.conf'),
             self::PATH.'/fail2ban.d/vpsmanager.conf' => file_get_contents($resources.'/fail2ban.d/vpsmanager.conf'),
             self::PATH.'/jail.d/vpsmanager-scanners.conf' => (string) $this->getStub('fail2ban.scanners.conf')
-                ->replace('{log_path}', self::SCANNERS_LOG)
-                ->replace('{auth_log_path}', self::AUTH_LOG)
+                ->replace('{log_path}', $this->getScannersLog())
+                ->replace('{auth_log_path}', $this->getAuthLog())
                 ->replace('{ignoreip}', implode(' ', $this->getIgnoredIps())),
         ];
 
@@ -62,10 +209,24 @@ class Fail2ban extends Application
     }
 
     /**
-     * Private networks, never banned. No scanner of the internet comes from them, but a router or a load
-     * balancer in front of the server does: its ban would drop all websites of the server.
+     * Log of the blocked requests, which the scanners jail reads.
+     *
+     * @return string
      */
-    const PRIVATE_NETWORKS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', 'fc00::/7'];
+    public function getScannersLog(): string
+    {
+        return $this->remote ? self::ROUTER_SCANNERS_LOG : self::SCANNERS_LOG;
+    }
+
+    /**
+     * Log of the requests refused by auth_basic, which the http-auth jail reads.
+     *
+     * @return string
+     */
+    public function getAuthLog(): string
+    {
+        return $this->remote ? self::ROUTER_AUTH_LOG : self::AUTH_LOG;
+    }
 
     /**
      * Addresses which are never banned: localhost, all addresses of the server, which calls its own
@@ -76,7 +237,8 @@ class Fail2ban extends Application
      */
     public function getIgnoredIps(): array
     {
-        exec('hostname -I 2> /dev/null', $output);
+        // BusyBox of the router (Alpine) has no hostname -I
+        $this->run('hostname -I 2> /dev/null || ip -o addr show | awk \'{split($4, a, "/"); print a[1]}\'', $output);
 
         $ips = array_filter(preg_split('/\s+/', trim(implode(' ', $output))), fn ($ip) => filter_var($ip, FILTER_VALIDATE_IP));
 
@@ -91,7 +253,7 @@ class Fail2ban extends Application
      */
     public function getTrustedProxies(): array
     {
-        exec('grep -rhoE '.escapeshellarg('^\s*set_real_ip_from\s+[^;]+').' '.escapeshellarg($this->config('nginx_path')).' 2> /dev/null', $output);
+        $this->run('grep -rhoE '.escapeshellarg('^\s*set_real_ip_from\s+[^;]+').' '.escapeshellarg($this->config('nginx_path')).' 2> /dev/null', $output);
 
         $proxies = array_map(fn ($line) => preg_replace('/^\s*set_real_ip_from\s+/', '', $line), $output);
 
@@ -114,17 +276,13 @@ class Fail2ban extends Application
         $written = [];
 
         foreach ($files as $path => $content) {
-            $previous = file_exists($path) ? file_get_contents($path) : null;
+            $previous = $this->readFile($path);
 
             if ($previous === $content) {
                 continue;
             }
 
-            if (! $dryRun && ! is_dir(dirname($path))) {
-                mkdir(dirname($path), 0755, true);
-            }
-
-            if ($dryRun || file_put_contents($path, $content) !== false) {
+            if ($dryRun || $this->putFile($path, $content)) {
                 $written[$path] = $previous;
             }
         }
@@ -142,11 +300,35 @@ class Fail2ban extends Application
     {
         foreach ($written as $path => $previous) {
             if ($previous === null) {
-                @unlink($path);
+                $this->deleteFile($path);
             } else {
-                file_put_contents($path, $previous);
+                $this->putFile($path, $previous);
             }
         }
+    }
+
+    /**
+     * Remove the given files.
+     *
+     * @param  array  $paths
+     * @param  bool  $dryRun  only return the files which would be removed
+     * @return array path => previous content
+     */
+    public function removeFiles(array $paths, bool $dryRun = false): array
+    {
+        $removed = [];
+
+        foreach ($paths as $path) {
+            if (($previous = $this->readFile($path)) === null) {
+                continue;
+            }
+
+            if ($dryRun || $this->deleteFile($path)) {
+                $removed[$path] = $previous;
+            }
+        }
+
+        return $removed;
     }
 
     /**
@@ -157,21 +339,7 @@ class Fail2ban extends Application
      */
     public function removeScannersFiles(bool $dryRun = false): array
     {
-        $removed = [];
-
-        foreach (array_keys($this->getScannersFiles()) as $path) {
-            if (! file_exists($path)) {
-                continue;
-            }
-
-            $previous = file_get_contents($path);
-
-            if ($dryRun || @unlink($path)) {
-                $removed[$path] = $previous;
-            }
-        }
-
-        return $removed;
+        return $this->removeFiles(array_keys($this->getScannersFiles()), $dryRun);
     }
 
     /**
@@ -182,7 +350,8 @@ class Fail2ban extends Application
      */
     public function hasAuthLog(): bool
     {
-        return file_exists('/var/log/auth.log');
+        // The sshd jail of Alpine (router) reads /var/log/messages
+        return $this->remote || file_exists('/var/log/auth.log');
     }
 
     /**
@@ -217,6 +386,14 @@ class Fail2ban extends Application
      */
     public function ensureScannersLog(): void
     {
+        if ($this->remote) {
+            $logs = implode(' ', array_map('escapeshellarg', [self::ROUTER_SCANNERS_LOG, self::ROUTER_AUTH_LOG]));
+
+            $this->run('mkdir -p '.escapeshellarg(dirname(self::ROUTER_SCANNERS_LOG)).' && touch '.$logs.' && chmod 0640 '.$logs);
+
+            return;
+        }
+
         foreach ([self::SCANNERS_LOG, self::AUTH_LOG] as $log) {
             if (! file_exists($log)) {
                 touch($log);
@@ -234,7 +411,7 @@ class Fail2ban extends Application
      */
     public function test(): bool
     {
-        exec('fail2ban-client -t 2>&1', $output, $return_var);
+        $return_var = $this->run('fail2ban-client -t 2>&1', $output);
 
         if ($return_var !== 0) {
             $this->response()->error(implode("\n", array_slice($output, -10)))->writeln();
@@ -250,11 +427,22 @@ class Fail2ban extends Application
      */
     public function reload(): bool
     {
-        exec('systemctl is-active --quiet fail2ban', $output, $active);
+        $command = $this->isRunning() ? 'fail2ban-client reload 2>&1' : $this->service('start');
 
-        exec($active === 0 ? 'fail2ban-client reload 2>&1' : 'systemctl enable --now fail2ban 2>&1', $output, $return_var);
+        return $this->run($command) === 0 && $this->waitForServer();
+    }
 
-        return $return_var === 0 && $this->waitForServer();
+    /**
+     * Command of the fail2ban service, systemd of Debian or OpenRC of Alpine (router). It also starts
+     * fail2ban with the system.
+     *
+     * @param  string  $action  start or restart
+     * @return string
+     */
+    protected function service(string $action): string
+    {
+        return 'if command -v systemctl > /dev/null; then systemctl enable fail2ban 2>&1 && systemctl '.$action.' fail2ban 2>&1; '
+            .'else rc-update add fail2ban default > /dev/null 2>&1; rc-service fail2ban '.$action.' 2>&1; fi';
     }
 
     /**
@@ -264,9 +452,7 @@ class Fail2ban extends Application
      */
     public function isRunning(): bool
     {
-        exec('fail2ban-client ping 2> /dev/null', $output, $return_var);
-
-        return $return_var === 0;
+        return $this->run('fail2ban-client ping 2> /dev/null') === 0;
     }
 
     /**
@@ -276,7 +462,7 @@ class Fail2ban extends Application
      */
     public function getJails(): array
     {
-        exec('fail2ban-client status 2> /dev/null', $output);
+        $this->run('fail2ban-client status 2> /dev/null', $output);
 
         foreach ($output as $line) {
             if (preg_match('/Jail list:\s*(.*)$/', $line, $matches)) {
@@ -295,7 +481,7 @@ class Fail2ban extends Application
      */
     public function getBans(string $jail): array
     {
-        exec('fail2ban-client get '.escapeshellarg($jail).' banip --with-time 2> /dev/null', $output);
+        $this->run('fail2ban-client get '.escapeshellarg($jail).' banip --with-time 2> /dev/null', $output);
 
         $bans = [];
 
@@ -322,7 +508,7 @@ class Fail2ban extends Application
             ? 'fail2ban-client set '.escapeshellarg($jail).' unbanip '.escapeshellarg($ip)
             : 'fail2ban-client unban '.escapeshellarg($ip);
 
-        exec($command.' 2> /dev/null', $output, $return_var);
+        $return_var = $this->run($command.' 2> /dev/null', $output);
 
         return $return_var === 0 ? (int) trim(implode('', $output)) : null;
     }
@@ -335,12 +521,8 @@ class Fail2ban extends Application
      */
     public function countScannerRequests(string $ip): int
     {
-        if (! is_readable(self::SCANNERS_LOG)) {
-            return 0;
-        }
-
         // The address starts the line of the combined log format
-        exec('grep -c -E '.escapeshellarg('^'.preg_quote($ip).' ').' '.escapeshellarg(self::SCANNERS_LOG).' 2> /dev/null', $output);
+        $this->run('grep -c -E '.escapeshellarg('^'.preg_quote($ip).' ').' '.escapeshellarg($this->getScannersLog()).' 2> /dev/null', $output);
 
         return (int) ($output[0] ?? 0);
     }
@@ -353,9 +535,7 @@ class Fail2ban extends Application
      */
     public function restart(): bool
     {
-        exec('systemctl enable fail2ban 2>&1 && systemctl restart fail2ban 2>&1', $output, $return_var);
-
-        return $return_var === 0 && $this->waitForServer();
+        return $this->run($this->service('restart')) === 0 && $this->waitForServer();
     }
 
     /**
@@ -384,7 +564,7 @@ class Fail2ban extends Application
      */
     public function status(string $jail): ?string
     {
-        exec('fail2ban-client status '.escapeshellarg($jail).' 2>&1', $output, $return_var);
+        $return_var = $this->run('fail2ban-client status '.escapeshellarg($jail).' 2>&1', $output);
 
         return $return_var === 0 ? implode("\n", $output) : null;
     }

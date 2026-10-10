@@ -2,6 +2,7 @@
 
 namespace Gogol\VpsManagerCLI\Command\Monitor;
 
+use Gogol\VpsManagerCLI\Helpers\Fail2ban;
 use Gogol\VpsManagerCLI\Helpers\Monitor;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -26,6 +27,11 @@ class MonitorInstallCommand extends Command
     const MANAGED = ['vpsmanager/scanners.conf', 'vpsmanager/scanners-php.conf', 'vpsmanager/scanners.html', 'conf.d/vpsmanager-scanners.conf'];
 
     /**
+     * Files generated for this server (servers behind a router send the blocked requests to it).
+     */
+    const GENERATED = ['vpsmanager/router-scanners.conf', 'conf.d/vpsmanager-realip.conf'];
+
+    /**
      * Configuration file of the access log in the vpsmanager directory of NGINX.
      */
     const ACCESS_LOG_FILE = 'monitor.conf';
@@ -34,6 +40,11 @@ class MonitorInstallCommand extends Command
      * NGINX files of the access log fully managed by vpsmanager.
      */
     const ACCESS_LOG_MANAGED = ['vpsmanager/monitor.conf', 'conf.d/vpsmanager-monitor.conf'];
+
+    /**
+     * Files of the access log generated for this server.
+     */
+    const ACCESS_LOG_GENERATED = ['vpsmanager/router-auth.conf'];
 
     /**
      * Configure the command.
@@ -62,6 +73,11 @@ class MonitorInstallCommand extends Command
 
         $dryRun = (bool) $input->getOption('dry-run');
         $remove = (bool) $input->getOption('remove');
+
+        // Behind a router the bans are made by the router, nothing changes until it answers
+        if (! $this->checkRouter($output)) {
+            return Command::FAILURE;
+        }
 
         $output->writeln('<comment>Rules against scanners</comment>');
 
@@ -97,7 +113,9 @@ class MonitorInstallCommand extends Command
         $nginx = vpsManager()->nginx();
 
         // Removed files are restored like written ones when the configuration is not valid
-        $written = $remove ? $nginx->removeNginxSettings(self::MANAGED, $dryRun) : $nginx->syncNginxSettings(self::MANAGED, $dryRun);
+        $written = $remove
+            ? $nginx->removeNginxSettings([...self::MANAGED, ...self::GENERATED], $dryRun)
+            : $nginx->syncNginxSettings(self::MANAGED, $dryRun) + $nginx->writeGeneratedFiles($nginx->getMonitorGeneratedFiles(self::GENERATED), $dryRun);
 
         $this->writeFiles($output, $written, $dryRun, $remove);
 
@@ -210,7 +228,9 @@ class MonitorInstallCommand extends Command
     {
         $nginx = vpsManager()->nginx();
         $monitor = vpsManager()->monitor();
-        $written = $remove ? $nginx->removeNginxSettings(self::ACCESS_LOG_MANAGED, $dryRun) : $nginx->syncNginxSettings(self::ACCESS_LOG_MANAGED, $dryRun);
+        $written = $remove
+            ? $nginx->removeNginxSettings([...self::ACCESS_LOG_MANAGED, ...self::ACCESS_LOG_GENERATED], $dryRun)
+            : $nginx->syncNginxSettings(self::ACCESS_LOG_MANAGED, $dryRun) + $nginx->writeGeneratedFiles($nginx->getMonitorGeneratedFiles(self::ACCESS_LOG_GENERATED), $dryRun);
 
         $this->writeFiles($output, $written, $dryRun, $remove);
 
@@ -297,7 +317,42 @@ class MonitorInstallCommand extends Command
     }
 
     /**
-     * Ban the scanners logged by NGINX with fail2ban (or remove the jails) and reload fail2ban.
+     * Check the router of a server behind it (nginx_is_proxied): its address, network and SSH access.
+     *
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @return bool
+     */
+    protected function checkRouter(OutputInterface $output): bool
+    {
+        $router = vpsManager()->router();
+
+        if (! $router->isEnabled()) {
+            return true;
+        }
+
+        if (! ($destination = $router->getDestination()) || ! $router->getAddress() || ! $router->getNetwork()) {
+            $output->writeln('<error>The server is behind a router (nginx_is_proxied), but its address or network is not known.</error>');
+            $output->writeln('Set the SSH destination of the router into the configuration: <comment>monitor_router => ssh://root@192.168.1.1:22</comment>');
+
+            return false;
+        }
+
+        if (! $router->fail2ban()->isReachable()) {
+            $output->writeln('<error>The router '.$destination.' does not answer over SSH without a password.</error>');
+            $output->writeln('Add the key of root of this server into /root/.ssh/authorized_keys of the router, see readme (Servers behind a router).');
+
+            return false;
+        }
+
+        $output->writeln('Router: <comment>'.$destination.'</comment>, NGINX sends the blocked requests to <comment>'.$router->getAddress().':'.$router::SYSLOG_PORT.'</comment> (network '.$router->getNetwork().').');
+        $output->writeln('');
+
+        return true;
+    }
+
+    /**
+     * Ban the scanners logged by NGINX with fail2ban (or remove the jails). Behind a router fail2ban of the router
+     * bans them, the firewall of this server sees only the router.
      *
      * @param  \Symfony\Component\Console\Output\OutputInterface  $output
      * @param  bool  $dryRun
@@ -306,10 +361,92 @@ class MonitorInstallCommand extends Command
      */
     protected function updateFail2ban(OutputInterface $output, bool $dryRun, bool $remove): bool
     {
-        $fail2ban = vpsManager()->fail2ban();
+        $router = vpsManager()->router();
 
+        if (! $router->isEnabled()) {
+            return $this->updateJails($output, vpsManager()->fail2ban(), $dryRun, $remove);
+        }
+
+        // Jails of this server would ban the router and drop all websites
+        $output->writeln('This server:');
+
+        if (! $this->updateJails($output, vpsManager()->fail2ban(), $dryRun, true, false)) {
+            return false;
+        }
+
+        $output->writeln('');
+        $output->writeln('Router '.$router->getDestination().':');
+
+        return $this->updateRouterSyslog($output, $dryRun, $remove)
+            && $this->updateJails($output, $router->fail2ban(), $dryRun, $remove);
+    }
+
+    /**
+     * Receive the blocked requests of NGINX on the router: rsyslog with the input of the internal network.
+     *
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  bool  $dryRun
+     * @param  bool  $remove
+     * @return bool
+     */
+    protected function updateRouterSyslog(OutputInterface $output, bool $dryRun, bool $remove): bool
+    {
+        $router = vpsManager()->router();
+        $remote = $router->fail2ban();
+
+        if (! $remove && ! $router->hasSyslog()) {
+            $output->writeln(($dryRun ? 'Would install' : 'Installing').' <comment>rsyslog</comment> instead of syslogd of BusyBox, which does not receive logs of the network.');
+
+            if (! $dryRun && ! $router->installSyslog()) {
+                $output->writeln('<error>rsyslog could not be installed on the router.</error>');
+
+                return false;
+            }
+        }
+
+        $written = $remove
+            ? $remote->removeFiles(array_keys($router->getSyslogFiles()), $dryRun)
+            : $remote->writeFiles($router->getSyslogFiles(), $dryRun);
+
+        foreach ($written as $path => $previous) {
+            $output->writeln(($dryRun ? ($remove ? 'Would remove' : 'Would write') : ($remove ? 'Removed' : 'Wrote')).' <comment>'.$path.'</comment>');
+        }
+
+        if ($dryRun || count($written) === 0) {
+            return true;
+        }
+
+        // Invalid configuration restores the files, rsyslog keeps running with the previous one
+        if (! $router->restartSyslog()) {
+            $remote->restoreFiles($written);
+            $router->restartSyslog();
+
+            $output->writeln('<error>rsyslog of the router could not be restarted (rsyslogd -N1), previous configuration has been restored.</error>');
+
+            return false;
+        }
+
+        $output->writeln('rsyslog of the router has been restarted.');
+
+        return true;
+    }
+
+    /**
+     * Write (or remove) the jails against scanners and restart fail2ban of this server or of the router.
+     *
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  \Gogol\VpsManagerCLI\Helpers\Fail2ban  $fail2ban
+     * @param  bool  $dryRun
+     * @param  bool  $remove
+     * @param  bool  $status  print the status of the scanners jail
+     * @return bool
+     */
+    protected function updateJails(OutputInterface $output, Fail2ban $fail2ban, bool $dryRun, bool $remove, bool $status = true): bool
+    {
         if (! $fail2ban->isInstalled()) {
-            $output->writeln('<comment>fail2ban is not installed, scanners are not banned. Install it with</comment> apt install fail2ban');
+            if (! $remove) {
+                $output->writeln('<comment>fail2ban is not installed, scanners are not banned. Install it with</comment> '.($fail2ban->isRouter() ? 'apk add fail2ban' : 'apt install fail2ban'));
+            }
 
             return true;
         }
@@ -339,7 +476,7 @@ class MonitorInstallCommand extends Command
             }
         }
 
-        if ($dryRun) {
+        if ($dryRun || ($remove && count($written) === 0)) {
             return true;
         }
 
@@ -358,7 +495,7 @@ class MonitorInstallCommand extends Command
 
         // Changed jails need a restart: reload flushes the bans of a changed action, the start applies them again
         if (! (count($written) ? $fail2ban->restart() : $fail2ban->reload())) {
-            $output->writeln('<error>fail2ban could not be started or reloaded, check</error> journalctl -u fail2ban');
+            $output->writeln('<error>fail2ban could not be started or reloaded, check</error> '.($fail2ban->isRouter() ? '/var/log/fail2ban.log of the router' : 'journalctl -u fail2ban'));
 
             return false;
         }
@@ -373,8 +510,11 @@ class MonitorInstallCommand extends Command
             return true;
         }
 
-        $output->writeln('<info>fail2ban bans scanners for all websites of the server (jail '.$fail2ban::SCANNERS_JAIL.').</info>');
-        $output->writeln($fail2ban->status($fail2ban::SCANNERS_JAIL) ?: '');
+        $output->writeln('<info>fail2ban bans scanners for all websites'.($fail2ban->isRouter() ? ' behind the router' : ' of the server').' (jail '.$fail2ban::SCANNERS_JAIL.').</info>');
+
+        if ($status) {
+            $output->writeln($fail2ban->status($fail2ban::SCANNERS_JAIL) ?: '');
+        }
 
         return true;
     }

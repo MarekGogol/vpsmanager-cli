@@ -13,6 +13,7 @@ use Gogol\VpsManagerCLI\Helpers\MySQLHelper;
 use Gogol\VpsManagerCLI\Helpers\Nginx;
 use Gogol\VpsManagerCLI\Helpers\PHP;
 use Gogol\VpsManagerCLI\Helpers\Response;
+use Gogol\VpsManagerCLI\Helpers\Router;
 use Gogol\VpsManagerCLI\Helpers\Server;
 use Gogol\VpsManagerCLI\Helpers\SSH;
 use Gogol\VpsManagerCLI\Helpers\Stub;
@@ -278,6 +279,16 @@ class Application
     public function monitor(): Monitor
     {
         return $this->boot(Monitor::class);
+    }
+
+    /**
+     * Get the helper of the router in front of the server.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\Router
+     */
+    public function router(): Router
+    {
+        return $this->boot(Router::class);
     }
 
     /**

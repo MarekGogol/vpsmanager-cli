@@ -34,38 +34,43 @@ class MonitorListCommand extends Command
         vpsManager()->bootConsole($output, $input, $this->getHelper('question'));
 
         $fail2ban = vpsManager()->fail2ban();
+        $rows = [];
+        $jail = $input->getOption('jail');
+        $found = false;
 
-        if (! $fail2ban->isInstalled() || ! $fail2ban->isRunning()) {
-            $output->writeln('<error>fail2ban is not running, check</error> systemctl status fail2ban');
+        // Behind a router the router bans the scanners, this server only its own SSH
+        foreach ($this->getFail2bans() as $where => $server) {
+            if (! $server->isInstalled() || ! $server->isRunning()) {
+                $output->writeln('<error>fail2ban of '.$where.' is not running.</error>');
+
+                continue;
+            }
+
+            $prefix = $server->isRouter() ? 'router: ' : '';
+
+            foreach ($server->getJails() as $name) {
+                if ($jail && $jail !== $name) {
+                    continue;
+                }
+
+                $found = true;
+                $bans = $server->getBans($name);
+
+                $output->writeln('<info>'.$prefix.$name.'</info>: '.count($bans).' banned');
+
+                foreach ($bans as $ban) {
+                    // Requests in the log of NGINX of this server tell what the scanner tried
+                    $requests = str_starts_with($name, $fail2ban::SCANNERS_JAIL) ? $fail2ban->countScannerRequests($ban['ip']) : '';
+
+                    $rows[] = [$prefix.$name, $ban['ip'], $ban['banned_at'], $ban['expires_at'], $requests];
+                }
+            }
+        }
+
+        if ($jail && ! $found) {
+            $output->writeln('<error>Jail '.$jail.' does not exist.</error>');
 
             return Command::FAILURE;
-        }
-
-        $jails = $fail2ban->getJails();
-
-        if ($jail = $input->getOption('jail')) {
-            if (! in_array($jail, $jails)) {
-                $output->writeln('<error>Jail '.$jail.' does not exist. Jails: '.implode(', ', $jails).'</error>');
-
-                return Command::FAILURE;
-            }
-
-            $jails = [$jail];
-        }
-
-        $rows = [];
-
-        foreach ($jails as $name) {
-            $bans = $fail2ban->getBans($name);
-
-            $output->writeln('<info>'.$name.'</info>: '.count($bans).' banned');
-
-            foreach ($bans as $ban) {
-                // Requests in the log of NGINX tell what the scanner tried
-                $requests = str_starts_with($name, $fail2ban::SCANNERS_JAIL) ? $fail2ban->countScannerRequests($ban['ip']) : '';
-
-                $rows[] = [$name, $ban['ip'], $ban['banned_at'], $ban['expires_at'], $requests];
-            }
         }
 
         if (count($rows) === 0) {
@@ -84,5 +89,21 @@ class MonitorListCommand extends Command
         $output->writeln('Unban an address: <comment>php vpsmanager monitor:remove-ip IP</comment>');
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * fail2ban of this server, and of the router in front of it.
+     *
+     * @return array label => \Gogol\VpsManagerCLI\Helpers\Fail2ban
+     */
+    protected function getFail2bans(): array
+    {
+        $servers = ['this server' => vpsManager()->fail2ban()];
+
+        if (($router = vpsManager()->router())->isEnabled() && $router->getDestination()) {
+            $servers['the router '.$router->getDestination()] = $router->fail2ban();
+        }
+
+        return $servers;
     }
 }
