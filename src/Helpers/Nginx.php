@@ -168,11 +168,13 @@ class Nginx extends Application
 
         foreach ($paths as $path) {
             $files[$path] = $header.match ($path) {
-                'vpsmanager/router-scanners.conf' => ($syslog = $router->getNginxSyslog('vpsm_scanners'))
-                    ? "# Blocked requests for fail2ban of the router in front of this server\naccess_log ".$syslog." vpsmanager_scanners;\n"
+                'vpsmanager/router-scanners.conf' => ($syslogs = $router->getNginxSyslogs('vpsm_scanners'))
+                    ? "# Blocked requests for fail2ban of the routers in front of this server\n"
+                        .implode('', array_map(fn ($syslog) => 'access_log '.$syslog." vpsmanager_scanners;\n", $syslogs))
                     : "# This server is not behind a router, fail2ban of the server bans the scanners\n",
-                'vpsmanager/router-auth.conf' => ($syslog = $router->getNginxSyslog('vpsm_auth'))
-                    ? "# Requests refused by auth_basic for fail2ban of the router in front of this server\naccess_log ".$syslog." vpsmanager_scanners if=\$vpsmanager_auth_failed;\n"
+                'vpsmanager/router-auth.conf' => ($syslogs = $router->getNginxSyslogs('vpsm_auth'))
+                    ? "# Requests refused by auth_basic for fail2ban of the routers in front of this server\n"
+                        .implode('', array_map(fn ($syslog) => 'access_log '.$syslog." vpsmanager_scanners if=\$vpsmanager_auth_failed;\n", $syslogs))
                     : "# This server is not behind a router, fail2ban of the server bans the addresses guessing passwords\n",
                 'conf.d/vpsmanager-realip.conf' => $router->isEnabled() ? $this->getRealIpConfiguration() : "# This server is not behind a router\n",
             };
@@ -189,8 +191,9 @@ class Nginx extends Application
      */
     protected function getRealIpConfiguration(): string
     {
-        // Proxies of general.conf, otherwise the network of the router
-        $proxies = vpsManager()->fail2ban()->getTrustedProxies() ?: array_filter([vpsManager()->router()->getNetwork()]);
+        // Proxies of general.conf, otherwise the networks of the routers
+        $proxies = vpsManager()->fail2ban()->getTrustedProxies()
+            ?: array_values(array_unique(array_filter(array_map(fn ($router) => $router->getNetwork(), vpsManager()->router()->getRouters()))));
 
         return "# Real address of the visitors, sent by the router in front of this server\nreal_ip_header proxy_protocol;\n"
             .implode('', array_map(fn ($proxy) => 'set_real_ip_from '.$proxy.";\n", $proxies));

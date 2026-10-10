@@ -46,7 +46,7 @@ class MonitorListCommand extends Command
                 continue;
             }
 
-            $prefix = $server->isRouter() ? 'router: ' : '';
+            $prefix = $server->isRouter() ? $where.': ' : '';
 
             foreach ($server->getJails() as $name) {
                 if ($jail && $jail !== $name) {
@@ -100,8 +100,8 @@ class MonitorListCommand extends Command
     {
         $servers = ['this server' => vpsManager()->fail2ban()];
 
-        if (($router = vpsManager()->router())->isEnabled() && $router->getDestination()) {
-            $servers['the router '.$router->getDestination()] = $router->fail2ban();
+        foreach (vpsManager()->router()->getRouters() as $router) {
+            $servers[$router->getLabel()] = $router->fail2ban();
         }
 
         return $servers;

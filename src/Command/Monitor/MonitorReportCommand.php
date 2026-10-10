@@ -80,7 +80,7 @@ class MonitorReportCommand extends Command
         $servers = [vpsManager()->fail2ban()];
 
         // Behind a router the router bans the scanners
-        if (($router = vpsManager()->router())->isEnabled() && $router->getDestination()) {
+        foreach (vpsManager()->router()->getRouters() as $router) {
             $servers[] = $router->fail2ban();
         }
 

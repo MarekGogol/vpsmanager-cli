@@ -7,8 +7,8 @@ use Gogol\VpsManagerCLI\Application;
 /**
  * Router or load balancer in front of the server (nginx_is_proxied). Its firewall sees the addresses of the visitors,
  * the firewall of this server only the router. NGINX of this server finds the scanners and sends the blocked
- * requests over syslog to the router, fail2ban of the router bans them for all servers behind it. This server
- * manages the router over SSH, the router needs no VPS Manager.
+ * requests over syslog to every router, fail2ban of each router bans them for all servers behind it. This server
+ * manages the routers over SSH, a router needs no VPS Manager.
  */
 class Router extends Application
 {
@@ -16,6 +16,13 @@ class Router extends Application
      * Port of syslog on the router.
      */
     const SYSLOG_PORT = 514;
+
+    /**
+     * SSH destination of this router, e.g. ssh://root@192.168.1.1:1000.
+     *
+     * @var string|null
+     */
+    protected ?string $destination = null;
 
     /**
      * Check if the server is behind a router (HTTPS listeners with proxy_protocol).
@@ -28,19 +35,41 @@ class Router extends Application
     }
 
     /**
-     * SSH destination of the router, monitor_router of the configuration or root at the default gateway.
+     * Routers in front of the server: monitor_routers of the configuration (a list of SSH destinations, also
+     * monitor_router with one), or root at the default gateway.
+     *
+     * @return array<\Gogol\VpsManagerCLI\Helpers\Router>
+     */
+    public function getRouters(): array
+    {
+        if (! $this->isEnabled()) {
+            return [];
+        }
+
+        $destinations = array_filter(array_merge((array) $this->config('monitor_routers', []), (array) $this->config('monitor_router', [])));
+
+        if (count($destinations) === 0) {
+            exec('ip -4 route show default 2> /dev/null', $output);
+
+            $destinations = preg_match('/default via (\S+)/', implode("\n", $output), $matches) ? ['ssh://root@'.$matches[1]] : [];
+        }
+
+        return array_map(function ($destination) {
+            $router = clone $this;
+            $router->destination = $destination;
+
+            return $router;
+        }, array_values(array_unique($destinations)));
+    }
+
+    /**
+     * SSH destination of the router.
      *
      * @return string|null e.g. ssh://root@192.168.1.1:1000
      */
     public function getDestination(): ?string
     {
-        if ($destination = $this->config('monitor_router')) {
-            return $destination;
-        }
-
-        exec('ip -4 route show default 2> /dev/null', $output);
-
-        return preg_match('/default via (\S+)/', implode("\n", $output), $matches) ? 'ssh://root@'.$matches[1] : null;
+        return $this->destination;
     }
 
     /**
@@ -50,13 +79,19 @@ class Router extends Application
      */
     public function getAddress(): ?string
     {
-        if (! ($destination = $this->getDestination())) {
+        if (! $this->destination) {
             return null;
         }
 
-        $host = parse_url(str_contains($destination, '://') ? $destination : 'ssh://'.$destination, PHP_URL_HOST);
+        $host = parse_url(str_contains($this->destination, '://') ? $this->destination : 'ssh://'.$this->destination, PHP_URL_HOST);
 
-        return filter_var($host, FILTER_VALIDATE_IP) ? $host : (gethostbyname($host) ?: null);
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            return $host;
+        }
+
+        $ip = gethostbyname((string) $host);
+
+        return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : null;
     }
 
     /**
@@ -88,23 +123,23 @@ class Router extends Application
     }
 
     /**
+     * Name of the router in the output of the commands.
+     *
+     * @return string
+     */
+    public function getLabel(): string
+    {
+        return 'router '.($this->getAddress() ?: $this->destination);
+    }
+
+    /**
      * fail2ban of the router.
      *
      * @return \Gogol\VpsManagerCLI\Helpers\Fail2ban
      */
     public function fail2ban(): Fail2ban
     {
-        return $this->fail2banHelper()->onRouter($this->getDestination());
-    }
-
-    /**
-     * The fail2ban helper of this server.
-     *
-     * @return \Gogol\VpsManagerCLI\Helpers\Fail2ban
-     */
-    protected function fail2banHelper(): Fail2ban
-    {
-        return vpsManager()->fail2ban();
+        return vpsManager()->fail2ban()->onRouter($this->destination);
     }
 
     /**
@@ -172,17 +207,17 @@ class Router extends Application
     }
 
     /**
-     * Syslog destination of NGINX for the blocked requests of the given log, null when the server is not behind a router.
+     * Syslog destinations of NGINX for the blocked requests of the given log, one for every router in front
+     * of the server.
      *
      * @param  string  $tag  vpsm_scanners or vpsm_auth
-     * @return string|null
+     * @return array
      */
-    public function getNginxSyslog(string $tag): ?string
+    public function getNginxSyslogs(string $tag): array
     {
-        if (! $this->isEnabled() || ! ($address = $this->getAddress())) {
-            return null;
-        }
-
-        return 'syslog:server='.$address.':'.self::SYSLOG_PORT.',tag='.$tag.',nohostname';
+        return array_values(array_filter(array_map(
+            fn (Router $router) => $router->getAddress() ? 'syslog:server='.$router->getAddress().':'.self::SYSLOG_PORT.',tag='.$tag.',nohostname' : null,
+            $this->getRouters(),
+        )));
     }
 }

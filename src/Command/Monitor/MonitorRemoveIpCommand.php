@@ -47,7 +47,7 @@ class MonitorRemoveIpCommand extends Command
         // Behind a router the router bans the scanners, this server only its own SSH
         $servers = [$fail2ban];
 
-        if (($router = vpsManager()->router())->isEnabled() && $router->getDestination()) {
+        foreach (vpsManager()->router()->getRouters() as $router) {
             $servers[] = $router->fail2ban();
         }
 

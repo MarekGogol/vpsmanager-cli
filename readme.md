@@ -448,22 +448,25 @@ scanner ─▶ router: iptables (fail2ban of the router) ─▶ server: NGINX, /
                 └── /var/log/vpsmanager/scanners.log ◀── rsyslog of the router
 ```
 
-- `monitor:install` on the server manages the router over SSH, the router needs no VPS Manager and no own scripts. `monitor:list`, `monitor:remove-ip` and `monitor:report` of the server read and unban on the router too (jails `router: …`).
+- `monitor:install` on the server manages the router over SSH, the router needs no VPS Manager and no own scripts. `monitor:list`, `monitor:remove-ip` and `monitor:report` of the server read and unban on the router too (jails `router <address>: …`).
 - The server: `conf.d/vpsmanager-realip.conf` sets the real address for the whole `http` context (also the default server without `general.conf`), `vpsmanager/router-scanners.conf` and `router-auth.conf` send the blocked and refused requests to syslog of the router, the local logs stay. The server has no jails `vpsmanager-*`, only its own `sshd` (SSH comes through DNAT of the router with the real address).
 - The router (Alpine): `rsyslog` replaces `syslogd` of BusyBox (system logs stay in `/var/log/messages`), `/etc/rsyslog.d/vpsmanager.conf` listens on the internal address only and accepts the internal network only, `/etc/logrotate.d/vpsmanager` keeps a week, the jails are the same as on other servers. Lines end with the address of the server which sent them.
-- Setup of a new server behind a router: the configuration of the server gets the SSH destination of the router (default `ssh://root@<default gateway>`), root of the server gets SSH access to the router limited to the internal network:
+- Setup of a new server behind a router: the configuration of the server gets the list of SSH destinations of its routers (`monitor_routers`, default `ssh://root@<default gateway>`; `monitor_router` with one destination works too), root of the server gets SSH access to every router limited to the internal network:
 
   ```bash
   # src/config.php of the server
   'nginx_is_proxied' => true,
-  'monitor_router' => 'ssh://root@192.168.1.1:1000',
+  'monitor_routers' => [
+      'ssh://root@192.168.1.1:1000',
+      // 'ssh://root@192.168.1.2:1000', more routers in front of the same server
+  ],
 
   # /root/.ssh/authorized_keys of the router: the key of root of the server
   from="192.168.1.0/24" ssh-rsa AAAA… root@server
   ```
 
 - Without the router (no SSH access, unknown address) `monitor:install` stops before any change.
-- Several servers behind one router share its jails: a scanner found by one of them is banned for all.
+- Several servers behind one router share its jails: a scanner found by one of them is banned for all. A server behind several routers (e.g. two load balancers) sends every blocked request to all of them, each router bans in its own firewall, `monitor:list` shows the jails of every router (`router 192.168.1.1: …`).
 
 ### Files on the server
 

@@ -4,6 +4,7 @@ namespace Gogol\VpsManagerCLI\Command\Monitor;
 
 use Gogol\VpsManagerCLI\Helpers\Fail2ban;
 use Gogol\VpsManagerCLI\Helpers\Monitor;
+use Gogol\VpsManagerCLI\Helpers\Router;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -317,42 +318,51 @@ class MonitorInstallCommand extends Command
     }
 
     /**
-     * Check the router of a server behind it (nginx_is_proxied): its address, network and SSH access.
+     * Check the routers of a server behind them (nginx_is_proxied): their addresses, networks and SSH access.
      *
      * @param  \Symfony\Component\Console\Output\OutputInterface  $output
      * @return bool
      */
     protected function checkRouter(OutputInterface $output): bool
     {
-        $router = vpsManager()->router();
-
-        if (! $router->isEnabled()) {
+        if (! vpsManager()->router()->isEnabled()) {
             return true;
         }
 
-        if (! ($destination = $router->getDestination()) || ! $router->getAddress() || ! $router->getNetwork()) {
-            $output->writeln('<error>The server is behind a router (nginx_is_proxied), but its address or network is not known.</error>');
-            $output->writeln('Set the SSH destination of the router into the configuration: <comment>monitor_router => ssh://root@192.168.1.1:22</comment>');
+        $routers = vpsManager()->router()->getRouters();
+
+        if (count($routers) === 0) {
+            $output->writeln('<error>The server is behind a router (nginx_is_proxied), but no router is known.</error>');
+            $output->writeln('Set the SSH destinations of the routers into the configuration: <comment>monitor_routers => [\'ssh://root@192.168.1.1:22\']</comment>');
 
             return false;
         }
 
-        if (! $router->fail2ban()->isReachable()) {
-            $output->writeln('<error>The router '.$destination.' does not answer over SSH without a password.</error>');
-            $output->writeln('Add the key of root of this server into /root/.ssh/authorized_keys of the router, see readme (Servers behind a router).');
+        foreach ($routers as $router) {
+            if (! $router->getAddress() || ! $router->getNetwork()) {
+                $output->writeln('<error>The address or the network of the router '.$router->getDestination().' is not known.</error>');
 
-            return false;
+                return false;
+            }
+
+            if (! $router->fail2ban()->isReachable()) {
+                $output->writeln('<error>The router '.$router->getDestination().' does not answer over SSH without a password.</error>');
+                $output->writeln('Add the key of root of this server into /root/.ssh/authorized_keys of the router, see readme (Servers behind a router).');
+
+                return false;
+            }
+
+            $output->writeln('Router: <comment>'.$router->getDestination().'</comment>, NGINX sends the blocked requests to <comment>'.$router->getAddress().':'.$router::SYSLOG_PORT.'</comment> (network '.$router->getNetwork().').');
         }
 
-        $output->writeln('Router: <comment>'.$destination.'</comment>, NGINX sends the blocked requests to <comment>'.$router->getAddress().':'.$router::SYSLOG_PORT.'</comment> (network '.$router->getNetwork().').');
         $output->writeln('');
 
         return true;
     }
 
     /**
-     * Ban the scanners logged by NGINX with fail2ban (or remove the jails). Behind a router fail2ban of the router
-     * bans them, the firewall of this server sees only the router.
+     * Ban the scanners logged by NGINX with fail2ban (or remove the jails). Behind routers fail2ban of every router
+     * bans them, the firewall of this server sees only the routers.
      *
      * @param  \Symfony\Component\Console\Output\OutputInterface  $output
      * @param  bool  $dryRun
@@ -361,9 +371,7 @@ class MonitorInstallCommand extends Command
      */
     protected function updateFail2ban(OutputInterface $output, bool $dryRun, bool $remove): bool
     {
-        $router = vpsManager()->router();
-
-        if (! $router->isEnabled()) {
+        if (! vpsManager()->router()->isEnabled()) {
             return $this->updateJails($output, vpsManager()->fail2ban(), $dryRun, $remove);
         }
 
@@ -374,24 +382,29 @@ class MonitorInstallCommand extends Command
             return false;
         }
 
-        $output->writeln('');
-        $output->writeln('Router '.$router->getDestination().':');
+        foreach (vpsManager()->router()->getRouters() as $router) {
+            $output->writeln('');
+            $output->writeln(ucfirst($router->getLabel()).' ('.$router->getDestination().'):');
 
-        return $this->updateRouterSyslog($output, $dryRun, $remove)
-            && $this->updateJails($output, $router->fail2ban(), $dryRun, $remove);
+            if (! $this->updateRouterSyslog($output, $router, $dryRun, $remove) || ! $this->updateJails($output, $router->fail2ban(), $dryRun, $remove)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
      * Receive the blocked requests of NGINX on the router: rsyslog with the input of the internal network.
      *
      * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  \Gogol\VpsManagerCLI\Helpers\Router  $router
      * @param  bool  $dryRun
      * @param  bool  $remove
      * @return bool
      */
-    protected function updateRouterSyslog(OutputInterface $output, bool $dryRun, bool $remove): bool
+    protected function updateRouterSyslog(OutputInterface $output, Router $router, bool $dryRun, bool $remove): bool
     {
-        $router = vpsManager()->router();
         $remote = $router->fail2ban();
 
         if (! $remove && ! $router->hasSyslog()) {
