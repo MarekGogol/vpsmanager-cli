@@ -5,3 +5,4 @@ composer.lock
 /node_modules/
 run.sh
 docker-compose.override.yml
+/.phpunit.result.cache
