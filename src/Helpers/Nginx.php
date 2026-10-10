@@ -174,7 +174,7 @@ class Nginx extends Application
                     : "# This server is not behind a router, fail2ban of the server bans the scanners\n",
                 'vpsmanager/router-auth.conf' => ($syslogs = $router->getNginxSyslogs('vpsm_auth'))
                     ? "# Requests refused by auth_basic for fail2ban of the routers in front of this server\n"
-                        .implode('', array_map(fn ($syslog) => 'access_log '.$syslog." vpsmanager_scanners if=\$vpsmanager_auth_failed;\n", $syslogs))
+                        .implode('', array_map(fn ($syslog) => 'access_log '.$syslog." vpsmanager_auth if=\$vpsmanager_auth_failed;\n", $syslogs))
                     : "# This server is not behind a router, fail2ban of the server bans the addresses guessing passwords\n",
                 'conf.d/vpsmanager-realip.conf' => $router->isEnabled() ? $this->getRealIpConfiguration() : "# This server is not behind a router\n",
             };
