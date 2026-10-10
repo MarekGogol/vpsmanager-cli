@@ -358,7 +358,7 @@ request ─▶ firewall (iptables) ─▶ NGINX server section ─▶ location �
 ```
 
 1. **NGINX rules** (`vpsmanager/scanners.conf` and `vpsmanager/scanners-php.conf`) answer paths which no Laravel application serves with `403` and a static page in English and Slovak (`vpsmanager/scanners.html`, a link to the homepage). The request never reaches PHP. The rules are `if` blocks of the server level, they run in the rewrite phase before any `location`, so the position of the include does not matter. `418` is only an internal marker of the rules (`error_page 418 =403`), the visitor receives `403`, other `403` pages of the hosts are not changed. The block page has `auth_basic off`, hosts protected by a password show it too instead of asking for the password.
-2. **fail2ban** reads the log of the blocked requests and bans an address in the firewall for every website of the server: an hour after 5 blocked requests in 10 minutes, a week after 3 such bans in a day.
+2. **fail2ban** reads the log of the blocked requests and bans an address in the firewall for every website of the server: an hour after 5 blocked requests in 10 minutes, 30 days after 3 such bans in a day.
 3. **Access log** (`vpsmanager/monitor.conf`) logs all other requests for a week, `monitor:report` turns it into a summary of addresses and paths which may need a ban.
 
 ### Blocked paths
@@ -395,8 +395,8 @@ New rules belong into `src/Resources/nginx/vpsmanager/scanners.conf` of this rep
 | --- | --- | --- | --- |
 | `vpsmanager-scanners` | 5 blocked requests in 10 minutes, banned for an hour | http, https | `f2b-vpsmanager-scanners` |
 | `vpsmanager-http-auth` | 30 requests refused by `auth_basic` (wrong or missing password) in 10 minutes, banned for an hour | http, https | `f2b-vpsmanager-http-auth` |
-| `vpsmanager-shared` | addresses banned by the other servers, shared by the monitor (`monitor:sync`), banned for 8 days | http, https | `f2b-vpsmanager-shared` |
-| `vpsmanager-scanners-recidive` | 3 bans of the jails above in a day, banned for a week | http, https (SSH stays reachable from a shared address) | `f2b-vpsm-recidive` |
+| `vpsmanager-shared` | addresses banned by the other servers, shared by the monitor (`monitor:sync`), banned for 31 days | http, https | `f2b-vpsmanager-shared` |
+| `vpsmanager-scanners-recidive` | 3 bans of the jails above in a day, banned for 30 days | http, https (SSH stays reachable from a shared address) | `f2b-vpsm-recidive` |
 | `sshd` (default of fail2ban) | default of the distribution | ssh | `f2b-sshd` |
 
 - `vpsmanager-http-auth` reads `/var/log/nginx/vpsmanager-auth.log`, written by `vpsmanager/monitor.conf` (it needs the access log part). Only refusals of NGINX itself are logged (`$status:$upstream_status` is `401:`), `401` of the applications (API without a token) have the status of their upstream and never count. A browser is refused once before it asks for the password, a bot guessing passwords is refused thousands of times (6 115 refusals in 10 minutes on `dev.trinityfinance.sk`).
@@ -404,7 +404,7 @@ New rules belong into `src/Resources/nginx/vpsmanager/scanners.conf` of this rep
 - iptables chains are named `f2b-<name>` and may have 28 characters at most. The recidive jail therefore bans with `name=vpsm-recidive`; servers set up before this fix logged `chain name too long` into `/var/log/fail2ban.log` and their recidive bans were not blocked. `git pull` and `monitor:install` fix them.
 - A chain is created at the first ban of its jail. `iptables -S f2b-sshd` of a jail without bans prints `chain … is incompatible, use 'nft' tool`: iptables-nft prints this also for a chain which does not exist, it is not an error.
 - When fail2ban files change, `monitor:install` **restarts** fail2ban. A reload flushes the bans of a changed action and creates the chain only at the next ban; the start applies the bans of the database again with the current actions.
-- `fail2ban.d/vpsmanager.conf` sets `dbpurgeage = 8d`. The default of Debian is one day, the database would forget the week bans of the recidive jail and a restart would not apply them again.
+- `fail2ban.d/vpsmanager.conf` sets `dbpurgeage = 32d`. The default of Debian is one day, the database would forget the long bans of the recidive and shared jails and a restart would not apply them again.
 - Never banned: localhost, all addresses of the server (`hostname -I`, the server calls its own websites, e.g. an API of one hosting from another one), private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) and proxies trusted by NGINX (`set_real_ip_from` of any file in `/etc/nginx`, comments skipped). A router or a load balancer in front of the server sends all requests from its own address; its ban dropped all websites of auttia and optisia on 2026-10-04. No scanner of the internet comes from a private network. Own addresses which must never be banned (office, home, CI) belong into `/etc/fail2ban/jail.d/vpsmanager-scanners.local`, which is never overwritten, then `fail2ban-client reload`:
 
   ```ini
@@ -444,12 +444,12 @@ The access log holds addresses of visitors for a week, mention it in the privacy
 
 Scanners go from server to server, a fifth of the banned addresses attacks several of our servers. `monitor:sync` shares the most certain bans through the monitor (monitor.marekgogol.sk, admin module Blokované IP):
 
-1. It reports the addresses of the week jail `vpsmanager-scanners-recidive` (3 bans in a day) to the monitor.
-2. It downloads the addresses the monitor shares (reported by any server in the last 7 days, not hidden in the administration).
+1. It reports the addresses of the jail `vpsmanager-scanners-recidive` (3 bans in a day, banned for 30 days) to the monitor.
+2. It downloads the addresses the monitor shares (reported by any server in the last 30 days, not hidden in the administration).
 3. It bans the new ones in the jail `vpsmanager-shared` and unbans those the monitor does not share any more, with `fail2ban-client set … banip|unbanip`. Nothing else changes, fail2ban is never reloaded or restarted, a sync without changes touches nothing.
 
-- The monitor is optional. When it does not answer, nothing is banned nor unbanned and the jails of the server work as before; the reports are sent with the next sync. The bans of `vpsmanager-shared` last 8 days, so they expire also when the monitor is gone.
-- Own addresses, private networks and proxies are never banned (the same list as `ignoreip`), the addresses of the week jail are not banned twice. Hiding an address in the monitor unbans it on all servers with their next sync, its next reports do not share it again.
+- The monitor is optional. When it does not answer, nothing is banned nor unbanned and the jails of the server work as before; the reports are sent with the next sync. The bans of `vpsmanager-shared` last 31 days, so they expire also when the monitor is gone.
+- Own addresses, private networks and proxies are never banned (the same list as `ignoreip`), the addresses of the recidive jail are not banned twice. Hiding an address in the monitor unbans it on all servers with their next sync, its next reports do not share it again.
 - The url comes from the agent of the monitor on the server (`/etc/server_monitor/monitor.sh`, `/monitor/{id}/{token}/collect` becomes `/monitor/{id}/{token}/blocked-ips`), or `monitor_sync_url` of the configuration. Without both the server does not share.
 - `monitor:install` writes `/etc/cron.d/vpsmanager-monitor-sync`: every 3 hours, at a minute and hour derived from the hostname, so the servers do not call the monitor at once. Behind a router the jail lives on the router.
 

@@ -18,7 +18,7 @@ class MonitorSyncCommand extends Command
     protected function configure(): void
     {
         $this->setName('monitor:sync')
-            ->setDescription('Share banned addresses with the other servers through the monitor: report the week bans, ban the addresses of the others')
+            ->setDescription('Share banned addresses with the other servers through the monitor: report the 30 day bans, ban the addresses of the others')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Only print what would be reported, banned and unbanned');
     }
 
@@ -49,7 +49,7 @@ class MonitorSyncCommand extends Command
             return Command::SUCCESS;
         }
 
-        // Week bans of the scanners banned again and again, the most certain ones
+        // 30 day bans of the scanners banned again and again, the most certain ones
         $reported = [];
 
         foreach ($servers as $fail2ban) {
@@ -97,7 +97,7 @@ class MonitorSyncCommand extends Command
     {
         $ignored = $fail2ban->getIgnoredIps();
 
-        // Own addresses and private networks are never banned, addresses of the week jail are banned already
+        // Own addresses and private networks are never banned, addresses of the recidive jail are banned already
         $recidive = array_column($fail2ban->getBans(Fail2ban::RECIDIVE_JAIL), 'ip');
 
         $wanted = array_values(array_filter($shared, fn ($ip) => ! in_array($ip, $recidive) && ! $fail2ban->isIgnoredIp($ip, $ignored)));
