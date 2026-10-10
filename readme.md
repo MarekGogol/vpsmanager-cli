@@ -325,6 +325,7 @@ Bots scan every domain of a server all day: WordPress paths (`/wp-login.php`, `/
 | `monitor:list` | Banned addresses of all fail2ban jails (also `sshd`) with the time of the ban and its end. `--jail=` |
 | `monitor:remove-ip <ip>` | Unbans the address in all jails, or one with `--jail=` |
 | `monitor:report` | Summary of the access log for an analysis (also by AI). `--hours=24`, `--limit=20`, `--json` |
+| `monitor:sync` | Shares bans with the other servers through the monitor, see [Shared bans](#shared-bans-monitorsync). `--dry-run` |
 
 ### Install and update
 
@@ -394,6 +395,7 @@ New rules belong into `src/Resources/nginx/vpsmanager/scanners.conf` of this rep
 | --- | --- | --- | --- |
 | `vpsmanager-scanners` | 5 blocked requests in 10 minutes, banned for an hour | http, https | `f2b-vpsmanager-scanners` |
 | `vpsmanager-http-auth` | 30 requests refused by `auth_basic` (wrong or missing password) in 10 minutes, banned for an hour | http, https | `f2b-vpsmanager-http-auth` |
+| `vpsmanager-shared` | addresses banned by the other servers, shared by the monitor (`monitor:sync`), banned for 8 days | http, https | `f2b-vpsmanager-shared` |
 | `vpsmanager-scanners-recidive` | 3 bans of the jails above in a day, banned for a week | http, https (SSH stays reachable from a shared address) | `f2b-vpsm-recidive` |
 | `sshd` (default of fail2ban) | default of the distribution | ssh | `f2b-sshd` |
 
@@ -437,6 +439,24 @@ The access log:
 - needs the hosts to log: `access_log off;` of the server level would cancel it, so `monitor:install` comments it out (`# access_log off; (replaced by vpsmanager/monitor.conf)`) and `--remove` brings it back. `access_log off` of locations stays. WordPress hosts are logged too.
 
 The access log holds addresses of visitors for a week, mention it in the privacy policy of the websites.
+
+### Shared bans: monitor:sync
+
+Scanners go from server to server, a fifth of the banned addresses attacks several of our servers. `monitor:sync` shares the most certain bans through the monitor (monitor.marekgogol.sk, admin module Blokované IP):
+
+1. It reports the addresses of the week jail `vpsmanager-scanners-recidive` (3 bans in a day) to the monitor.
+2. It downloads the addresses the monitor shares (reported by any server in the last 7 days, not hidden in the administration).
+3. It bans the new ones in the jail `vpsmanager-shared` and unbans those the monitor does not share any more, with `fail2ban-client set … banip|unbanip`. Nothing else changes, fail2ban is never reloaded or restarted, a sync without changes touches nothing.
+
+- The monitor is optional. When it does not answer, nothing is banned nor unbanned and the jails of the server work as before; the reports are sent with the next sync. The bans of `vpsmanager-shared` last 8 days, so they expire also when the monitor is gone.
+- Own addresses, private networks and proxies are never banned (the same list as `ignoreip`), the addresses of the week jail are not banned twice. Hiding an address in the monitor unbans it on all servers with their next sync, its next reports do not share it again.
+- The url comes from the agent of the monitor on the server (`/etc/server_monitor/monitor.sh`, `/monitor/{id}/{token}/collect` becomes `/monitor/{id}/{token}/blocked-ips`), or `monitor_sync_url` of the configuration. Without both the server does not share.
+- `monitor:install` writes `/etc/cron.d/vpsmanager-monitor-sync`: every 3 hours, at a minute and hour derived from the hostname, so the servers do not call the monitor at once. Behind a router the jail lives on the router.
+
+```bash
+sudo php vpsmanager monitor:sync --dry-run
+sudo php vpsmanager monitor:sync
+```
 
 ### Servers behind a router
 

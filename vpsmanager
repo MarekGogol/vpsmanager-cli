@@ -22,6 +22,7 @@ use Gogol\VpsManagerCLI\Command\Monitor\MonitorInstallCommand;
 use Gogol\VpsManagerCLI\Command\Monitor\MonitorListCommand;
 use Gogol\VpsManagerCLI\Command\Monitor\MonitorRemoveIpCommand;
 use Gogol\VpsManagerCLI\Command\Monitor\MonitorReportCommand;
+use Gogol\VpsManagerCLI\Command\Monitor\MonitorSyncCommand;
 use Gogol\VpsManagerCLI\Command\SSLCreateCommand;
 use Symfony\Component\Console\Application;
 
@@ -35,6 +36,7 @@ $application->addCommand(new MonitorInstallCommand());
 $application->addCommand(new MonitorListCommand());
 $application->addCommand(new MonitorRemoveIpCommand());
 $application->addCommand(new MonitorReportCommand());
+$application->addCommand(new MonitorSyncCommand());
 $application->addCommand(new BackupSetupCommand());
 $application->addCommand(new BackupPerformCommand());
 $application->addCommand(new BackupTestRemoteServer());

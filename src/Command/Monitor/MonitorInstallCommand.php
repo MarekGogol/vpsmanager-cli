@@ -98,7 +98,16 @@ class MonitorInstallCommand extends Command
         $output->writeln('');
         $output->writeln('<comment>fail2ban</comment>');
 
-        return $this->updateFail2ban($output, $dryRun, $remove) ? Command::SUCCESS : Command::FAILURE;
+        if (! $this->updateFail2ban($output, $dryRun, $remove)) {
+            return Command::FAILURE;
+        }
+
+        $output->writeln('');
+        $output->writeln('<comment>Shared bans</comment>');
+
+        $this->updateSyncCron($output, $dryRun, $remove);
+
+        return Command::SUCCESS;
     }
 
     /**
@@ -315,6 +324,39 @@ class MonitorInstallCommand extends Command
         $output->writeln('Summary for the analysis: <comment>php vpsmanager monitor:report</comment>');
 
         return true;
+    }
+
+    /**
+     * Run monitor:sync every 3 hours at a time of this server (or remove its cron).
+     *
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  bool  $dryRun
+     * @param  bool  $remove
+     * @return void
+     */
+    protected function updateSyncCron(OutputInterface $output, bool $dryRun, bool $remove): void
+    {
+        $monitor = vpsManager()->monitor();
+
+        if ($remove || ! $monitor->getSyncUrl()) {
+            if ($monitor->removeSyncCron($dryRun)) {
+                $output->writeln(($dryRun ? 'Would remove' : 'Removed').' <comment>'.$monitor::SYNC_CRON.'</comment>');
+            }
+
+            if (! $remove) {
+                $output->writeln('<comment>The monitor is not known (no agent of the monitor, no monitor_sync_url), bans are not shared.</comment>');
+            }
+
+            return;
+        }
+
+        if ($monitor->writeSyncCron($dryRun)) {
+            $output->writeln(($dryRun ? 'Would write' : 'Wrote').' <comment>'.$monitor::SYNC_CRON.'</comment>');
+        }
+
+        preg_match('/^(\d+) (\d+)-23\/3/m', $monitor->getSyncCron(), $matches);
+
+        $output->writeln('<info>Bans are shared through the monitor every 3 hours from '.sprintf('%d:%02d', $matches[2] ?? 0, $matches[1] ?? 0).': php vpsmanager monitor:sync</info>');
     }
 
     /**

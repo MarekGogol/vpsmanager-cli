@@ -29,9 +29,24 @@ class Fail2ban extends Application
     const ROUTER_AUTH_LOG = '/var/log/vpsmanager/auth.log';
 
     /**
+     * Log of the jail of the shared bans, nothing writes into it, monitor:sync bans the addresses directly.
+     */
+    const SHARED_LOG = '/var/log/vpsmanager/shared.log';
+
+    /**
      * Jail of the scanners, the recidive jail is named with the -recidive suffix.
      */
     const SCANNERS_JAIL = 'vpsmanager-scanners';
+
+    /**
+     * Jail of the scanners banned again and again, its bans are shared with the other servers.
+     */
+    const RECIDIVE_JAIL = 'vpsmanager-scanners-recidive';
+
+    /**
+     * Jail of the addresses banned by the other servers (monitor:sync).
+     */
+    const SHARED_JAIL = 'vpsmanager-shared';
 
     /**
      * Private networks, never banned. No scanner of the internet comes from them, but a router or a load
@@ -202,6 +217,7 @@ class Fail2ban extends Application
             self::PATH.'/jail.d/vpsmanager-scanners.conf' => (string) $this->getStub('fail2ban.scanners.conf')
                 ->replace('{log_path}', $this->getScannersLog())
                 ->replace('{auth_log_path}', $this->getAuthLog())
+                ->replace('{shared_log_path}', self::SHARED_LOG)
                 ->replace('{ignoreip}', implode(' ', $this->getIgnoredIps())),
         ];
 
@@ -387,14 +403,18 @@ class Fail2ban extends Application
     public function ensureScannersLog(): void
     {
         if ($this->remote) {
-            $logs = implode(' ', array_map('escapeshellarg', [self::ROUTER_SCANNERS_LOG, self::ROUTER_AUTH_LOG]));
+            $logs = implode(' ', array_map('escapeshellarg', [self::ROUTER_SCANNERS_LOG, self::ROUTER_AUTH_LOG, self::SHARED_LOG]));
 
             $this->run('mkdir -p '.escapeshellarg(dirname(self::ROUTER_SCANNERS_LOG)).' && touch '.$logs.' && chmod 0640 '.$logs);
 
             return;
         }
 
-        foreach ([self::SCANNERS_LOG, self::AUTH_LOG] as $log) {
+        foreach ([self::SCANNERS_LOG, self::AUTH_LOG, self::SHARED_LOG] as $log) {
+            if (! is_dir(dirname($log))) {
+                mkdir(dirname($log), 0755, true);
+            }
+
             if (! file_exists($log)) {
                 touch($log);
                 chmod($log, 0640);
@@ -511,6 +531,63 @@ class Fail2ban extends Application
         $return_var = $this->run($command.' 2> /dev/null', $output);
 
         return $return_var === 0 ? (int) trim(implode('', $output)) : null;
+    }
+
+    /**
+     * Ban or unban the addresses in the jail, without any reload of fail2ban.
+     *
+     * @param  string  $jail
+     * @param  array  $ips
+     * @param  bool  $ban  false unbans
+     * @return bool
+     */
+    public function setBans(string $jail, array $ips, bool $ban = true): bool
+    {
+        foreach (array_chunk(array_values($ips), 100) as $chunk) {
+            $command = 'fail2ban-client set '.escapeshellarg($jail).' '.($ban ? 'banip' : 'unbanip').' '.implode(' ', array_map('escapeshellarg', $chunk));
+
+            if ($this->run($command.' > /dev/null 2>&1') !== 0) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if the address is never banned by this server or router (localhost, own addresses, private networks...).
+     *
+     * @param  string  $ip
+     * @param  array|null  $ignored  result of getIgnoredIps(), read when not given
+     * @return bool
+     */
+    public function isIgnoredIp(string $ip, ?array $ignored = null): bool
+    {
+        foreach ($ignored ?? $this->getIgnoredIps() as $network) {
+            [$address, $mask] = array_pad(explode('/', $network, 2), 2, null);
+
+            $ipBinary = @inet_pton($ip);
+            $networkBinary = @inet_pton($address);
+
+            if ($ipBinary === false || $networkBinary === false || strlen($ipBinary) !== strlen($networkBinary)) {
+                continue;
+            }
+
+            $bits = $mask === null ? strlen($ipBinary) * 8 : (int) $mask;
+            $bytes = intdiv($bits, 8);
+
+            if (substr($ipBinary, 0, $bytes) !== substr($networkBinary, 0, $bytes)) {
+                continue;
+            }
+
+            $rest = $bits % 8;
+
+            if ($rest === 0 || ((ord($ipBinary[$bytes]) ^ ord($networkBinary[$bytes])) & (0xFF << (8 - $rest)) & 0xFF) === 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
