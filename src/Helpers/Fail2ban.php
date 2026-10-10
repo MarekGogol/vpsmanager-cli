@@ -82,7 +82,7 @@ class Fail2ban extends Application
         $output = [];
 
         if ($this->remote) {
-            $command = $this->ssh().' '.escapeshellarg($command);
+            $command = $this->sshCommand().' '.escapeshellarg($command);
         }
 
         exec($command, $output, $return_var);
@@ -95,7 +95,7 @@ class Fail2ban extends Application
      *
      * @return string
      */
-    protected function ssh(): string
+    protected function sshCommand(): string
     {
         return 'ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new '.escapeshellarg($this->remote);
     }
@@ -150,7 +150,7 @@ class Fail2ban extends Application
         }
 
         $command = 'mkdir -p '.escapeshellarg(dirname($path)).' && cat > '.escapeshellarg($path);
-        $process = proc_open($this->ssh().' '.escapeshellarg($command), [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $process = proc_open($this->sshCommand().' '.escapeshellarg($command), [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
 
         if (! is_resource($process)) {
             return false;
