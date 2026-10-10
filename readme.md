@@ -438,6 +438,33 @@ The access log:
 
 The access log holds addresses of visitors for a week, mention it in the privacy policy of the websites.
 
+### Servers behind a router
+
+A server without a public address behind a router or a load balancer (`nginx_is_proxied`, e.g. auttia: router `ar1`, server `as1`) gets every connection from the router. Only NGINX of the server knows the visitor (`proxy_protocol`), the router does not see the requested path (HTTPS passes through it encrypted). A ban in the firewall of the server would drop the router and all websites, it happened on 2026-10-04. Therefore the server finds the scanners and the router bans them:
+
+```text
+scanner ─▶ router: iptables (fail2ban of the router) ─▶ server: NGINX, /.env → 403
+                ▲                                              │ syslog UDP 514, sent by NGINX itself
+                └── /var/log/vpsmanager/scanners.log ◀── rsyslog of the router
+```
+
+- `monitor:install` on the server manages the router over SSH, the router needs no VPS Manager and no own scripts. `monitor:list`, `monitor:remove-ip` and `monitor:report` of the server read and unban on the router too (jails `router: …`).
+- The server: `conf.d/vpsmanager-realip.conf` sets the real address for the whole `http` context (also the default server without `general.conf`), `vpsmanager/router-scanners.conf` and `router-auth.conf` send the blocked and refused requests to syslog of the router, the local logs stay. The server has no jails `vpsmanager-*`, only its own `sshd` (SSH comes through DNAT of the router with the real address).
+- The router (Alpine): `rsyslog` replaces `syslogd` of BusyBox (system logs stay in `/var/log/messages`), `/etc/rsyslog.d/vpsmanager.conf` listens on the internal address only and accepts the internal network only, `/etc/logrotate.d/vpsmanager` keeps a week, the jails are the same as on other servers. Lines end with the address of the server which sent them.
+- Setup of a new server behind a router: the configuration of the server gets the SSH destination of the router (default `ssh://root@<default gateway>`), root of the server gets SSH access to the router limited to the internal network:
+
+  ```bash
+  # src/config.php of the server
+  'nginx_is_proxied' => true,
+  'monitor_router' => 'ssh://root@192.168.1.1:1000',
+
+  # /root/.ssh/authorized_keys of the router: the key of root of the server
+  from="192.168.1.0/24" ssh-rsa AAAA… root@server
+  ```
+
+- Without the router (no SSH access, unknown address) `monitor:install` stops before any change.
+- Several servers behind one router share its jails: a scanner found by one of them is banned for all.
+
 ### Files on the server
 
 | File | Owner |
@@ -449,6 +476,8 @@ The access log holds addresses of visitors for a week, mention it in the privacy
 | `/etc/fail2ban/filter.d/vpsmanager-scanners.conf`, `vpsmanager-scanners-recidive.conf`, `vpsmanager-http-auth.conf`, `jail.d/vpsmanager-scanners.conf`, `fail2ban.d/vpsmanager.conf` | managed |
 | `/etc/fail2ban/jail.d/vpsmanager-scanners.local` | yours (own addresses never banned) |
 | `/etc/vpsmanager/logrotate-monitor.conf`, `/etc/cron.hourly/vpsmanager-monitor` | managed |
+| `/etc/nginx/vpsmanager/router-scanners.conf`, `router-auth.conf`, `/etc/nginx/conf.d/vpsmanager-realip.conf` | generated for the server (a comment only when it is not behind a router) |
+| Router: `/etc/rsyslog.d/vpsmanager.conf`, `/etc/logrotate.d/vpsmanager`, fail2ban files as above | managed over SSH by `monitor:install` of the server behind it |
 
 ### Everyday operations
 
