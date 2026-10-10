@@ -371,7 +371,7 @@ request ─▶ firewall (iptables) ─▶ NGINX server section ─▶ location �
 | Secrets and project files, in the root only | `/id_rsa`, `/credentials.txt`, `/docker-compose.yml`, `/composer.json`, `/package.json`, `/artisan`, `/phpinfo.php` |
 | Deployment and AI gateway configuration, in the root only | `/serverless.yml`, `/template.yaml`, `/samconfig.toml`, `/main.tf`, `/terraform.tfvars.json`, `/terraform.tfstate`, `/litellm_config.yaml`, `/litellm/config.yaml` |
 | Private keys, certificates, secrets and Docker files, in the root only | `/server.key`, `/key.pem`, `/secrets.json`, `/credentials.json`, `/Dockerfile` |
-| Exploits of other software | `/cgi-bin/…`, `/vendor/phpunit/…`, `eval-stdin.php`, `/rest/api/1.0/application-properties` (Jira, Confluence), `/_profiler/…` (Symfony) |
+| Exploits of other software | `/cgi-bin/…`, `/vendor/phpunit/…`, `eval-stdin.php`, `/rest/api/1.0/application-properties` (Jira, Confluence), `/_profiler/…` (Symfony), `/_ignition/…` (Laravel in debug mode) |
 | Other `.php` files than `index.php` (`scanners-php.conf`) | `/worksec.php`, `/r5t.php`, `/admin/simple.php`, `/info.php` |
 
 What is never blocked:
