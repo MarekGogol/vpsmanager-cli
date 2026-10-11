@@ -472,6 +472,11 @@ class MonitorAgent extends Application
      */
     public function getFail2bans(?OutputInterface $output = null): array
     {
+        // A server without NGINX (e.g. a database server) has no websites to protect, it sends its metrics only
+        if (! is_dir((string) $this->config('nginx_path'))) {
+            return [];
+        }
+
         $router = vpsManager()->router();
         $servers = [];
 
