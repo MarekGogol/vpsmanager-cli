@@ -105,12 +105,31 @@ class RequestStatsTest extends TestCase
         $stats = new RequestStats;
 
         $request = $stats->parseRequest('1.2.3.4 [2026-10-11T13:15:02+02:00] "www.example.com" "GET /path?a=1" 502 120 0.250 "-" "curl/8"');
-        $this->assertSame(['time' => strtotime('2026-10-11T13:15:02+02:00'), 'host' => 'www.example.com', 'status' => 502, 'duration' => 0.25], $request);
+        $this->assertSame(['time' => strtotime('2026-10-11T13:15:02+02:00'), 'host' => 'www.example.com', 'method' => 'GET', 'url' => '/path?a=1', 'status' => 502, 'duration' => 0.25], $request);
 
         $blocked = $stats->parseBlocked('1.2.3.4 - - [11/Oct/2026:13:15:02 +0200] "GET /.env HTTP/1.1" 403 1234 "-" "Mozilla \x22quoted\x22" "example.com"');
         $this->assertSame(['time' => strtotime('2026-10-11T13:15:02+02:00'), 'host' => 'example.com'], $blocked);
 
         $this->assertNull($stats->parseRequest('garbage'));
         $this->assertNull($stats->parseBlocked('garbage'));
+    }
+
+    public function test_endpoints_join_numbers_and_hashes_of_the_path(): void
+    {
+        $stats = new RequestStats;
+
+        $this->assertSame('GET /blog/{id}', $stats->normalizeEndpoint('get', '/blog/123?page=2'));
+        $this->assertSame('POST /api/orders/{uuid}/pay', $stats->normalizeEndpoint('POST', '/api/orders/0b9f6c1e-7d2a-4c3e-9f10-2a6b8c4d5e6f/pay'));
+        $this->assertSame('GET /files/{hash}', $stats->normalizeEndpoint('GET', '/files/53d015123caf1a5253b408daee377969'));
+        $this->assertSame('GET /reset/{token}', $stats->normalizeEndpoint('GET', '/reset/aB3dE5gH7jK9mN1pQ3sT5vX7'));
+        $this->assertSame('GET /ebook/zbav-sa-hypoteky-o-10-az-15-rokov-skor', $stats->normalizeEndpoint('GET', '/ebook/zbav-sa-hypoteky-o-10-az-15-rokov-skor?fbclid=x'));
+        $this->assertSame('GET /', $stats->normalizeEndpoint('GET', '/?utm=1'));
+    }
+
+    public function test_durations_fall_into_their_bands(): void
+    {
+        $stats = new RequestStats;
+
+        $this->assertSame([0, 0, 1, 2, 3, 4, 5, 6, 7, 7], array_map([$stats, 'durationBand'], [0, 99, 100, 250, 999, 2499, 4999, 9999, 10000, 60000]));
     }
 }

@@ -60,6 +60,14 @@ class MonitorAgent extends Application
     const KEEP_WINDOWS = 3600;
 
     /**
+     * Endpoints of a host in a window sent to the monitor: the most requested ones and the ones with the longest
+     * total duration, the rest is one endpoint OTHER_ENDPOINTS.
+     */
+    const TOP_ENDPOINTS = 20;
+
+    const OTHER_ENDPOINTS = '(ostatné)';
+
+    /**
      * Seconds to wait for the monitor.
      */
     const TIMEOUT = 20;
@@ -176,7 +184,7 @@ class MonitorAgent extends Application
      *
      * @param  array  $state  updated: positions, windows, sent_until
      * @param  int  $now
-     * @return array list of ['start', 'seconds', 'host', 'requests', 'blocked', 'errors', 'duration_ms']
+     * @return array list of ['start', 'seconds', 'host', 'requests', 'blocked', 'errors', 'duration_ms', 'histogram', 'endpoints']
      */
     public function collectHosts(array &$state, int $now): array
     {
@@ -207,12 +215,31 @@ class MonitorAgent extends Application
 
                 $host = $stats->normalizeHost($request['host'], $hosts ??= $stats->getHosts());
                 $window = &$state['windows'][$start][$host];
-                $window ??= [0, 0, 0, 0];
+                $window ??= [0, 0, 0, 0, array_fill(0, count(RequestStats::BANDS) + 1, 0), []];
 
                 if ($key === 'access') {
+                    $duration = (int) round($request['duration'] * 1000);
+                    $error = $request['status'] >= 500 ? 1 : 0;
+
                     $window[0]++;
-                    $window[2] += $request['status'] >= 500 ? 1 : 0;
-                    $window[3] += (int) round($request['duration'] * 1000);
+                    $window[2] += $error;
+                    $window[3] += $duration;
+                    $window[4][$stats->durationBand($duration)]++;
+
+                    // Endpoint: requests, duration, the slowest request, errors, url and time of the slowest request
+                    $endpoint = &$window[5][$stats->normalizeEndpoint($request['method'], $request['url'])];
+                    $endpoint ??= [0, 0, -1, 0, '', 0];
+                    $endpoint[0]++;
+                    $endpoint[1] += $duration;
+                    $endpoint[3] += $error;
+
+                    if ($duration > $endpoint[2]) {
+                        $endpoint[2] = $duration;
+                        $endpoint[4] = mb_substr($request['url'], 0, 500);
+                        $endpoint[5] = $request['time'];
+                    }
+
+                    unset($endpoint);
                 } else {
                     $window[1]++;
                 }
@@ -237,7 +264,9 @@ class MonitorAgent extends Application
                 continue;
             }
 
-            foreach ($hostsOfWindow as $host => [$requests, $blocked, $errors, $duration]) {
+            foreach ($hostsOfWindow as $host => $window) {
+                [$requests, $blocked, $errors, $duration] = $window;
+
                 $rows[] = [
                     'start' => date('c', (int) $start),
                     'seconds' => self::WINDOW,
@@ -246,8 +275,60 @@ class MonitorAgent extends Application
                     'blocked' => $blocked,
                     'errors' => $errors,
                     'duration_ms' => $duration,
+                    'histogram' => $window[4] ?? array_fill(0, count(RequestStats::BANDS) + 1, 0),
+                    'endpoints' => $this->topEndpoints($window[5] ?? []),
                 ];
             }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Endpoints of a host in a window for the monitor: the most requested ones and the ones with the longest total
+     * duration, the rest summed into one endpoint, so the window stays small also for scanners of random paths.
+     *
+     * @param  array  $endpoints  endpoint => [requests, duration, max, errors, url, time]
+     * @return array list of ['endpoint', 'requests', 'duration_ms', 'max_ms', 'errors', 'slowest_url', 'slowest_at']
+     */
+    public function topEndpoints(array $endpoints): array
+    {
+        $byRequests = $byDuration = $endpoints;
+
+        uasort($byRequests, fn ($a, $b) => $b[0] <=> $a[0]);
+        uasort($byDuration, fn ($a, $b) => $b[1] <=> $a[1]);
+
+        $top = array_slice($byRequests, 0, self::TOP_ENDPOINTS, true) + array_slice($byDuration, 0, self::TOP_ENDPOINTS, true);
+        $rest = array_diff_key($endpoints, $top);
+
+        if ($rest) {
+            $other = [0, 0, -1, 0, '', 0];
+
+            foreach ($rest as [$requests, $duration, $max, $errors, $url, $time]) {
+                $other[0] += $requests;
+                $other[1] += $duration;
+                $other[3] += $errors;
+
+                if ($max > $other[2]) {
+                    [$other[2], $other[4], $other[5]] = [$max, $url, $time];
+                }
+            }
+
+            $top[self::OTHER_ENDPOINTS] = $other;
+        }
+
+        $rows = [];
+
+        foreach ($top as $endpoint => [$requests, $duration, $max, $errors, $url, $time]) {
+            $rows[] = [
+                'endpoint' => (string) $endpoint,
+                'requests' => $requests,
+                'duration_ms' => $duration,
+                'max_ms' => max(0, $max),
+                'errors' => $errors,
+                'slowest_url' => $url,
+                'slowest_at' => $time ? date('c', $time) : null,
+            ];
         }
 
         return $rows;

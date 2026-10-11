@@ -27,6 +27,11 @@ class RequestStats extends Application
     const OTHER = 'other';
 
     /**
+     * Upper limits of the bands of the histogram in milliseconds, the last band has no limit.
+     */
+    const BANDS = [100, 250, 500, 1000, 2500, 5000, 10000];
+
+    /**
      * Names of the hosts served by the enabled server sections, without www. (it is counted with the domain).
      *
      * @return array name => true, wildcards as *.example.com
@@ -208,7 +213,7 @@ class RequestStats extends Application
      * Parse a line of the access log of the monitor (format vpsmanager_monitor).
      *
      * @param  string  $line
-     * @return array|null ['time', 'host', 'status', 'duration'] (duration in seconds)
+     * @return array|null ['time', 'host', 'method', 'url', 'status', 'duration'] (duration in seconds)
      */
     public function parseRequest(string $line): ?array
     {
@@ -216,7 +221,50 @@ class RequestStats extends Application
             return null;
         }
 
-        return ['time' => $time, 'host' => $m[3], 'status' => (int) $m[6], 'duration' => (float) $m[8]];
+        return ['time' => $time, 'host' => $m[3], 'method' => $m[4], 'url' => $m[5], 'status' => (int) $m[6], 'duration' => (float) $m[8]];
+    }
+
+    /**
+     * Endpoint of the request: the method and the path without the query, numbers and hashes of the path are
+     * replaced, so /blog/12 and /blog/13 are one endpoint.
+     *
+     * @param  string  $method
+     * @param  string  $url
+     * @return string e.g. GET /blog/{id}
+     */
+    public function normalizeEndpoint(string $method, string $url): string
+    {
+        $path = explode('?', $url, 2)[0] ?: '/';
+
+        $segments = array_map(function ($segment) {
+            return match (true) {
+                preg_match('/^\d+$/', $segment) === 1 => '{id}',
+                preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $segment) === 1 => '{uuid}',
+                preg_match('/^[0-9a-f]{16,}$/i', $segment) === 1 => '{hash}',
+                strlen($segment) >= 24 && preg_match('/\d/', $segment) && preg_match('/[a-z]/i', $segment) && ! str_contains($segment, '-') => '{token}',
+                default => $segment,
+            };
+        }, explode('/', $path));
+
+        return mb_substr(strtoupper($method).' '.implode('/', $segments), 0, 190);
+    }
+
+    /**
+     * Band of the duration in the histogram of the windows: < 100 ms, < 250 ms, < 500 ms, < 1 s, < 2.5 s, < 5 s,
+     * < 10 s, 10 s and more.
+     *
+     * @param  int  $milliseconds
+     * @return int 0 to 7
+     */
+    public function durationBand(int $milliseconds): int
+    {
+        foreach (self::BANDS as $band => $limit) {
+            if ($milliseconds < $limit) {
+                return $band;
+            }
+        }
+
+        return count(self::BANDS);
     }
 
     /**
