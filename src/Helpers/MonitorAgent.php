@@ -215,7 +215,11 @@ class MonitorAgent extends Application
 
                 $host = $stats->normalizeHost($request['host'], $hosts ??= $stats->getHosts());
                 $window = &$state['windows'][$start][$host];
-                $window ??= [0, 0, 0, 0, array_fill(0, count(RequestStats::BANDS) + 1, 0), []];
+                $window ??= [0, 0, 0, 0];
+
+                // Histogram and endpoints, also of a window counted by a version without them
+                $window[4] ??= array_fill(0, count(RequestStats::BANDS) + 1, 0);
+                $window[5] ??= [];
 
                 if ($key === 'access') {
                     $duration = (int) round($request['duration'] * 1000);
