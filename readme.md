@@ -126,6 +126,8 @@ All configuration lives in **`src/config.php`**, a plain PHP file that returns a
 | `mysql_user` | `root` | MySQL admin user that creates and removes databases |
 | `mysql_pass` | empty | Password of `mysql_user`. The prompt shows it masked |
 | `mysql_host` | `localhost` | Host part of created MySQL users (`localhost`, `192.168.1.%`, `%`...). The CLI itself always connects to `localhost` |
+| `monitor_url` | `https://monitor.marekgogol.sk` | Url of the monitor, set by `monitor:install` |
+| `monitor_token` | - | Token of the server in the monitor (button Inštalovať of the server), set by `monitor:install` |
 
 ### Backup keys (`backup:setup`)
 
@@ -170,7 +172,8 @@ src/
 │   ├── Mysql/              # mysql:create, mysql:reset, mysql:remove
 │   ├── Backup/             # backup:setup, backup:run, backup:test-mail, backup:test-remote
 │   ├── Laravel/            # laravel:queue, laravel:octane
-│   └── Monitor/            # monitor:install, monitor:list, monitor:remove-ip, monitor:report, monitor:sync
+│   └── Monitor/            # monitor:install, monitor:collect, monitor:listen, monitor:list, monitor:ip:allow,
+│                           #   monitor:ip:deny, monitor:report
 ├── Helpers/                # the actual server logic
 │   ├── helpers.php         # global functions (vpsManager(), isValidDomain(), createDirectories()...)
 │   ├── Hosting.php         # orchestrates create/remove of a whole hosting
@@ -179,6 +182,8 @@ src/
 │   │                       #   managed vpsmanager files and includes in the hosts (monitor)
 │   ├── Fail2ban.php        # jails against scanners, bans, unbans, rsyslog for auth.log
 │   ├── Monitor.php         # access log rotation and the report of monitor:report
+│   ├── MonitorAgent.php    # agent of the monitor (monitor:collect): metrics, windows of requests, shared bans
+│   ├── RequestStats.php    # hosts of server_name, reading the logs from the last position (listen, collect)
 │   ├── PHP.php             # PHP-FPM pools, versions, restart, default CLI version
 │   ├── MySQLHelper.php     # databases and users via mysqli
 │   ├── Certbot.php         # Let's Encrypt certificates + NGINX HTTPS rewrite
@@ -195,7 +200,7 @@ src/
 │   └── vpsmanager/         # general.conf, fastcgi-php.conf, cors-preflight.conf,
 │                           #   scanners.conf, scanners.html, monitor.conf
 ├── Resources/fail2ban/     # filter.d and fail2ban.d files of the monitor
-├── Resources/monitor/      # logrotate configuration and hourly cron of the access log
+├── Resources/monitor/      # logrotate configuration and hourly cron of the access log, metrics.sh of the agent
 └── Traits/
     └── PHPSettingsTrait.php # supported PHP versions and per-pool php_admin_value settings
 ```
@@ -321,11 +326,13 @@ Bots scan every domain of a server all day: WordPress paths (`/wp-login.php`, `/
 
 | Command | What it does |
 | --- | --- |
-| `monitor:install` | Installs or updates the whole monitor: NGINX rules, fail2ban jails, access log. `--dry-run`, `--without-access-log`, `--remove` |
+| `monitor:install` | Installs or updates the whole monitor: NGINX rules, fail2ban jails, access log, agent of the monitor. `--dry-run`, `--without-access-log`, `--url=`, `--token=`, `--remove` |
+| `monitor:collect` | Agent of the monitor, run by cron every 5 minutes: metrics, requests of the hosts and bans to the monitor, shared bans back, see [Agent of the monitor](#agent-of-the-monitor-monitorcollect). `--dry-run` (`-v` prints the data) |
+| `monitor:listen` | Live requests of the hosts: per minute, per second, since the start, 5xx, response time, blocked. `--host=`, `--all`, `--interval=2`, `--limit=30`, `--duration=` |
 | `monitor:list` | Banned addresses of all fail2ban jails (also `sshd`) with the time of the ban and its end. `--jail=` |
-| `monitor:remove-ip <ip>` | Unbans the address in all jails, or one with `--jail=`. `--everywhere` also forgets its previous bans (the next one starts from a day) and hides it in the monitor, all servers unban it with their next sync |
+| `monitor:ip:allow <ip>` | Unbans the address on all servers: in all jails here, forgets its previous bans (the next one starts from a day) and hides it in the monitor, the other servers unban it within 5 minutes. `--local` only here, `--jail=` only in one jail here |
+| `monitor:ip:deny <ip>` | Bans the address now here (or on the routers) and shares the ban through the monitor, the other servers ban it within 5 minutes. `--days=1\|7\|30` (30), `--local` only here |
 | `monitor:report` | Summary of the access log for an analysis (also by AI). `--hours=24`, `--limit=20`, `--json` |
-| `monitor:sync` | Shares bans with the other servers through the monitor, see [Shared bans](#shared-bans-monitorsync). `--dry-run` |
 
 ### Install and update
 
@@ -335,14 +342,16 @@ sudo php vpsmanager monitor:install --dry-run
 sudo php vpsmanager monitor:install
 ```
 
-Run `monitor:install` on every server after every update of VPS Manager. It writes only what changed and is safe to run again: the second run reports `already up to date` three times. The output has three parts, `Rules against scanners`, `Access log` and `fail2ban`.
+Run `monitor:install` on every server after every update of VPS Manager. It writes only what changed and is safe to run again: the second run reports `already up to date` three times. The output has four parts, `Rules against scanners`, `Access log`, `fail2ban` and `Agent of the monitor`.
 
 New hosts and sections need no other run: `hosting:create`, `hosting:ssl` (HTTPS sections of subdomains) and `laravel:octane` add the same includes as `monitor:install` (rules, rules against `.php` files without a password, access log). Only the parts installed on the server are added, recognized by their files in `conf.d`, so a server without the monitor creates hosts without it.
 
 - Every part tests its configuration first (`nginx -t`, `fail2ban-client -t`) and restores all hosts and files when it is not valid, so NGINX and fail2ban keep running with the previous configuration.
 - `--without-access-log` installs the rules and fail2ban only.
-- `--remove` removes everything: includes from the hosts, fail2ban jails, the access log with its rotation. It brings back `access_log off;` of the hosts.
+- `--remove` removes everything: includes from the hosts, fail2ban jails, the access log with its rotation (also with `--without-access-log`, the access log uses the log format of the rules and is removed first). It brings back `access_log off;` of the hosts.
 - It works on Debian 12 and Ubuntu 20.04+ (NGINX 1.18+, fail2ban 0.11+), the server needs `fail2ban` (installed by `wamp_setup.sh`).
+- The first run asks for the url of the monitor and the token of the server (button Inštalovať of the server in the monitor), later runs offer the saved ones. `--url=` and `--token=` answer without questions. A server with the old bash agent of the monitor offers its url and token and the agent is removed, see [Agent of the monitor](#agent-of-the-monitor-monitorcollect).
+- A server without NGINX (`nginx_path` does not exist, e.g. a router) gets the agent of the monitor only.
 
 ### How it works
 
@@ -398,7 +407,7 @@ New rules belong into `src/Resources/nginx/vpsmanager/scanners.conf` of this rep
 | `vpsmanager-scanners` | 5 blocked requests in 10 minutes, banned for an hour | http, https | `f2b-vpsmanager-scanners` |
 | `vpsmanager-http-auth` | 30 requests refused by `auth_basic` (wrong or missing password) in 10 minutes, banned for an hour | http, https | `f2b-vpsmanager-http-auth` |
 | `vpsmanager-scanners-recidive` | 3 bans of the jails above in a day: a day, the next time 7 days, then 30 days | http, https (SSH stays reachable from a shared address) | `f2b-vpsm-recidive` |
-| `vpsmanager-shared-1d`, `-7d`, `-30d` | addresses banned by the other servers, shared by the monitor (`monitor:sync`), in the jail of their level | http, https | `f2b-vpsmanager-shared-1d`… |
+| `vpsmanager-shared-1d`, `-7d`, `-30d` | addresses banned by the other servers, shared by the monitor (`monitor:collect`), in the jail of their level | http, https | `f2b-vpsmanager-shared-1d`… |
 | `sshd` (default of fail2ban) | default of the distribution | ssh | `f2b-sshd` |
 
 - `vpsmanager-http-auth` reads `/var/log/nginx/vpsmanager-auth.log`, written by `vpsmanager/monitor.conf` (it needs the access log part). Only refusals of NGINX itself are logged (`$status:$upstream_status` is `401:`), `401` of the applications (API without a token) have the status of their upstream and never count. A browser is refused once before it asks for the password, a bot guessing passwords is refused thousands of times (6 115 refusals in 10 minutes on `dev.trinityfinance.sk`).
@@ -420,8 +429,8 @@ A scanner which comes back gets a longer ban each time, a single mistake (an emp
 | 3 | level 2 again within 60 days, and every next time | 30 days | 30 days (`vpsmanager-shared-30d`) |
 
 - fail2ban raises the bans itself (`bantime = 1d`, `bantime.increment = true`, `bantime.multipliers = 1 7 30`, tested on fail2ban 0.11.2 and 1.0.2: 1×, 7×, 30×, 30×…). It counts the previous bans of the address in its database, after 60 days without a ban (`dbpurgeage`) the address starts again from a day.
-- `monitor:sync` reports the level and the end of each ban, the monitor shares the address with the highest level and until the latest end any server reported, repeated reports of one ban do not move its end. The other servers ban it in the jail of its level, so the ban expires by itself also without the monitor.
-- `monitor:remove-ip <ip> --everywhere` unbans the address, forgets its previous bans in the database of fail2ban and hides it in the monitor.
+- `monitor:collect` reports the level and the end of each ban once, the monitor shares the address with the highest level and until the latest end any server reported, repeated reports of one ban do not move its end. The other servers ban it in the jail of its level, so the ban expires by itself also without the monitor.
+- `monitor:ip:allow <ip>` unbans the address, forgets its previous bans in the database of fail2ban and hides it in the monitor. `monitor:ip:deny <ip>` bans it by hand in the shared jail of its level and shares it, also an address hidden before.
 - Never banned: localhost, all addresses of the server (`hostname -I`, the server calls its own websites, e.g. an API of one hosting from another one), private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) and proxies trusted by NGINX (`set_real_ip_from` of any file in `/etc/nginx`, comments skipped). A router or a load balancer in front of the server sends all requests from its own address; its ban dropped all websites of auttia and optisia on 2026-10-04. No scanner of the internet comes from a private network.
 - Search engines and AI crawlers are never banned either: Googlebot (also special crawlers), Bingbot, Applebot, DuckDuckBot, GPTBot, OAI-SearchBot, ChatGPT-User (links shared in ChatGPT), ClaudeBot and Perplexity. A real crawler follows links to blocked paths it finds on the web (Googlebot requested `/Config/admin.php` of `docs.crudadmin.com`), it still receives `403`, but its address is never banned. Scanners often send the user agent of Googlebot, so crawlers are recognized only by their published networks (`Fail2ban::CRAWLERS`, about 1 460 networks): `monitor:install` downloads the lists, a list which cannot be downloaded is taken from `src/Resources/fail2ban/crawlers.json` (refresh it with `php -r` and `downloadCrawlerNetworks()` before a release). fail2ban checks the list only for a line of its log, not for every request, and the firewall does not change, so the list costs nothing. `jail.d/vpsmanager-scanners.conf` keeps it once in `[DEFAULT]` (`vpsmanager_ignoreip`) for all its jails.
 - Own addresses which must never be banned (office, home, CI) belong into `/etc/fail2ban/jail.d/vpsmanager-scanners.local`, which is never overwritten, then `fail2ban-client reload`:
@@ -443,7 +452,7 @@ A scanner which comes back gets a longer ban each time, a single mistake (an emp
 
 | Log | Content | Rotation |
 | --- | --- | --- |
-| `/var/log/nginx/vpsmanager-scanners.log` | blocked requests: `IP - - [time] "request" 403 size "referer" "agent" "host"` (format `vpsmanager_scanners`, the combined format with the host at the end) | NGINX logrotate of the distribution (daily, 14 days) |
+| `/var/log/nginx/vpsmanager-scanners.log` | blocked requests: `IP - - [time] "request" 403 size "referer" "agent" "host"` (format `vpsmanager_fail2ban`, the combined format with the host at the end) | NGINX logrotate of the distribution (daily, 14 days) |
 | `/var/log/vpsmanager/access.log` | other requests: `IP [time] "host" "METHOD url" status size duration "referer" "agent"` (format `vpsmanager_monitor`) | hourly by VPS Manager: daily and over 100 MB, compressed, deleted after 7 days |
 | `/var/log/fail2ban.log` | bans and unbans of all jails | logrotate of the distribution |
 
@@ -459,22 +468,46 @@ The access log:
 
 The access log holds addresses of visitors for a week, mention it in the privacy policy of the websites.
 
-### Shared bans: monitor:sync
+### Agent of the monitor: monitor:collect
 
-Scanners go from server to server, a fifth of the banned addresses attacks several of our servers. `monitor:sync` shares the most certain bans through the monitor (monitor.marekgogol.sk, admin module Blokované IP):
+`monitor:collect` sends everything the monitor (monitor.marekgogol.sk) knows about the server in one call every 5 minutes, and bans the addresses the monitor shares. It replaces the bash agent of the monitor (`/etc/server_monitor`) and the 3-hourly `monitor:sync`.
 
-1. It reports the addresses of the jail `vpsmanager-scanners-recidive` with the level (1, 7 or 30 days) and the end of their ban to the monitor.
-2. It downloads the addresses the monitor shares with their level (until the end of the longest reported ban, not hidden in the administration).
-3. It bans the new ones in the jail of their level (`vpsmanager-shared-1d`, `-7d`, `-30d`), moves an address whose level changed and unbans those the monitor does not share any more, with `fail2ban-client set … banip|unbanip`. Nothing else changes, fail2ban is never reloaded or restarted, a sync without changes touches nothing.
+1. **Metrics** of the server (RAM, disk, load, CPU, network, ping): `src/Resources/monitor/metrics.sh`, the logic of the old bash agent, prints `key=value` lines. The counters of the previous run are in `/var/lib/vpsmanager/monitor-metrics.state`. Without ext4 the file system of `/` is measured.
+2. **Requests of the hosts** by windows of 5 minutes from the access log and the log of the blocked requests: requests, blocked requests, `5xx` errors and the sum of their duration, for every host. A host is the name of its `server_name` without `www.` (`www.example.com` and `example.com` are one host), subdomains of a wildcard or a regular expression by their own name, hosts which no section names (scanners with a random Host header or an address) are one host `other`. Static files are not in the access log, so they are not counted. A window is sent 15 seconds after its end (NGINX writes the log every 5 seconds), the first run starts at the end of the logs and skips its incomplete window.
+3. **Bans** of the recidive jail which the monitor does not know yet, with their level and end. Every report counts in the monitor, so a ban is reported once.
+4. **Shared bans** in the answer: the whole list in the first call, then the changes since the previous call. The server keeps the list and bans the new addresses in the jail of their level (`vpsmanager-shared-1d`, `-7d`, `-30d`), moves an address whose level changed and unbans those the monitor does not share any more, with `fail2ban-client set … banip|unbanip`. fail2ban is never reloaded or restarted.
 
-- The monitor is optional. When it does not answer, nothing is banned nor unbanned and the jails of the server work as before; the reports are sent with the next sync. The shared bans last the days of their level, so they expire also when the monitor is gone.
-- Own addresses, private networks and proxies are never banned (the same list as `ignoreip`), the addresses of the recidive jail are not banned twice. Hiding an address in the monitor unbans it on all servers with their next sync, its next reports do not share it again.
-- The url comes from the agent of the monitor on the server (`/etc/server_monitor/monitor.sh`, `/monitor/{id}/{token}/collect` becomes `/monitor/{id}/{token}/blocked-ips`), or `monitor_sync_url` of the configuration. Without both the server does not share.
-- `monitor:install` writes `/etc/cron.d/vpsmanager-monitor-sync`: every 3 hours, at a minute and hour derived from the hostname, so the servers do not call the monitor at once. Behind a router the jail lives on the router.
+- The monitor is optional. When it does not answer, the windows wait for the next run (an hour at most), nothing is banned nor unbanned and the jails of the server work as before. The shared bans last the days of their level, so they expire also when the monitor is gone.
+- Own addresses, private networks, proxies and crawlers are never banned (the same list as `ignoreip`), the addresses of the recidive jail are not banned twice. Hiding an address in the monitor (or `monitor:ip:allow`) unbans it on all servers within 5 minutes.
+- The url and the token are `monitor_url` and `monitor_token` of the configuration, without them `monitor:collect` sends nothing. The API is `/api/agent/*` of the monitor with `Authorization: Bearer <token>`. `monitor:install` offers the url and the token of the old bash agent (`/etc/server_monitor/monitor.sh`) when it replaces it.
+- `monitor:install` checks the token by a call of the monitor, writes `/etc/cron.d/vpsmanager-monitor-collect` (every 5 minutes from a minute derived from the hostname, `--spread` waits up to 40 more seconds) and removes the old bash agent: its user `server_monitor` with its crontab, `/etc/server_monitor`, the setuid bit its installer set on `ping`, and `/etc/cron.d/vpsmanager-monitor-sync`. Then it runs `monitor:collect` once. Behind a router the shared jails live on the router.
+- State between the runs: `/var/lib/vpsmanager/monitor-collect.json` (positions in the logs, unsent windows, reported and shared bans). A lock (`monitor-collect.lock`) never runs two of them at once.
 
 ```bash
-sudo php vpsmanager monitor:sync --dry-run
-sudo php vpsmanager monitor:sync
+sudo php vpsmanager monitor:collect --dry-run -v
+sudo php vpsmanager monitor:collect
+```
+
+The monitor shows the hosts of all servers in the admin module Hosty with their windows (5 minutes for a day, then grouped into hours for 7 days by its hourly `app:compact-host-stats`) and charts of the requests on its dashboard.
+
+### Live requests: monitor:listen
+
+`monitor:listen` follows the access log and the log of the blocked requests and refreshes a table of the hosts every 2 seconds, until Ctrl+C:
+
+| Column | Meaning |
+| --- | --- |
+| Req/min | requests of the last 60 seconds |
+| Req/s | the same per second |
+| Avg req/s | requests since the start of the command per second |
+| Total | requests since the start |
+| 5xx/min, Avg ms | errors and the average duration of the last 60 seconds |
+| Blocked/min, Blocked | requests blocked by the rules against scanners |
+
+Hosts are counted as by `monitor:collect`, `--all` shows the unknown hosts by their name instead of one row `other`. The first table already holds the last minute (the end of the logs is read at the start). NGINX writes the log every 5 seconds, so the numbers come in steps.
+
+```bash
+sudo php vpsmanager monitor:listen
+sudo php vpsmanager monitor:listen --host=shop --interval=5
 ```
 
 ### Servers behind a router
@@ -487,7 +520,7 @@ scanner ─▶ router: iptables (fail2ban of the router) ─▶ server: NGINX, /
                 └── /var/log/vpsmanager/scanners.log ◀── rsyslog of the router
 ```
 
-- `monitor:install` on the server manages the router over SSH, the router needs no VPS Manager and no own scripts. `monitor:list`, `monitor:remove-ip` and `monitor:report` of the server read and unban on the router too (jails `router <address>: …`).
+- `monitor:install` on the server manages the router over SSH, the router needs no VPS Manager and no own scripts. `monitor:list`, `monitor:ip:allow`, `monitor:ip:deny`, `monitor:collect` and `monitor:report` of the server read, ban and unban on the router too (jails `router <address>: …`).
 - The server: `conf.d/vpsmanager-realip.conf` sets the real address for the whole `http` context (also the default server without `general.conf`), `vpsmanager/router-scanners.conf` and `router-auth.conf` send the blocked and refused requests to syslog of the router, the local logs stay. The server has no jails `vpsmanager-*`, only its own `sshd` (SSH comes through DNAT of the router with the real address).
 - The router (Alpine): `rsyslog` replaces `syslogd` of BusyBox (system logs stay in `/var/log/messages`), `/etc/rsyslog.d/vpsmanager.conf` listens on the internal address only and accepts the internal network only, `/etc/logrotate.d/vpsmanager` keeps a week, the jails are the same as on other servers. Lines end with the address of the server which sent them.
 - Setup of a new server behind a router: the configuration of the server gets the list of SSH destinations of its routers (`monitor_routers`, default `ssh://root@<default gateway>`; `monitor_router` with one destination works too), root of the server gets SSH access to every router limited to the internal network:
@@ -518,6 +551,8 @@ scanner ─▶ router: iptables (fail2ban of the router) ─▶ server: NGINX, /
 | `/etc/fail2ban/filter.d/vpsmanager-scanners.conf`, `vpsmanager-scanners-recidive.conf`, `vpsmanager-http-auth.conf`, `jail.d/vpsmanager-scanners.conf`, `fail2ban.d/vpsmanager.conf` | managed |
 | `/etc/fail2ban/jail.d/vpsmanager-scanners.local` | yours (own addresses never banned) |
 | `/etc/vpsmanager/logrotate-monitor.conf`, `/etc/cron.hourly/vpsmanager-monitor` | managed |
+| `/etc/cron.d/vpsmanager-monitor-collect` | managed (agent of the monitor) |
+| `/var/lib/vpsmanager/monitor-collect.json`, `monitor-metrics.state`, `monitor-collect.lock` | state of `monitor:collect` |
 | `/etc/nginx/vpsmanager/router-scanners.conf`, `router-auth.conf`, `/etc/nginx/conf.d/vpsmanager-realip.conf` | generated for the server (a comment only when it is not behind a router) |
 | Router: `/etc/rsyslog.d/vpsmanager.conf`, `/etc/logrotate.d/vpsmanager`, fail2ban files as above | managed over SSH by `monitor:install` of the server behind it |
 
@@ -528,8 +563,14 @@ scanner ─▶ router: iptables (fail2ban of the router) ─▶ server: NGINX, /
 sudo php vpsmanager monitor:list
 grep "^203.0.113.10 " /var/log/nginx/vpsmanager-scanners.log
 
-# unban, e.g. an office behind a shared address
-sudo php vpsmanager monitor:remove-ip 203.0.113.10
+# unban on all servers, e.g. an office behind a shared address
+sudo php vpsmanager monitor:ip:allow 203.0.113.10
+
+# ban by hand on all servers for 7 days
+sudo php vpsmanager monitor:ip:deny 203.0.113.11 --days=7
+
+# live requests of the hosts
+sudo php vpsmanager monitor:listen
 
 # which websites and paths are scanned most
 awk -F'"' '{print $(NF-1)}' /var/log/nginx/vpsmanager-scanners.log | sort | uniq -c | sort -rn
@@ -564,7 +605,7 @@ An analysis by AI should look for: paths requested by many different addresses w
 - Run `--dry-run` first and read what would change.
 - Never edit managed files on a server, they are overwritten. Change them in this repository.
 - Test from the server itself, the address of the tester is not banned then: `curl -sk --resolve api.example.com:443:127.0.0.1 https://api.example.com/.env` must print the block page with `403`, `/admin` of the same host its usual status.
-- Testing bans: use a documentation address, e.g. `fail2ban-client set sshd banip 203.0.113.250` and `monitor:remove-ip 203.0.113.250`. Never ban real addresses for a test.
+- Testing bans: use a documentation address, e.g. `fail2ban-client set sshd banip 203.0.113.250` and `monitor:ip:allow 203.0.113.250 --local`. Never ban real addresses for a test.
 - Do not enable or start `nftables.service`: its start loads `/etc/nftables.conf` and flushes the whole ruleset, the bans of fail2ban included. The `nft` command itself is safe for reading (`nft list chain ip filter INPUT`).
 - `iptables-legacy` commands load empty legacy tables, then iptables warns `iptables-legacy tables present`; it is harmless and disappears after a reboot.
 - After `monitor:install` check: the second run reports `already up to date`, websites answer as before, blocked paths answer `403`, jails and iptables chains have the same numbers of bans.
@@ -839,6 +880,19 @@ vpsmanager hosting:create example.test
 
 `run.sh.example` shows the same setup with plain `docker build` / `docker run`.
 
+### Testing the agent against a local monitor
+
+The monitor (Laravel, `projects/monitor/api`) served by Valet as `monitor.test` is reachable from the container with `extra_hosts` in `docker-compose.override.yml`:
+
+```yaml
+services:
+  vpsmanager:
+    extra_hosts:
+      - 'monitor.test:host-gateway'
+```
+
+Add a server in the local monitor (its button Inštalovať shows the token), then in the container `vpsmanager monitor:install --url=http://monitor.test --token=…`. The container has no systemd: install `fail2ban` and `rsyslog` with apt and start fail2ban with `fail2ban-client -x start`. `monitor:listen` and `monitor:collect --dry-run -v` show the counted requests without waiting for the cron.
+
 ### Serving a local Laravel project from the container
 
 A local project can run inside a test hosting, for example the billing API as `marekgogol.sk`, reachable from the Mac through Valet at `http://marekgogol.sk.vpsmanager.test`.
@@ -924,7 +978,7 @@ composer install
 composer test
 ```
 
-Unit tests in `tests/Unit` cover the logic which decides about bans without a server: levels of the bans, jails of the shared bans and the plan of `monitor:sync` (`SharedBans`), and addresses never banned (`Fail2ban::isIgnoredIp()`).
+Unit tests in `tests/Unit` cover the logic which decides about bans without a server: levels of the bans, jails of the shared bans and the plan of `monitor:collect` (`SharedBans`), and addresses never banned (`Fail2ban::isIgnoredIp()`). `RequestStatsTest` covers the hosts of `server_name` and reading the logs across the rotation.
 
 ## Code style
 

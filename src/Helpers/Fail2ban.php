@@ -29,7 +29,7 @@ class Fail2ban extends Application
     const ROUTER_AUTH_LOG = '/var/log/vpsmanager/auth.log';
 
     /**
-     * Log of the jail of the shared bans, nothing writes into it, monitor:sync bans the addresses directly.
+     * Log of the jail of the shared bans, nothing writes into it, monitor:collect bans the addresses directly.
      */
     const SHARED_LOG = '/var/log/vpsmanager/shared.log';
 

@@ -86,7 +86,7 @@ class MonitorListCommand extends Command
 
         $output->writeln('');
         $output->writeln('Requests of an address: <comment>grep "^IP " '.$fail2ban::SCANNERS_LOG.'</comment>');
-        $output->writeln('Unban an address: <comment>php vpsmanager monitor:remove-ip IP</comment>');
+        $output->writeln('Unban an address on all servers: <comment>php vpsmanager monitor:ip:allow IP</comment>, ban one: <comment>php vpsmanager monitor:ip:deny IP</comment>');
 
         return Command::SUCCESS;
     }

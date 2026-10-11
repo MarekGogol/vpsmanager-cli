@@ -3,7 +3,7 @@
 namespace Gogol\VpsManagerCLI\Helpers;
 
 /**
- * Levels of the bans shared through the monitor and the plan of monitor:sync. The first ban of a repeated scanner
+ * Levels of the bans shared through the monitor and the plan of monitor:collect. The first ban of a repeated scanner
  * lasts a day, the next one 7 days, then 30 days (bantime.multipliers of the recidive jail). Every level is shared
  * and banned by the other servers in the jail of its length, so a ban expires by itself also without the monitor.
  */

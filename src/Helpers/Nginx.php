@@ -3,6 +3,7 @@
 namespace Gogol\VpsManagerCLI\Helpers;
 
 use Gogol\VpsManagerCLI\Application;
+use Gogol\VpsManagerCLI\Command\Monitor\MonitorInstallCommand;
 
 class Nginx extends Application
 {
@@ -84,6 +85,12 @@ class Nginx extends Application
         exec('cp -Rf '.$resources.'/vpsmanager '.$nginx_path.'/vpsmanager', $output, $return_var);
         exec('cp -f '.$resources.'/nginx.conf '.$nginx_path.'/nginx.conf', $output, $return_var1);
         exec('cp -f '.$resources.'/conf.d/* '.$nginx_path.'/conf.d/', $output, $return_var2);
+
+        // Files of the monitor are installed by monitor:install with the files generated for this server, which they
+        // include. Copied here, they would make hosting:create include the monitor without them and break NGINX
+        foreach ([...MonitorInstallCommand::MANAGED, ...MonitorInstallCommand::ACCESS_LOG_MANAGED] as $file) {
+            @unlink($nginx_path.'/'.$file);
+        }
 
         if ($return_var === 0 && $return_var1 === 0 && $return_var2 === 0) {
             $this->response()
@@ -180,11 +187,11 @@ class Nginx extends Application
             $files[$path] = $header.match ($path) {
                 'vpsmanager/router-scanners.conf' => ($syslogs = $router->getNginxSyslogs('vpsm_scanners'))
                     ? "# Blocked requests for fail2ban of the routers in front of this server\n"
-                        .implode('', array_map(fn ($syslog) => 'access_log '.$syslog." vpsmanager_scanners;\n", $syslogs))
+                        .implode('', array_map(fn ($syslog) => 'access_log '.$syslog." vpsmanager_fail2ban;\n", $syslogs))
                     : "# This server is not behind a router, fail2ban of the server bans the scanners\n",
                 'vpsmanager/router-auth.conf' => ($syslogs = $router->getNginxSyslogs('vpsm_auth'))
                     ? "# Requests refused by auth_basic for fail2ban of the routers in front of this server\n"
-                        .implode('', array_map(fn ($syslog) => 'access_log '.$syslog." vpsmanager_auth if=\$vpsmanager_auth_failed;\n", $syslogs))
+                        .implode('', array_map(fn ($syslog) => 'access_log '.$syslog." vpsmanager_fail2ban if=\$vpsmanager_auth_failed;\n", $syslogs))
                     : "# This server is not behind a router, fail2ban of the server bans the addresses guessing passwords\n",
                 'conf.d/vpsmanager-realip.conf' => $router->isEnabled() ? $this->getRealIpConfiguration() : "# This server is not behind a router\n",
             };
@@ -379,8 +386,8 @@ class Nginx extends Application
             }
         }
 
-        // The access log needs its log format and maps of conf.d
-        if (file_exists($path.'/conf.d/vpsmanager-monitor.conf') && file_exists($path.'/vpsmanager/monitor.conf')) {
+        // The access log needs its log format and maps of conf.d, the log of refused passwords the format of the rules
+        if (file_exists($path.'/conf.d/vpsmanager-monitor.conf') && file_exists($path.'/conf.d/vpsmanager-scanners.conf') && file_exists($path.'/vpsmanager/monitor.conf')) {
             $conf = $this->disableServerAccessLogOff($this->addVpsManagerInclude($conf, 'monitor.conf', false), 'monitor.conf');
         }
 

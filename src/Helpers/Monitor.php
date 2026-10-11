@@ -22,7 +22,7 @@ class Monitor extends Application
     const CRON = '/etc/cron.hourly/vpsmanager-monitor';
 
     /**
-     * Cron of monitor:sync, every 3 hours at a time of this server.
+     * Cron of the old monitor:sync (every 3 hours), replaced by monitor:collect and removed by monitor:install.
      */
     const SYNC_CRON = '/etc/cron.d/vpsmanager-monitor-sync';
 
@@ -285,6 +285,21 @@ class Monitor extends Application
     }
 
     /**
+     * Use the timezone of the server for the dates of PHP, PHP CLI often runs in UTC.
+     *
+     * @return void
+     */
+    public function useServerTimezone(): void
+    {
+        $link = @readlink('/etc/localtime');
+        $timezone = $link && str_contains($link, 'zoneinfo/') ? substr($link, strpos($link, 'zoneinfo/') + 9) : trim((string) @file_get_contents('/etc/timezone'));
+
+        if ($timezone && in_array($timezone, timezone_identifiers_list(), true)) {
+            date_default_timezone_set($timezone);
+        }
+    }
+
+    /**
      * Format the time in the timezone of the server, PHP CLI often runs in UTC.
      *
      * @param  int  $time
@@ -298,38 +313,23 @@ class Monitor extends Application
     }
 
     /**
-     * Url of the shared banned addresses in the monitor: monitor_sync_url of the configuration, or the url
-     * of the agent of the monitor installed on this server (/monitor/{id}/{token}/collect).
-     *
-     * @return string|null
-     */
-    public function getSyncUrl(): ?string
-    {
-        if ($url = $this->config('monitor_sync_url')) {
-            return $url;
-        }
-
-        $script = is_readable(self::AGENT_SCRIPT) ? file_get_contents(self::AGENT_SCRIPT) : '';
-
-        return preg_match('#(https?://[^\s"\']+/monitor/\d+/[A-Za-z0-9]+)/collect#', $script, $matches) ? $matches[1].'/blocked-ips' : null;
-    }
-
-    /**
      * Call the monitor, null when it does not answer or fails. The monitor is optional, the caller goes on without it.
      *
      * @param  string  $method  GET or POST
      * @param  string  $url
      * @param  array|null  $body  sent as JSON
      * @param  string|null  $error  why the request failed
+     * @param  string|null  $token  token of this server (Authorization: Bearer)
+     * @param  int|null  $timeout  seconds
      * @return array|null
      */
-    public function requestMonitor(string $method, string $url, ?array $body = null, ?string &$error = null): ?array
+    public function requestMonitor(string $method, string $url, ?array $body = null, ?string &$error = null, ?string $token = null, ?int $timeout = null): ?array
     {
         $context = stream_context_create(['http' => [
             'method' => $method,
-            'header' => "Accept: application/json\r\nContent-Type: application/json\r\n",
+            'header' => "Accept: application/json\r\nContent-Type: application/json\r\n".($token ? 'Authorization: Bearer '.$token."\r\n" : ''),
             'content' => $body === null ? '' : json_encode($body),
-            'timeout' => self::SYNC_TIMEOUT,
+            'timeout' => $timeout ?? self::SYNC_TIMEOUT,
             'ignore_errors' => true,
         ]]);
 
@@ -354,50 +354,7 @@ class Monitor extends Application
     }
 
     /**
-     * Content of the cron of monitor:sync. Every server runs it at another minute and hour of the 3 hours, derived
-     * from its hostname, so the servers do not call the monitor and change their firewalls at the same time.
-     *
-     * @return string
-     */
-    public function getSyncCron(): string
-    {
-        $hash = crc32((string) gethostname());
-        $minute = $hash % 60;
-        $hour = intdiv($hash, 60) % 3;
-
-        $command = escapeshellarg(PHP_BINARY).' '.escapeshellarg(realpath(vpsManagerPath().'/../vpsmanager') ?: vpsManagerPath().'/../vpsmanager').' monitor:sync';
-
-        return "# Shares the banned addresses with the other servers through the monitor every 3 hours, at a minute and hour\n"
-            ."# derived from the hostname, so the servers do not call the monitor at the same time.\n"
-            ."#\n"
-            ."# Managed by VPS Manager (monitor:install), changes are overwritten.\n\n"
-            .$minute.' '.$hour.'-23/3 * * * root '.$command." > /dev/null 2>&1\n";
-    }
-
-    /**
-     * Write the cron of monitor:sync when it differs.
-     *
-     * @param  bool  $dryRun
-     * @return bool true when the cron has been (or would be) written
-     */
-    public function writeSyncCron(bool $dryRun = false): bool
-    {
-        $content = $this->getSyncCron();
-
-        if (file_exists(self::SYNC_CRON) && file_get_contents(self::SYNC_CRON) === $content) {
-            return false;
-        }
-
-        if (! $dryRun) {
-            file_put_contents(self::SYNC_CRON, $content);
-            chmod(self::SYNC_CRON, 0644);
-        }
-
-        return true;
-    }
-
-    /**
-     * Remove the cron of monitor:sync.
+     * Remove the cron of the old monitor:sync.
      *
      * @param  bool  $dryRun
      * @return bool true when the cron has been (or would be) removed

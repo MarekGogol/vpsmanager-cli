@@ -8,7 +8,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class MonitorRemoveIpCommand extends Command
+class MonitorIpAllowCommand extends Command
 {
     /**
      * Configure the command.
@@ -17,11 +17,11 @@ class MonitorRemoveIpCommand extends Command
      */
     protected function configure(): void
     {
-        $this->setName('monitor:remove-ip')
-            ->setDescription('Unban the address in all fail2ban jails')
+        $this->setName('monitor:ip:allow')
+            ->setDescription('Unban the address on all servers: in all jails here, forget its previous bans and hide it in the monitor')
             ->addArgument('ip', InputArgument::REQUIRED, 'Banned IP address')
-            ->addOption('jail', null, InputOption::VALUE_REQUIRED, 'Unban only in the given jail, e.g. sshd')
-            ->addOption('everywhere', null, InputOption::VALUE_NONE, 'Also forget its previous bans and hide it in the monitor, all servers unban it with their next sync');
+            ->addOption('local', null, InputOption::VALUE_NONE, 'Only unban it on this server (and its routers), the monitor keeps sharing it')
+            ->addOption('jail', null, InputOption::VALUE_REQUIRED, 'Only unban it in the given jail on this server, e.g. sshd');
     }
 
     /**
@@ -83,7 +83,7 @@ class MonitorRemoveIpCommand extends Command
             return Command::FAILURE;
         }
 
-        if ($input->getOption('everywhere')) {
+        if (! $input->getOption('local') && ! $jail) {
             $this->removeEverywhere($output, $ip, $servers);
         }
 
@@ -103,7 +103,7 @@ class MonitorRemoveIpCommand extends Command
 
     /**
      * Forget the previous bans of the address (its next ban starts again from a day) and hide it in the monitor,
-     * so the other servers unban it with their next sync and its next reports do not share it again.
+     * so the other servers unban it with their next monitor:collect and its next reports do not share it again.
      *
      * @param  \Symfony\Component\Console\Output\OutputInterface  $output
      * @param  string  $ip
@@ -118,20 +118,28 @@ class MonitorRemoveIpCommand extends Command
             }
         }
 
-        $monitor = vpsManager()->monitor();
+        $agent = vpsManager()->monitorAgent();
 
-        if (! ($url = $monitor->getSyncUrl())) {
-            $output->writeln('<comment>The monitor is not known, '.$ip.' stays shared by the monitor if it is shared.</comment>');
+        // The next monitor:collect does not ban it again before the monitor answers its change
+        $state = $agent->loadState();
+
+        if (isset($state['shared'][$ip])) {
+            unset($state['shared'][$ip]);
+            $agent->saveState($state);
+        }
+
+        if (! $agent->getUrl() || ! $agent->getToken()) {
+            $output->writeln('<comment>The monitor is not configured, '.$ip.' stays shared by the monitor if it is shared.</comment>');
 
             return;
         }
 
-        if ($monitor->requestMonitor('DELETE', $url.'/'.rawurlencode($ip), null, $error) === null) {
+        if ($agent->request('DELETE', 'blocked-ips/'.rawurlencode($ip), null, $error) === null) {
             $output->writeln('<error>The monitor did not hide '.$ip.' ('.$error.'), hide it in the administration of the monitor (Blokované IP).</error>');
 
             return;
         }
 
-        $output->writeln('<info>'.$ip.' is hidden in the monitor, all servers unban it with their next sync (within 3 hours).</info>');
+        $output->writeln('<info>'.$ip.' is hidden in the monitor, all servers unban it with their next monitor:collect (within 5 minutes).</info>');
     }
 }

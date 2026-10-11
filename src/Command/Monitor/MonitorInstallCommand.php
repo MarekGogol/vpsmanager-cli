@@ -4,12 +4,15 @@ namespace Gogol\VpsManagerCLI\Command\Monitor;
 
 use Gogol\VpsManagerCLI\Helpers\Fail2ban;
 use Gogol\VpsManagerCLI\Helpers\Monitor;
+use Gogol\VpsManagerCLI\Helpers\MonitorAgent;
 use Gogol\VpsManagerCLI\Helpers\Nginx;
 use Gogol\VpsManagerCLI\Helpers\Router;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Question\Question;
 
 class MonitorInstallCommand extends Command
 {
@@ -49,6 +52,11 @@ class MonitorInstallCommand extends Command
     const ACCESS_LOG_GENERATED = ['vpsmanager/router-auth.conf'];
 
     /**
+     * Monitor offered when neither the configuration nor the old bash agent knows one.
+     */
+    const DEFAULT_MONITOR_URL = 'https://monitor.marekgogol.sk';
+
+    /**
      * Configure the command.
      *
      * @return void
@@ -56,9 +64,11 @@ class MonitorInstallCommand extends Command
     protected function configure(): void
     {
         $this->setName('monitor:install')
-            ->setDescription('Install the monitor: NGINX rules against scanners, fail2ban jails which ban them and a week of access log')
+            ->setDescription('Install the monitor: NGINX rules against scanners, fail2ban jails which ban them, a week of access log and the agent sending them to the monitor')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Only list the hosts and files which would be changed')
             ->addOption('without-access-log', null, InputOption::VALUE_NONE, 'Do not install the access log')
+            ->addOption('url', null, InputOption::VALUE_REQUIRED, 'Url of the monitor, e.g. '.self::DEFAULT_MONITOR_URL)
+            ->addOption('token', null, InputOption::VALUE_REQUIRED, 'Token of this server in the monitor (button Inštalovať of the server)')
             ->addOption('remove', null, InputOption::VALUE_NONE, 'Remove the monitor: rules, fail2ban jails and the access log with its files');
     }
 
@@ -76,9 +86,28 @@ class MonitorInstallCommand extends Command
         $dryRun = (bool) $input->getOption('dry-run');
         $remove = (bool) $input->getOption('remove');
 
+        // A server without NGINX (e.g. a router) gets the agent of the monitor only
+        if (! is_dir((string) vpsManager()->config('nginx_path'))) {
+            $output->writeln('<comment>NGINX is not installed, only the agent of the monitor is installed.</comment>');
+            $output->writeln('');
+
+            return $this->updateAgent($input, $output, $dryRun, $remove) ? Command::SUCCESS : Command::FAILURE;
+        }
+
         // Behind a router the bans are made by the router, nothing changes until it answers
         if (! $this->checkRouter($output)) {
             return Command::FAILURE;
+        }
+
+        // The access log uses the log format of the rules, it is installed after them and removed before them
+        if ($remove) {
+            $output->writeln('<comment>Access log</comment>');
+
+            if (! $this->updateAccessLog($output, $dryRun, $remove)) {
+                return Command::FAILURE;
+            }
+
+            $output->writeln('');
         }
 
         $output->writeln('<comment>Rules against scanners</comment>');
@@ -87,7 +116,7 @@ class MonitorInstallCommand extends Command
             return Command::FAILURE;
         }
 
-        if (! $input->getOption('without-access-log')) {
+        if (! $remove && ! $input->getOption('without-access-log')) {
             $output->writeln('');
             $output->writeln('<comment>Access log</comment>');
 
@@ -104,11 +133,9 @@ class MonitorInstallCommand extends Command
         }
 
         $output->writeln('');
-        $output->writeln('<comment>Shared bans</comment>');
+        $output->writeln('<comment>Agent of the monitor</comment>');
 
-        $this->updateSyncCron($output, $dryRun, $remove);
-
-        return Command::SUCCESS;
+        return $this->updateAgent($input, $output, $dryRun, $remove) ? Command::SUCCESS : Command::FAILURE;
     }
 
     /**
@@ -328,36 +355,103 @@ class MonitorInstallCommand extends Command
     }
 
     /**
-     * Run monitor:sync every 3 hours at a time of this server (or remove its cron).
+     * Install the agent of the monitor (or remove it): the url of the monitor and the token of this server in the
+     * configuration, checked by a call of the monitor, and the cron of monitor:collect. The old bash agent of the
+     * monitor and the cron of monitor:sync are removed, monitor:collect replaces them.
      *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
      * @param  \Symfony\Component\Console\Output\OutputInterface  $output
      * @param  bool  $dryRun
      * @param  bool  $remove
-     * @return void
+     * @return bool
      */
-    protected function updateSyncCron(OutputInterface $output, bool $dryRun, bool $remove): void
+    protected function updateAgent(InputInterface $input, OutputInterface $output, bool $dryRun, bool $remove): bool
     {
+        $agent = vpsManager()->monitorAgent();
         $monitor = vpsManager()->monitor();
 
-        if ($remove || ! $monitor->getSyncUrl()) {
-            if ($monitor->removeSyncCron($dryRun)) {
-                $output->writeln(($dryRun ? 'Would remove' : 'Removed').' <comment>'.$monitor::SYNC_CRON.'</comment>');
-            }
-
-            if (! $remove) {
-                $output->writeln('<comment>The monitor is not known (no agent of the monitor, no monitor_sync_url), bans are not shared.</comment>');
-            }
-
-            return;
+        if ($monitor->removeSyncCron($dryRun)) {
+            $output->writeln(($dryRun ? 'Would remove' : 'Removed').' <comment>'.$monitor::SYNC_CRON.'</comment> (monitor:collect replaces monitor:sync)');
         }
 
-        if ($monitor->writeSyncCron($dryRun)) {
-            $output->writeln(($dryRun ? 'Would write' : 'Wrote').' <comment>'.$monitor::SYNC_CRON.'</comment>');
+        if ($remove) {
+            if ($agent->removeCron($dryRun)) {
+                $output->writeln(($dryRun ? 'Would remove' : 'Removed').' <comment>'.MonitorAgent::CRON.'</comment>');
+            }
+
+            $output->writeln('The url of the monitor and the token stay in the configuration.');
+
+            return true;
         }
 
-        preg_match('/^(\d+) (\d+)-23\/3/m', $monitor->getSyncCron(), $matches);
+        // The old bash agent hands over its url and token
+        $legacy = $agent->getLegacyCredentials();
+        $url = rtrim((string) ($input->getOption('url') ?: $this->ask($input, $output, 'Url of the monitor', $agent->getUrl() ?: ($legacy['url'] ?? self::DEFAULT_MONITOR_URL))), '/');
+        $token = (string) ($input->getOption('token') ?: $this->ask($input, $output, 'Token of this server (button Inštalovať in the monitor)', $agent->getToken() ?: ($legacy['token'] ?? null)));
 
-        $output->writeln('<info>Bans are shared through the monitor every 3 hours from '.sprintf('%d:%02d', $matches[2] ?? 0, $matches[1] ?? 0).': php vpsmanager monitor:sync</info>');
+        if ($token === '') {
+            $output->writeln('<comment>Without a token the server does not send anything to the monitor and its bans are not shared.</comment>');
+
+            return true;
+        }
+
+        if ($dryRun) {
+            $output->writeln('Would check the token in '.$url.', save it and write <comment>'.MonitorAgent::CRON.'</comment>');
+
+            foreach ($agent->removeLegacyAgent(true) as $part) {
+                $output->writeln('Would remove the old bash agent: <comment>'.$part.'</comment>');
+            }
+
+            return true;
+        }
+
+        // The monitor knows the token, otherwise nothing changes
+        if ($monitor->requestMonitor('POST', $url.'/api/agent/collect', ['hostname' => (string) gethostname(), 'version' => MonitorAgent::VERSION], $error, $token, MonitorAgent::TIMEOUT) === null) {
+            $output->writeln('<error>The monitor '.$url.' did not accept the token ('.$error.'), nothing has been changed.</error>');
+
+            return false;
+        }
+
+        if ($url !== vpsManager()->config('monitor_url') || $token !== vpsManager()->config('monitor_token')) {
+            vpsManager()->saveConfig(['monitor_url' => $url, 'monitor_token' => $token] + vpsManager()->config());
+            vpsManager()->bootConfig(true);
+
+            $output->writeln('Saved the url of the monitor and the token into <comment>'.(realpath(vpsManagerPath().'/config.php') ?: vpsManagerPath().'/config.php').'</comment>');
+        }
+
+        if ($agent->writeCron()) {
+            $output->writeln('Wrote <comment>'.MonitorAgent::CRON.'</comment>');
+        }
+
+        foreach ($agent->removeLegacyAgent() as $part) {
+            $output->writeln('Removed the old bash agent: <comment>'.$part.'</comment>');
+        }
+
+        if ($legacy && $legacy['token'] !== $token) {
+            $output->writeln('<comment>The old bash agent used another token ('.$legacy['url'].', server '.$legacy['id'].').</comment>');
+        }
+
+        $output->writeln('<info>The server sends its metrics, the requests of its hosts and its bans to '.$url.' every 5 minutes: php vpsmanager monitor:collect</info>');
+        $output->writeln('');
+
+        // First run: metrics and shared bans now, requests from the next window
+        return $this->getApplication()->find('monitor:collect')->run(new ArrayInput([]), $output) === Command::SUCCESS;
+    }
+
+    /**
+     * Ask for a value, the default is kept with an empty answer and without interaction.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  string  $question
+     * @param  string|null  $default
+     * @return string|null
+     */
+    protected function ask(InputInterface $input, OutputInterface $output, string $question, ?string $default): ?string
+    {
+        $answer = $this->getHelper('question')->ask($input, $output, new Question($question.($default ? ' [<comment>'.$default.'</comment>]' : '').': ', $default));
+
+        return is_string($answer) ? trim($answer) : $default;
     }
 
     /**

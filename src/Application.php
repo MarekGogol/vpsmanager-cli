@@ -9,9 +9,11 @@ use Gogol\VpsManagerCLI\Helpers\Fail2ban;
 use Gogol\VpsManagerCLI\Helpers\Hosting;
 use Gogol\VpsManagerCLI\Helpers\Laravel;
 use Gogol\VpsManagerCLI\Helpers\Monitor;
+use Gogol\VpsManagerCLI\Helpers\MonitorAgent;
 use Gogol\VpsManagerCLI\Helpers\MySQLHelper;
 use Gogol\VpsManagerCLI\Helpers\Nginx;
 use Gogol\VpsManagerCLI\Helpers\PHP;
+use Gogol\VpsManagerCLI\Helpers\RequestStats;
 use Gogol\VpsManagerCLI\Helpers\Response;
 use Gogol\VpsManagerCLI\Helpers\Router;
 use Gogol\VpsManagerCLI\Helpers\Server;
@@ -279,6 +281,26 @@ class Application
     public function monitor(): Monitor
     {
         return $this->boot(Monitor::class);
+    }
+
+    /**
+     * Get the helper of the agent of the monitor (monitor:collect).
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\MonitorAgent
+     */
+    public function monitorAgent(): MonitorAgent
+    {
+        return $this->boot(MonitorAgent::class);
+    }
+
+    /**
+     * Get the helper of the request statistics of the hosts.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\RequestStats
+     */
+    public function requestStats(): RequestStats
+    {
+        return $this->boot(RequestStats::class);
     }
 
     /**
