@@ -8,7 +8,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class MonitorListCommand extends Command
+class MonitorIpListCommand extends Command
 {
     /**
      * Configure the command.
@@ -17,7 +17,7 @@ class MonitorListCommand extends Command
      */
     protected function configure(): void
     {
-        $this->setName('monitor:list')
+        $this->setName('monitor:ip:list')
             ->setDescription('List addresses banned by fail2ban in all jails')
             ->addOption('jail', null, InputOption::VALUE_REQUIRED, 'Only the given jail, e.g. vpsmanager-scanners');
     }

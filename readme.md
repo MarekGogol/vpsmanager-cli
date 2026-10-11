@@ -172,7 +172,7 @@ src/
 │   ├── Mysql/              # mysql:create, mysql:reset, mysql:remove
 │   ├── Backup/             # backup:setup, backup:run, backup:test-mail, backup:test-remote
 │   ├── Laravel/            # laravel:queue, laravel:octane
-│   └── Monitor/            # monitor:install, monitor:collect, monitor:listen, monitor:list, monitor:ip:allow,
+│   └── Monitor/            # monitor:install, monitor:collect, monitor:listen, monitor:ip:list, monitor:ip:allow,
 │                           #   monitor:ip:deny, monitor:report
 ├── Helpers/                # the actual server logic
 │   ├── helpers.php         # global functions (vpsManager(), isValidDomain(), createDirectories()...)
@@ -329,7 +329,7 @@ Bots scan every domain of a server all day: WordPress paths (`/wp-login.php`, `/
 | `monitor:install` | Installs or updates the whole monitor: NGINX rules, fail2ban jails, access log, agent of the monitor. `--dry-run`, `--without-access-log`, `--url=`, `--token=`, `--remove` |
 | `monitor:collect` | Agent of the monitor, run by cron every 5 minutes: metrics, requests of the hosts and bans to the monitor, shared bans back, see [Agent of the monitor](#agent-of-the-monitor-monitorcollect). `--dry-run` (`-v` prints the data) |
 | `monitor:listen` | Live requests of the hosts: per minute, per second, since the start, 5xx, response time, blocked. `--host=`, `--all`, `--interval=2`, `--limit=30`, `--duration=` |
-| `monitor:list` | Banned addresses of all fail2ban jails (also `sshd`) with the time of the ban and its end. `--jail=` |
+| `monitor:ip:list` | Banned addresses of all fail2ban jails (also `sshd`) with the time of the ban and its end. `--jail=` |
 | `monitor:ip:allow <ip>` | Unbans the address on all servers: in all jails here, forgets its previous bans (the next one starts from a day) and hides it in the monitor, the other servers unban it within 5 minutes. `--local` only here, `--jail=` only in one jail here |
 | `monitor:ip:deny <ip>` | Bans the address now here (or on the routers) and shares the ban through the monitor, the other servers ban it within 5 minutes. `--days=1\|7\|30` (30), `--local` only here |
 | `monitor:report` | Summary of the access log for an analysis (also by AI). `--hours=24`, `--limit=20`, `--json` |
@@ -520,7 +520,7 @@ scanner ─▶ router: iptables (fail2ban of the router) ─▶ server: NGINX, /
                 └── /var/log/vpsmanager/scanners.log ◀── rsyslog of the router
 ```
 
-- `monitor:install` on the server manages the router over SSH, the router needs no VPS Manager and no own scripts. `monitor:list`, `monitor:ip:allow`, `monitor:ip:deny`, `monitor:collect` and `monitor:report` of the server read, ban and unban on the router too (jails `router <address>: …`).
+- `monitor:install` on the server manages the router over SSH, the router needs no VPS Manager and no own scripts. `monitor:ip:list`, `monitor:ip:allow`, `monitor:ip:deny`, `monitor:collect` and `monitor:report` of the server read, ban and unban on the router too (jails `router <address>: …`).
 - The server: `conf.d/vpsmanager-realip.conf` sets the real address for the whole `http` context (also the default server without `general.conf`), `vpsmanager/router-scanners.conf` and `router-auth.conf` send the blocked and refused requests to syslog of the router, the local logs stay. The server has no jails `vpsmanager-*`, only its own `sshd` (SSH comes through DNAT of the router with the real address).
 - The router (Alpine): `rsyslog` replaces `syslogd` of BusyBox (system logs stay in `/var/log/messages`), `/etc/rsyslog.d/vpsmanager.conf` listens on the internal address only and accepts the internal network only, `/etc/logrotate.d/vpsmanager` keeps a week, the jails are the same as on other servers. Lines end with the address of the server which sent them.
 - Setup of a new server behind a router: the configuration of the server gets the list of SSH destinations of its routers (`monitor_routers`, default `ssh://root@<default gateway>`; `monitor_router` with one destination works too), root of the server gets SSH access to every router limited to the internal network:
@@ -538,7 +538,7 @@ scanner ─▶ router: iptables (fail2ban of the router) ─▶ server: NGINX, /
   ```
 
 - Without the router (no SSH access, unknown address) `monitor:install` stops before any change.
-- Several servers behind one router share its jails: a scanner found by one of them is banned for all. A server behind several routers (e.g. two load balancers) sends every blocked request to all of them, each router bans in its own firewall, `monitor:list` shows the jails of every router (`router 192.168.1.1: …`).
+- Several servers behind one router share its jails: a scanner found by one of them is banned for all. A server behind several routers (e.g. two load balancers) sends every blocked request to all of them, each router bans in its own firewall, `monitor:ip:list` shows the jails of every router (`router 192.168.1.1: …`).
 
 ### Files on the server
 
@@ -560,7 +560,7 @@ scanner ─▶ router: iptables (fail2ban of the router) ─▶ server: NGINX, /
 
 ```bash
 # banned addresses and their blocked requests
-sudo php vpsmanager monitor:list
+sudo php vpsmanager monitor:ip:list
 grep "^203.0.113.10 " /var/log/nginx/vpsmanager-scanners.log
 
 # unban on all servers, e.g. an office behind a shared address
@@ -582,7 +582,7 @@ iptables -S f2b-vpsm-recidive
 iptables -L INPUT -n --line-numbers
 ```
 
-`monitor:list` prints the jails with the number of banned addresses and a table of the bans. The numbers of a jail and of REJECT rules in its iptables chain must be equal; when a jail has bans and its chain is missing, check `ERROR` lines of `/var/log/fail2ban.log`.
+`monitor:ip:list` prints the jails with the number of banned addresses and a table of the bans. The numbers of a jail and of REJECT rules in its iptables chain must be equal; when a jail has bans and its chain is missing, check `ERROR` lines of `/var/log/fail2ban.log`.
 
 ### Analysis by AI
 
