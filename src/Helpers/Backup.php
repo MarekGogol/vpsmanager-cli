@@ -38,6 +38,13 @@ class Backup extends Application
     private $log = [];
 
     /**
+     * Databases, directories and users of the websites backed up by the current run, by type, for the monitor.
+     *
+     * @var array
+     */
+    private $backedUp = [];
+
+    /**
      * Name of the file with paths excluded from website backup.
      *
      * @var string
@@ -187,6 +194,8 @@ class Backup extends Application
 
         $all_databases = array_map(fn ($database) => $database.'.sql.gz', $backup_databases);
 
+        $this->backedUp['databases'] = array_values(array_filter($backup_databases, fn ($database) => in_array($database.'.sql.gz', $backed_up)));
+
         // Check if some databases are missing in the backup
         if (count($missing = array_diff($all_databases, $backed_up)) > 0) {
             return $this->sendError('Databases could not be backed up: '.implode(' ', $missing));
@@ -227,7 +236,7 @@ class Backup extends Application
      */
     private function createIfNotExists($directory): string
     {
-        $directory = $this->getBackupPath($directory).'/'.$this->now()->format('Y-m-d_H-00-00');
+        $directory = $this->getBackupPath($directory).'/'.$this->getSnapshot();
 
         if (! file_exists($directory)) {
             exec('mkdir -p "'.$directory.'"');
@@ -295,6 +304,8 @@ class Backup extends Application
 
             if (! $this->tarDirectory($dir, $backup_path.'/'.$this->getTarName($dir), $except)) {
                 $errors[] = $dir;
+            } else {
+                $this->backedUp['dirs'][] = $dir;
             }
         }
 
@@ -393,6 +404,8 @@ class Backup extends Application
 
             if (! $this->tarDirectory($webPath, $backup_path.'/'.$this->getTarName($domain), $except)) {
                 $errors[] = $domain;
+            } else {
+                $this->backedUp['www'][] = $domain;
             }
         }
 
@@ -413,6 +426,16 @@ class Backup extends Application
     private function isAllowed($config, $key): bool
     {
         return array_key_exists($key, $config) && $config[$key] == true;
+    }
+
+    /**
+     * Name of the directories of the current backup run in every type of the backups.
+     *
+     * @return string
+     */
+    public function getSnapshot(): string
+    {
+        return $this->now()->format('Y-m-d_H-00-00');
     }
 
     /**
@@ -747,6 +770,25 @@ class Backup extends Application
     }
 
     /**
+     * Report the backed up databases, directories and websites to the monitor, which checks that every one of them
+     * is backed up each day. When the monitor does not answer, monitor:collect sends them later.
+     *
+     * @return void
+     */
+    private function sendToMonitor(): void
+    {
+        if (! $this->backedUp) {
+            return;
+        }
+
+        vpsManager()->monitorAgent()->queueBackups($this->getSnapshot(), $this->backedUp, time());
+
+        if (vpsManager()->monitorAgent()->getUrl() && vpsManager()->monitorAgent()->sendBackups($error) === null) {
+            $this->response()->message('<comment>The monitor did not accept the backups ('.$error.'), monitor:collect sends them later.</comment>')->writeln();
+        }
+    }
+
+    /**
      * Get free disk space in MB.
      *
      * @param  string  $path
@@ -767,6 +809,7 @@ class Backup extends Application
     {
         $this->date = $backup['date'] ?? $this->now();
         $this->log = [];
+        $this->backedUp = [];
 
         $this->response()
             ->success('<info>Performing backup for '.$this->now()->format('d.m.Y H:i').'.</info>')
@@ -789,6 +832,7 @@ class Backup extends Application
         $this->removeOldBackups();
         $this->sendLocalBackupsToRemoteServer();
         $this->sendNotification();
+        $this->sendToMonitor();
 
         $this->log(
             'INFO',

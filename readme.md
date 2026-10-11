@@ -477,7 +477,9 @@ The access log holds addresses of visitors for a week, mention it in the privacy
    - A histogram of the durations goes with every window: requests under 100 ms, 250 ms, 500 ms, 1 s, 2.5 s, 5 s, 10 s and slower. Histograms of windows add up, so the monitor shows the median and the 90th percentile of any period next to the exact average.
    - Endpoints of every host: the method and the path without the query, numbers, uuids, hashes and tokens of the path replaced (`GET /blog/{id}`). Each with its requests, total and longest duration, `5xx` errors and the url of its slowest request (secrets of the query are masked by the access log). The 20 most requested endpoints and the 20 with the longest total duration are sent, the rest is one endpoint `(ostatné)`, so scanners of random paths do not grow the window. The monitor keeps them 6 hours by 5 minutes, then 7 days by hours, and shows the most requested and the slowest endpoints (by total duration) of all hosts above the table Hosty and of one host in its form.
 3. **Bans** of the recidive jail which the monitor does not know yet, with their level and end. Every report counts in the monitor, so a ban is reported once.
-4. **Shared bans** in the answer: the whole list in the first call, then the changes since the previous call. The server keeps the list and bans the new addresses in the jail of their level (`vpsmanager-shared-1d`, `-7d`, `-30d`), moves an address whose level changed and unbans those the monitor does not share any more, with `fail2ban-client set … banip|unbanip`. fail2ban is never reloaded or restarted.
+4. **Active hosts**: the names of the `server_name` of the enabled sites (without `www.` and wildcards). The monitor adds the sites without requests and marks the other hosts of the server inactive, e.g. `xyz.example.com` tried by a bot and caught by `*.example.com`, or a removed site (filters Aktívne / Neaktívne of the table Hosty).
+5. **Backups** which the monitor did not accept right after `backup:run` (`/var/lib/vpsmanager/monitor-backups.json`), see [Backups in the monitor](#backups-in-the-monitor).
+6. **Shared bans** in the answer: the whole list in the first call, then the changes since the previous call. The server keeps the list and bans the new addresses in the jail of their level (`vpsmanager-shared-1d`, `-7d`, `-30d`), moves an address whose level changed and unbans those the monitor does not share any more, with `fail2ban-client set … banip|unbanip`. fail2ban is never reloaded or restarted.
 
 - The monitor is optional. When it does not answer, the windows wait for the next run (an hour at most), nothing is banned nor unbanned and the jails of the server work as before. The shared bans last the days of their level, so they expire also when the monitor is gone.
 - Own addresses, private networks, proxies and crawlers are never banned (the same list as `ignoreip`), the addresses of the recidive jail are not banned twice. Hiding an address in the monitor (or `monitor:ip:allow`) unbans it on all servers within 5 minutes.
@@ -555,6 +557,7 @@ scanner ─▶ router: iptables (fail2ban of the router) ─▶ server: NGINX, /
 | `/etc/vpsmanager/logrotate-monitor.conf`, `/etc/cron.hourly/vpsmanager-monitor` | managed |
 | `/etc/cron.d/vpsmanager-monitor-collect` | managed (agent of the monitor) |
 | `/var/lib/vpsmanager/monitor-collect.json`, `monitor-metrics.state`, `monitor-collect.lock` | state of `monitor:collect` |
+| `/var/lib/vpsmanager/monitor-backups.json` | backups not yet accepted by the monitor |
 | `/etc/nginx/vpsmanager/router-scanners.conf`, `router-auth.conf`, `/etc/nginx/conf.d/vpsmanager-realip.conf` | generated for the server (a comment only when it is not behind a router) |
 | Router: `/etc/rsyslog.d/vpsmanager.conf`, `/etc/logrotate.d/vpsmanager`, fail2ban files as above | managed over SSH by `monitor:install` of the server behind it |
 
@@ -702,6 +705,7 @@ Before it starts, the command checks that `backup:setup` has been run and that `
 5. **Remote sync.** If enabled, all local backups are synced with `rsync -avzP --delete --delete-excluded` over SSH (using the generated key) to `{remote_user}@{remote_server}:{remote_path}`. Only the newest `remote_backup_limit` backups of each type are sent, and older ones are deleted on the remote side.
 6. **Notifications.** If any error occurred and `email_notifications` is on, one email with all errors is sent.
 7. A summary line (types, duration) is appended to `{backup_path}/logs.log`. Errors are logged there too.
+8. **Monitor.** With the monitor installed (`monitor:install`), the backed up databases, directories and websites are sent to it, see below.
 
 Every archive and dump runs under `nice -n 15 ionice -c2 -n7` with fast compression, to keep the load on a live server low. Before each backup type, VPS Manager checks that the free disk space is at least the size of the previous backup of that type plus **2000 MB**. Otherwise that type is skipped and an error is reported.
 
@@ -718,6 +722,13 @@ With the default setup, backups are stored in:
 ```
 
 Backup folders are named `Y-m-d_H-00-00` in the `Europe/Bratislava` timezone, so runs within the same hour share one folder.
+
+### Backups in the monitor
+
+At the end of every `backup:run` the server sends the monitor (`POST /api/agent/backups`) the folder of the run (the snapshot), and for each type its end and the databases, directories and users of the websites which were backed up. A failed one is not sent. When the monitor does not answer, they wait in `/var/lib/vpsmanager/monitor-backups.json` for the next `monitor:collect`.
+
+- **Zálohy**: one row of each snapshot with the end of the backup of the databases, the websites and the directories, the users of the backup under it. `backup:run --databases` and `backup:run --www` in one hour fill one row.
+- **Sledované zálohy**: every user, database and directory backed up at least once, with its last backup. The metric `backup_missing_hours` of the server is the age of the oldest of them in hours, an alert (e.g. `backup_missing_hours > 24`) sends an email. The monitor checks all alerts every 5 minutes (`app:check-alerts`) and sends one summary email of all servers when the alerts change, without a change it repeats it after 12 hours. A removed website or database stops being checked once it is unpublished there.
 
 ### Retention (rotation)
 

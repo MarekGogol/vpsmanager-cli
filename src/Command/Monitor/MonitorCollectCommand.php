@@ -73,6 +73,7 @@ class MonitorCollectCommand extends Command
             'version' => MonitorAgent::VERSION,
             'metrics' => $metrics ?: null,
             'hosts' => $windows,
+            'active_hosts' => $agent->getActiveHosts(),
             'blocked_ips' => $bans,
             'shared_ips_since' => $state['shared_since'] ?? null,
         ], fn ($value) => $value !== null && $value !== []);
@@ -104,6 +105,13 @@ class MonitorCollectCommand extends Command
         }
 
         $agent->saveState($state);
+
+        // Backups the monitor did not accept right after backup:run
+        if (($sent = $agent->sendBackups($error)) === null) {
+            $output->writeln('<comment>The monitor did not accept the backups ('.$error.'), they are sent with the next run.</comment>');
+        } elseif ($sent) {
+            $output->writeln('Sent '.$sent.' backups.');
+        }
 
         $output->writeln('The monitor shares '.count($state['shared'] ?? []).' addresses ('.count($answer['shared_ips']['data'] ?? []).' changed).');
 

@@ -15,7 +15,7 @@ class MonitorAgent extends Application
     /**
      * Version of the agent, sent to the monitor.
      */
-    const VERSION = '2.0.0';
+    const VERSION = '2.1.0';
 
     /**
      * Cron of monitor:collect.
@@ -26,6 +26,11 @@ class MonitorAgent extends Application
      * State between the runs: positions in the logs, unsent windows, reported and shared bans.
      */
     const STATE = '/var/lib/vpsmanager/monitor-collect.json';
+
+    /**
+     * Finished backups not yet accepted by the monitor.
+     */
+    const BACKUPS = '/var/lib/vpsmanager/monitor-backups.json';
 
     /**
      * Counters of CPU and network of the previous run of metrics.sh.
@@ -155,6 +160,108 @@ class MonitorAgent extends Application
 
         file_put_contents(self::STATE, json_encode($state, JSON_UNESCAPED_SLASHES));
         chmod(self::STATE, 0600);
+    }
+
+    /**
+     * Hosts of the enabled NGINX sites (server_name, without www), the monitor marks the other hosts inactive:
+     * e.g. xyz.example.com caught by *.example.com, or a removed site. Wildcards are not hosts.
+     *
+     * @return array|null names, null without NGINX
+     */
+    public function getActiveHosts(): ?array
+    {
+        if (! vpsManager()->nginx()->getEnabledHostPaths()) {
+            return null;
+        }
+
+        $hosts = array_keys(vpsManager()->requestStats()->getHosts());
+        $hosts = array_values(array_filter($hosts, fn ($host) => ! str_starts_with($host, '*.')));
+
+        sort($hosts);
+
+        return $hosts;
+    }
+
+    /**
+     * Remember the finished backups of a run for the monitor, sent by sendBackups() right away, or with the next
+     * monitor:collect when the monitor does not answer.
+     *
+     * @param  string  $snapshot  directory of the backup run, e.g. 2026-10-11_02-00-00
+     * @param  array  $types  type (databases, www, dirs) => backed up users, databases or directories
+     * @param  int  $time  end of the backups
+     * @return void
+     */
+    public function queueBackups(string $snapshot, array $types, int $time): void
+    {
+        if (! $this->getUrl() || ! $this->getToken()) {
+            return;
+        }
+
+        $this->updateBackups(function ($backups) use ($snapshot, $types, $time) {
+            foreach (array_filter($types) as $type => $names) {
+                $backups[] = ['snapshot' => $snapshot, 'type' => $type, 'names' => array_values($names), 'finished_at' => date('c', $time)];
+            }
+
+            return $backups;
+        });
+    }
+
+    /**
+     * Send the remembered backups to the monitor.
+     *
+     * @param  string|null  $error
+     * @return int|null sent backups, null when the monitor did not accept them
+     */
+    public function sendBackups(?string &$error = null): ?int
+    {
+        $sent = 0;
+
+        $this->updateBackups(function ($backups) use (&$sent, &$error) {
+            if (! $backups) {
+                return $backups;
+            }
+
+            if (($answer = $this->request('POST', 'backups', ['backups' => $backups], $error)) === null || empty($answer['success'])) {
+                $error ??= 'no success';
+                $sent = null;
+
+                return $backups;
+            }
+
+            $sent = count($backups);
+
+            return [];
+        });
+
+        return $sent;
+    }
+
+    /**
+     * Change the remembered backups under a lock, backup:run and monitor:collect may run at once.
+     *
+     * @param  callable  $callback  backups => backups
+     * @return void
+     */
+    private function updateBackups(callable $callback): void
+    {
+        if (! is_dir(dirname(self::BACKUPS))) {
+            mkdir(dirname(self::BACKUPS), 0700, true);
+        }
+
+        if (! ($file = fopen(self::BACKUPS, 'c+'))) {
+            return;
+        }
+
+        flock($file, LOCK_EX);
+
+        $backups = json_decode((string) stream_get_contents($file), true);
+        $backups = $callback(is_array($backups) ? $backups : []);
+
+        ftruncate($file, 0);
+        rewind($file);
+        fwrite($file, $backups ? json_encode($backups, JSON_UNESCAPED_SLASHES) : '');
+        flock($file, LOCK_UN);
+        fclose($file);
     }
 
     /**
