@@ -27,7 +27,7 @@ class MonitorListenCommand extends Command
     const BACKFILL = 4 * 1024 * 1024;
 
     /**
-     * Requests of the hosts by second: host => second => [requests, errors, duration, blocked].
+     * Requests of the hosts by second: host => second => [requests, errors, duration, blocked, websockets].
      *
      * @var array
      */
@@ -135,10 +135,15 @@ class MonitorListenCommand extends Command
     protected function add(string $host, array $request, bool $blocked, bool $sinceStart): void
     {
         $second = &$this->seconds[$host][$request['time']];
-        $second ??= [0, 0, 0.0, 0];
+        $second ??= [0, 0, 0.0, 0, 0];
 
         if ($blocked) {
             $second[3]++;
+        } elseif ((int) $request['status'] === 101) {
+            // A WebSocket is logged when it closes, its duration is the whole connection: never a request
+            $second[4]++;
+
+            return;
         } else {
             $second[0]++;
             $second[1] += $request['status'] >= 500 ? 1 : 0;
@@ -164,12 +169,12 @@ class MonitorListenCommand extends Command
         $now = time();
         $elapsed = max(1, $now - $start);
         $rows = [];
-        $sum = ['requests' => 0, 'errors' => 0, 'duration' => 0.0, 'blocked' => 0, 'total' => 0, 'total_blocked' => 0];
+        $sum = ['requests' => 0, 'errors' => 0, 'duration' => 0.0, 'blocked' => 0, 'websockets' => 0, 'total' => 0, 'total_blocked' => 0];
 
         foreach (array_keys($this->seconds + $this->totals) as $host) {
-            $window = ['requests' => 0, 'errors' => 0, 'duration' => 0.0, 'blocked' => 0];
+            $window = ['requests' => 0, 'errors' => 0, 'duration' => 0.0, 'blocked' => 0, 'websockets' => 0];
 
-            foreach ($this->seconds[$host] ?? [] as $time => [$requests, $errors, $duration, $blocked]) {
+            foreach ($this->seconds[$host] ?? [] as $time => [$requests, $errors, $duration, $blocked, $websockets]) {
                 if ($time <= $now - self::WINDOW) {
                     unset($this->seconds[$host][$time]);
 
@@ -180,6 +185,7 @@ class MonitorListenCommand extends Command
                 $window['errors'] += $errors;
                 $window['duration'] += $duration;
                 $window['blocked'] += $blocked;
+                $window['websockets'] += $websockets;
             }
 
             [$total, $totalBlocked] = $this->totals[$host] ?? [0, 0];
@@ -202,13 +208,14 @@ class MonitorListenCommand extends Command
         $buffer = new BufferedOutput($output->getVerbosity(), $output->isDecorated());
         $buffer->writeln('<info>Requests of the hosts</info> since '.date('H:i:s', $start).' ('.$this->formatElapsed($elapsed).'), refreshed '.date('H:i:s', $now));
         $buffer->writeln('Static files are not logged, NGINX writes the log every 5 seconds. Per minute = the last '.self::WINDOW.' seconds.');
+        $buffer->writeln('WebSockets are logged when they close, they are counted apart (WS/min), not as requests nor into Avg ms.');
 
         $table = (new Table($buffer))
-            ->setHeaders(['Host', 'Req/min', 'Req/s', 'Avg req/s', 'Total', '5xx/min', 'Avg ms', 'Blocked/min', 'Blocked'])
+            ->setHeaders(['Host', 'Req/min', 'Req/s', 'Avg req/s', 'Total', '5xx/min', 'Avg ms', 'WS/min', 'Blocked/min', 'Blocked'])
             ->setRows([...$rows, new TableSeparator, $this->row('All hosts', $sum, $sum['total'], $sum['total_blocked'], $elapsed)]);
 
         // Numbers are aligned to the right
-        foreach (range(1, 8) as $column) {
+        foreach (range(1, 9) as $column) {
             $table->setColumnStyle($column, (new TableStyle)->setPadType(STR_PAD_LEFT));
         }
 
@@ -225,7 +232,7 @@ class MonitorListenCommand extends Command
      * Row of the table.
      *
      * @param  string  $host
-     * @param  array  $window  requests of the last minute
+     * @param  array  $window  requests, errors, duration, blocked requests and closed WebSockets of the last minute
      * @param  int  $total  requests since the start
      * @param  int  $totalBlocked  blocked requests since the start
      * @param  int  $elapsed  seconds since the start
@@ -241,6 +248,7 @@ class MonitorListenCommand extends Command
             $total,
             $window['errors'] ?: '',
             $window['requests'] ? round($window['duration'] / $window['requests'] * 1000) : '',
+            $window['websockets'] ?: '',
             $window['blocked'] ?: '',
             $totalBlocked ?: '',
         ];

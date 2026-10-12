@@ -15,7 +15,7 @@ class MonitorAgent extends Application
     /**
      * Version of the agent, sent to the monitor.
      */
-    const VERSION = '2.1.0';
+    const VERSION = '2.2.0';
 
     /**
      * Cron of monitor:collect.
@@ -321,41 +321,8 @@ class MonitorAgent extends Application
                 }
 
                 $host = $stats->normalizeHost($request['host'], $hosts ??= $stats->getHosts());
-                $window = &$state['windows'][$start][$host];
-                $window ??= [0, 0, 0, 0];
 
-                // Histogram and endpoints, also of a window counted by a version without them
-                $window[4] ??= array_fill(0, count(RequestStats::BANDS) + 1, 0);
-                $window[5] ??= [];
-
-                if ($key === 'access') {
-                    $duration = (int) round($request['duration'] * 1000);
-                    $error = $request['status'] >= 500 ? 1 : 0;
-
-                    $window[0]++;
-                    $window[2] += $error;
-                    $window[3] += $duration;
-                    $window[4][$stats->durationBand($duration)]++;
-
-                    // Endpoint: requests, duration, the slowest request, errors, url and time of the slowest request
-                    $endpoint = &$window[5][$stats->normalizeEndpoint($request['method'], $request['url'])];
-                    $endpoint ??= [0, 0, -1, 0, '', 0];
-                    $endpoint[0]++;
-                    $endpoint[1] += $duration;
-                    $endpoint[3] += $error;
-
-                    if ($duration > $endpoint[2]) {
-                        $endpoint[2] = $duration;
-                        $endpoint[4] = mb_substr($request['url'], 0, 500);
-                        $endpoint[5] = $request['time'];
-                    }
-
-                    unset($endpoint);
-                } else {
-                    $window[1]++;
-                }
-
-                unset($window);
+                $this->addToWindow($state['windows'][$start][$host], $request, $key === 'scanners');
             }
 
             $state['positions'][$key] = $position;
@@ -376,23 +343,93 @@ class MonitorAgent extends Application
             }
 
             foreach ($hostsOfWindow as $host => $window) {
-                [$requests, $blocked, $errors, $duration] = $window;
-
-                $rows[] = [
-                    'start' => date('c', (int) $start),
-                    'seconds' => self::WINDOW,
-                    'host' => (string) $host,
-                    'requests' => $requests,
-                    'blocked' => $blocked,
-                    'errors' => $errors,
-                    'duration_ms' => $duration,
-                    'histogram' => $window[4] ?? array_fill(0, count(RequestStats::BANDS) + 1, 0),
-                    'endpoints' => $this->topEndpoints($window[5] ?? []),
-                ];
+                $rows[] = $this->windowRow((int) $start, (string) $host, $window);
             }
         }
 
         return $rows;
+    }
+
+    /**
+     * Count a line of the logs into the window of its host: [requests, blocked, errors, duration, histogram,
+     * endpoints, websockets]. A window counted by an older version lacks the later fields, they start empty.
+     *
+     * A WebSocket (status 101) is written by NGINX when the connection closes, its duration is the whole
+     * connection (minutes, hours). It is counted apart, never as a request, into the duration, the histogram
+     * or the endpoints.
+     *
+     * @param  array|null  $window
+     * @param  array  $request  parsed line
+     * @param  bool  $blocked  line of the log of the blocked requests
+     * @return void
+     */
+    public function addToWindow(?array &$window, array $request, bool $blocked): void
+    {
+        $stats = $this->requestStats();
+
+        $window ??= [0, 0, 0, 0];
+        $window[4] ??= array_fill(0, count(RequestStats::BANDS) + 1, 0);
+        $window[5] ??= [];
+        $window[6] ??= 0;
+
+        if ($blocked) {
+            $window[1]++;
+
+            return;
+        }
+
+        if ((int) $request['status'] === 101) {
+            $window[6]++;
+
+            return;
+        }
+
+        $duration = (int) round($request['duration'] * 1000);
+        $error = $request['status'] >= 500 ? 1 : 0;
+
+        $window[0]++;
+        $window[2] += $error;
+        $window[3] += $duration;
+        $window[4][$stats->durationBand($duration)]++;
+
+        // Endpoint: requests, duration, the slowest request, errors, url and time of the slowest request
+        $endpoint = &$window[5][$stats->normalizeEndpoint($request['method'], $request['url'])];
+        $endpoint ??= [0, 0, -1, 0, '', 0];
+        $endpoint[0]++;
+        $endpoint[1] += $duration;
+        $endpoint[3] += $error;
+
+        if ($duration > $endpoint[2]) {
+            $endpoint[2] = $duration;
+            $endpoint[4] = mb_substr($request['url'], 0, 500);
+            $endpoint[5] = $request['time'];
+        }
+    }
+
+    /**
+     * Window of a host as the monitor receives it.
+     *
+     * @param  int  $start
+     * @param  string  $host
+     * @param  array  $window  see addToWindow()
+     * @return array
+     */
+    public function windowRow(int $start, string $host, array $window): array
+    {
+        [$requests, $blocked, $errors, $duration] = $window;
+
+        return [
+            'start' => date('c', $start),
+            'seconds' => self::WINDOW,
+            'host' => $host,
+            'requests' => $requests,
+            'blocked' => $blocked,
+            'errors' => $errors,
+            'duration_ms' => $duration,
+            'websockets' => $window[6] ?? 0,
+            'histogram' => $window[4] ?? array_fill(0, count(RequestStats::BANDS) + 1, 0),
+            'endpoints' => $this->topEndpoints($window[5] ?? []),
+        ];
     }
 
     /**
