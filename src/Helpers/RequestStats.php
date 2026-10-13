@@ -225,8 +225,13 @@ class RequestStats extends Application
     }
 
     /**
-     * Endpoint of the request: the method and the path without the query, numbers and hashes of the path are
-     * replaced, so /blog/12 and /blog/13 are one endpoint.
+     * Endpoint of the request: the method and the path without the query, numbers, hashes and slugs of the path
+     * are replaced, so /blog/12 and /blog/13 are one endpoint, and so are the pages of all products
+     * (/produkt/{slug}/{id}). Without slugs a crawler of thousands of products would be thousands of endpoints
+     * with a request or two, all summed into the endpoint (ostatné) of the window.
+     *
+     * A slug is a segment of three words or more joined by hyphens, never the first one of the path, so routes
+     * like /api/forgot-password or /o-nas stay as they are.
      *
      * @param  string  $method
      * @param  string  $url
@@ -236,15 +241,17 @@ class RequestStats extends Application
     {
         $path = explode('?', $url, 2)[0] ?: '/';
 
-        $segments = array_map(function ($segment) {
+        $segments = array_map(function ($segment, $index) {
             return match (true) {
                 preg_match('/^\d+$/', $segment) === 1 => '{id}',
                 preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $segment) === 1 => '{uuid}',
                 preg_match('/^[0-9a-f]{16,}$/i', $segment) === 1 => '{hash}',
                 strlen($segment) >= 24 && preg_match('/\d/', $segment) && preg_match('/[a-z]/i', $segment) && ! str_contains($segment, '-') => '{token}',
+                // The first segment is index 1, index 0 is empty before the leading slash
+                $index > 1 && preg_match('/^[^.\/-]+(?:-[^.\/-]+){2,}$/u', $segment) === 1 => '{slug}',
                 default => $segment,
             };
-        }, explode('/', $path));
+        }, $parts = explode('/', $path), array_keys($parts));
 
         return mb_substr(strtoupper($method).' '.implode('/', $segments), 0, 190);
     }

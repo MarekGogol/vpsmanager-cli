@@ -122,8 +122,26 @@ class RequestStatsTest extends TestCase
         $this->assertSame('POST /api/orders/{uuid}/pay', $stats->normalizeEndpoint('POST', '/api/orders/0b9f6c1e-7d2a-4c3e-9f10-2a6b8c4d5e6f/pay'));
         $this->assertSame('GET /files/{hash}', $stats->normalizeEndpoint('GET', '/files/53d015123caf1a5253b408daee377969'));
         $this->assertSame('GET /reset/{token}', $stats->normalizeEndpoint('GET', '/reset/aB3dE5gH7jK9mN1pQ3sT5vX7'));
-        $this->assertSame('GET /ebook/zbav-sa-hypoteky-o-10-az-15-rokov-skor', $stats->normalizeEndpoint('GET', '/ebook/zbav-sa-hypoteky-o-10-az-15-rokov-skor?fbclid=x'));
+        $this->assertSame('GET /ebook/{slug}', $stats->normalizeEndpoint('GET', '/ebook/zbav-sa-hypoteky-o-10-az-15-rokov-skor?fbclid=x'));
         $this->assertSame('GET /', $stats->normalizeEndpoint('GET', '/?utm=1'));
+    }
+
+    public function test_slugs_of_pages_are_one_endpoint_routes_stay(): void
+    {
+        $stats = new RequestStats;
+
+        // Pages of all products are one endpoint
+        $this->assertSame('GET /produkt/{slug}/{id}', $stats->normalizeEndpoint('GET', '/produkt/diar-a6-filofax-malden-burgundy/8923'));
+        $this->assertSame('GET /produkt/{slug}/{id}', $stats->normalizeEndpoint('GET', '/produkt/pero-gulockove-rotring-tikky-tyrkysove/8388'));
+        $this->assertSame('GET /kategoria/{slug}/peracniky', $stats->normalizeEndpoint('GET', '/kategoria/skolske-potreby-a-pomocky/peracniky'));
+        $this->assertSame('GET /clanok/{slug}', $stats->normalizeEndpoint('GET', '/clanok/ako-vybrat-skolsku-tasku'));
+
+        // Routes of one or two words, the first segment and files stay
+        $this->assertSame('POST /api/auth/forgot-password', $stats->normalizeEndpoint('POST', '/api/auth/forgot-password'));
+        $this->assertSame('GET /kategoria/skolske-potreby', $stats->normalizeEndpoint('GET', '/kategoria/skolske-potreby'));
+        $this->assertSame('GET /obchodne-podmienky-a-reklamacie', $stats->normalizeEndpoint('GET', '/obchodne-podmienky-a-reklamacie'));
+        $this->assertSame('GET /vendor/js/ca-translates-and-more.js', $stats->normalizeEndpoint('GET', '/vendor/js/ca-translates-and-more.js'));
+        $this->assertSame('POST /admin/api/rows/orders_items', $stats->normalizeEndpoint('POST', '/admin/api/rows/orders_items'));
     }
 
     public function test_durations_fall_into_their_bands(): void
