@@ -88,6 +88,9 @@ class SetupRunCommand extends Command
     {
         vpsManager()->bootConsole($output, $input, $this->getHelper('question'));
 
+        // Directories of the backups are named by the time of the server
+        vpsManager()->monitor()->useServerTimezone();
+
         $settings = $this->chosen($input->getOption('only'));
         $yes = (bool) $input->getOption('yes');
 
