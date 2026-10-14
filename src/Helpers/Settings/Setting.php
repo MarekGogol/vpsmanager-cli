@@ -245,6 +245,10 @@ abstract class Setting
             return number_format($bytes / SystemInfo::GB, 1, '.', '').' GB';
         }
 
-        return round($bytes / SystemInfo::MB).' MB';
+        if ($bytes >= SystemInfo::MB) {
+            return round($bytes / SystemInfo::MB).' MB';
+        }
+
+        return round($bytes / 1024).' kB';
     }
 }

@@ -31,7 +31,7 @@ class SetupRunCommand extends Command
     protected function configure(): void
     {
         $this->setName('setup:run')
-            ->setDescription('Set the recommended settings of the server: swap, vm.swappiness, swap refresh, memory of MySQL, stunnel on localhost, SSH by keys only')
+            ->setDescription('Print the recommended settings of the server and apply them with --execute: swap, swappiness, swap refresh, journald, rotation of Laravel logs, PHP-FPM pools, MySQL, stunnel, SSH')
             ->addOption('execute', null, InputOption::VALUE_NONE, 'Apply the changes, without it only the table of the settings is printed')
             ->addOption('only', null, InputOption::VALUE_REQUIRED, 'Only the given settings separated by commas: '.implode(',', array_keys($this->settings())))
             ->addOption('yes', 'y', InputOption::VALUE_NONE, 'With --execute apply without questions, the risky steps (SSH, restart of MySQL) included');
@@ -128,9 +128,9 @@ class SetupRunCommand extends Command
 
         foreach ($changes as $key => $setting) {
             $output->writeln('');
-            $output->writeln('<info>'.$key.'</info>: '.implode(', ', $setting->plan()));
+            $output->writeln('<info>'.$key.'</info>: '.$this->action($setting->plan()));
 
-            if ($setting->isRisky() && ! $confirm('Change '.$key.' ('.implode(', ', $setting->plan()).')?', false)) {
+            if ($setting->isRisky() && ! $confirm('Change '.$key.' ('.$this->action($setting->plan()).')?', false)) {
                 $output->writeln('Skipped.');
 
                 continue;
@@ -155,6 +155,19 @@ class SetupRunCommand extends Command
     }
 
     /**
+     * Text of the column Action: the changes, or their count when they are long.
+     *
+     * @param  array  $plan
+     * @return string
+     */
+    protected function action(array $plan): string
+    {
+        $text = implode(', ', $plan);
+
+        return mb_strlen($text) > 60 ? count($plan).' changes, see below' : $text;
+    }
+
+    /**
      * Print the table of the settings and their warnings.
      *
      * @param  \Symfony\Component\Console\Output\OutputInterface  $output
@@ -166,11 +179,28 @@ class SetupRunCommand extends Command
         $table = new Table($output);
         $table->setHeaders(['Setting', 'Current', 'Recommended', 'Action']);
 
+        $long = [];
+
         foreach ($settings as $key => $setting) {
-            $table->addRow([$key, $setting->current(), $setting->recommended(), implode(', ', $setting->plan()) ?: ($setting->warnings() ? 'see the notes' : 'up to date')]);
+            $plan = $setting->plan();
+
+            if ($this->action($plan) !== implode(', ', $plan)) {
+                $long[$key] = $plan;
+            }
+
+            $table->addRow([$key, $setting->current(), $setting->recommended(), $this->action($plan) ?: ($setting->warnings() ? 'see the notes' : 'up to date')]);
         }
 
         $table->render();
+
+        // A long plan is listed under the table, the table stays readable on a narrow terminal
+        foreach ($long as $key => $plan) {
+            $output->writeln('<info>'.$key.'</info>:');
+
+            foreach ($plan as $change) {
+                $output->writeln('  - '.$change);
+            }
+        }
 
         foreach ($settings as $key => $setting) {
             foreach ($setting->warnings() as $warning) {

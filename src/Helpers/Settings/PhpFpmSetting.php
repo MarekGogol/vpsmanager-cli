@@ -242,10 +242,17 @@ class PhpFpmSetting extends Setting
             return [];
         }
 
-        $plan = array_map(fn ($path) => 'turn off unused '.$path, $state['disable']);
+        $plan = $state['disable'] ? ['turn off unused www: '.implode(', ', array_map(fn ($path) => basename(dirname($path, 3)), $state['disable']))] : [];
+
+        // Pools grouped by their changes, e.g. "pm.max_requests 500, ondemand: kampo.sk (7.4), haus.sk (8.3)"
+        $groups = [];
 
         foreach ($state['changes'] as $path => $change) {
-            $plan[] = basename($path, '.conf').' ('.$change['version'].'): '.implode(', ', $change['changes']);
+            $groups[implode(', ', $change['changes'])][] = basename($path, '.conf').' ('.$change['version'].')';
+        }
+
+        foreach ($groups as $changes => $pools) {
+            $plan[] = $changes.': '.implode(', ', $pools);
         }
 
         if ($plan) {
