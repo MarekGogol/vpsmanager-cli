@@ -28,9 +28,9 @@ class SetupRunCommand extends Command
     {
         $this->setName('setup:run')
             ->setDescription('Set the recommended settings of the server: swap, vm.swappiness, swap refresh, memory of MySQL, stunnel on localhost, SSH by keys only')
-            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Only print the table of the settings, nothing is changed')
+            ->addOption('execute', null, InputOption::VALUE_NONE, 'Apply the changes, without it only the table of the settings is printed')
             ->addOption('only', null, InputOption::VALUE_REQUIRED, 'Only the given settings separated by commas: '.implode(',', array_keys($this->settings())))
-            ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Apply without questions, the risky steps (SSH, restart of MySQL) included');
+            ->addOption('yes', 'y', InputOption::VALUE_NONE, 'With --execute apply without questions, the risky steps (SSH, restart of MySQL) included');
     }
 
     /**
@@ -98,7 +98,10 @@ class SetupRunCommand extends Command
             return Command::SUCCESS;
         }
 
-        if ($input->getOption('dry-run')) {
+        // Nothing is changed without --execute
+        if (! $input->getOption('execute')) {
+            $output->writeln('Nothing has been changed, apply the changes with <comment>setup:run --execute</comment>.');
+
             return Command::SUCCESS;
         }
 
@@ -141,7 +144,7 @@ class SetupRunCommand extends Command
             return Command::FAILURE;
         }
 
-        $output->writeln('<info>Done.</info> Run setup:run --dry-run to check the settings.');
+        $output->writeln('<info>Done.</info> Run setup:run to check the settings.');
 
         return Command::SUCCESS;
     }

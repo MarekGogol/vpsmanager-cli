@@ -54,9 +54,11 @@ Everything is ready out of the box. You configure the features with the installa
 
 ```bash
 cd /root/
-git clone https://github.com/MarekGogol/vpsmanager-cli vpsmanager-cli && cd vpsmanager-cli
+git clone https://github.com/MarekGogol/vpsmanager-cli vpsmanager && cd vpsmanager
 bash install.sh
 ```
+
+VPS Manager lives in **`/root/vpsmanager`** on every server: the alias `vpsmanager` in `/root/.bashrc`, the crons of `backup:run`, `monitor:collect` and `swap:refresh` use this path. To move an older installation from `/root/vpsmanager-cli`, wait until no `vpsmanager` process runs, `mv /root/vpsmanager-cli /root/vpsmanager` and replace the path in `crontab -e`, `/etc/cron.d/vpsmanager-*` and the alias in `/root/.bashrc`.
 
 `install.sh` runs three steps:
 
@@ -341,7 +343,7 @@ Bots scan every domain of a server all day: WordPress paths (`/wp-login.php`, `/
 ### Install and update
 
 ```bash
-cd /root/vpsmanager-cli && git pull
+cd /root/vpsmanager && git pull
 sudo php vpsmanager monitor:install --dry-run
 sudo php vpsmanager monitor:install
 ```
@@ -768,7 +770,7 @@ web/storage/app/huge.zip
 `backup:setup` can add the cron job for you. To add it manually, run `crontab -e` and add this line (use your installation path):
 
 ```bash
-0 4 * * * php /root/vpsmanager-cli/vpsmanager backup:run
+0 4 * * * php /root/vpsmanager/vpsmanager backup:run
 ```
 
 `backup:run` holds the lock `/var/lib/vpsmanager/backup.lock` until its end: a second run started meanwhile ends at once, `swap:refresh` skips the night.
@@ -795,13 +797,13 @@ sudo php vpsmanager backup:test-remote
 
 ## Server settings
 
-`setup:run` sets the recommended settings of a server with the web, PHP (Octane) and MySQL together. It reads the server, prints a table of the settings and applies only what differs. A second run on a set server changes nothing.
+`setup:run` sets the recommended settings of a server with the web, PHP (Octane) and MySQL together. It reads the server and prints a table of the settings, nothing is changed without `--execute`, which applies only what differs. A second run on a set server changes nothing.
 
 ```bash
-sudo php vpsmanager setup:run --dry-run               # only the table, nothing is changed
-sudo php vpsmanager setup:run                         # asks once, the risky steps ask again
-sudo php vpsmanager setup:run --only=swap,swappiness  # only the given settings
-sudo php vpsmanager setup:run --yes                   # no questions, the risky steps included
+sudo php vpsmanager setup:run                         # only the table, nothing is changed
+sudo php vpsmanager setup:run --execute               # asks once, the risky steps ask again
+sudo php vpsmanager setup:run --only=swap,swappiness  # only the table of the given settings
+sudo php vpsmanager setup:run --execute --yes         # no questions, the risky steps included
 ```
 
 ```
@@ -827,7 +829,7 @@ RAM is the nominal size: `MemTotal` rounded up to 512 MB, a server with 2 GB has
 | `swap` | RAM < 2 GB: 2 × RAM, 2-8 GB: 1 × RAM, 8-64 GB: 0.5 × RAM (4 GB at least), over 64 GB: 4 GB. At most 10 % of the disk and 20 % of the disk stays free, less than 1 GB is no swap. A swap differing by less than 25 % is kept. | Only a swap file: `swapoff` (only when `MemAvailable` holds the used swap + 256 MB, otherwise a second file `/swapfile2` adds the missing size), `fallocate` (`dd` on btrfs, xfs or when it fails), `chmod 600`, `mkswap`, `swapon`, one line in `/etc/fstab`. Swap partitions are never changed. |
 | `swappiness` | `vm.swappiness = 10`: the kernel frees the cache of the files rather than moving the memory of processes into the swap. 0 leads to the OOM killer sooner. | `/etc/sysctl.d/60-vpsmanager.conf`, applied at once by `sysctl -p`. `vm.swappiness` in `/etc/sysctl.conf` and other files of `/etc/sysctl.d` is commented out. |
 | `swap-refresh` | cron of `swap:refresh` at 3:00 | `/etc/cron.d/vpsmanager-swap-refresh`, see below. |
-| `mysql` | `innodb_buffer_pool_size`: RAM ≤ 2 GB: 25 %, ≤ 4 GB: 30 %, ≤ 16 GB: 40 %, more: 50 % (70-80 % holds for a dedicated database server only), at most 1.5 × the InnoDB data and indexes, 128 MB at least, a multiple of chunk × instances (1 instance below 1 GB, 1 per GB up to 8). `performance_schema = OFF` up to 4 GB of RAM (it takes 200-400 MB). Fixed options of all servers: `innodb_ft_min_token_size = 2` and `innodb_ft_enable_stopword = OFF` (fulltext finds words of 2 characters), `table_open_cache = 4000` (more is cut by `open_files_limit` of systemd anyway), `innodb_redo_log_capacity = 512M` (MySQL ≥ 8.0.30, replaces `innodb_log_file_size`), `log_error_verbosity = 2` (warnings stay in the log) and `disable_log_bin` (not on a server which replicates). | `/etc/mysql/mysql.conf.d/zz-vpsmanager.cnf` (read as the last one), the same options in the other option files of the `[mysqld]` sections are commented out (e.g. `innodb_buffer_pool_size=1G` after `!includedir` of `/etc/mysql/mysql.cnf`, which would win). `mysqld --validate-config` checks the files, an error puts them back. The buffer pool is resized online (`SET GLOBAL`) when the running chunk × instances allow it, `performance_schema` and other sizes need a restart, which asks (default no) or takes effect with the next restart. Dynamic fixed options are set online (`SET GLOBAL`), `innodb_ft_min_token_size` and `disable_log_bin` need a restart. `innodb_log_file_size`, `innodb_log_files_in_group`, `log_bin`, `binlog_expire_logs_seconds` and `replica_parallel_workers` of the other files are commented out (the binary log and the replication options stay on a server which replicates). A change of the fulltext options reports the tables whose FULLTEXT indexes need a rebuild. |
+| `mysql` | `innodb_buffer_pool_size`: RAM ≤ 2 GB: 25 %, ≤ 4 GB: 30 %, ≤ 16 GB: 40 %, more: 50 % (70-80 % holds for a dedicated database server only), at most 1.5 × the InnoDB data and indexes, 128 MB at least, a multiple of chunk × instances (1 instance below 1 GB, 1 per GB up to 8). `performance_schema = OFF` up to 4 GB of RAM (it takes 200-400 MB). Fixed options of all servers: `innodb_ft_min_token_size = 2` and `innodb_ft_enable_stopword = OFF` (fulltext finds words of 2 characters), `table_open_cache = 4000` (more is cut by `open_files_limit` of systemd anyway), `innodb_redo_log_capacity = 512M` (MySQL ≥ 8.0.30, replaces `innodb_log_file_size`), `log_error_verbosity = 2` (warnings stay in the log), `disable_log_bin` (not on a server which replicates) and `bind_address = 127.0.0.1` with `mysqlx_bind_address = 127.0.0.1` when no user may connect from another host (packages of MySQL listen on all addresses, ports 3306 and 33060 were open to the internet). | `/etc/mysql/mysql.conf.d/zz-vpsmanager.cnf` (read as the last one), the same options in the other option files of the `[mysqld]` sections are commented out (e.g. `innodb_buffer_pool_size=1G` after `!includedir` of `/etc/mysql/mysql.cnf`, which would win). `mysqld --validate-config` checks the files, an error puts them back. The buffer pool is resized online (`SET GLOBAL`) when the running chunk × instances allow it, `performance_schema` and other sizes need a restart, which asks (default no) or takes effect with the next restart. Dynamic fixed options are set online (`SET GLOBAL`), `innodb_ft_min_token_size` and `disable_log_bin` need a restart. `innodb_log_file_size`, `innodb_log_files_in_group`, `log_bin`, `binlog_expire_logs_seconds` and `replica_parallel_workers` of the other files are commented out (the binary log and the replication options stay on a server which replicates). A change of the fulltext options reports the tables whose FULLTEXT indexes need a rebuild. |
 | `stunnel` | tunnels of the client mode (e.g. the CIFS mount of the backup storage through `//localhost`) accept on `127.0.0.1` only, `debug = warning`, a `pid` file | `/etc/stunnel/*.conf`: `accept = 445` listens on all addresses, SMB scanners of the internet connect through it to the remote storage and each connection writes 5 lines into the log. Tunnels of the server mode are not changed. Without a `pid` file the init script cannot stop stunnel, so the old process is stopped by its ports and stunnel is started again, not during `backup:run`. |
 | `ssh` | `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin prohibit-password` (`no` and `forced-commands-only` are kept) | `/etc/ssh/sshd_config.d/00-vpsmanager.conf`: sshd takes the first value, so it wins over `50-cloud-init.conf`. `sshd_config` gets only the missing `Include`. Asks always (default no). Stops unless `/root/.ssh/authorized_keys` has a key and this session logged in by a key (`SSH_CONNECTION` or `who -m`, `Accepted publickey` in the journal or `/var/log/auth.log`). Checks `sshd -T` before the restart (an error puts the files back), restarts by `SSH::restart()` (`sshd -t` first). Open a new login in another window before you log out. |
 
@@ -919,7 +921,7 @@ OCTANE_MAX_EXECUTION_TIME=30
 ## Updating
 
 ```bash
-cd /root/vpsmanager-cli
+cd /root/vpsmanager
 git pull
 composer install --no-plugins --no-scripts
 ```

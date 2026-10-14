@@ -122,6 +122,26 @@ class SettingsTest extends TestCase
         $this->assertSame([16 * self::GB, 1], MysqlSetting::bufferPool(32 * self::GB, 100 * self::GB, 128 * self::MB, true));
     }
 
+    public function test_buffer_pool_of_a_dedicated_database_server(): void
+    {
+        // adb1 and sdb1: 3.5 GB of RAM, 3.3 GB and 1.9 GB of data
+        $this->assertSame([2 * self::GB, 2], MysqlSetting::bufferPool((int) (3.5 * self::GB), (int) (3.3 * self::GB), 128 * self::MB, false, true));
+        $this->assertSame([2 * self::GB, 2], MysqlSetting::bufferPool((int) (3.5 * self::GB), (int) (1.9 * self::GB), 128 * self::MB, false, true));
+
+        $this->assertSame([11 * self::GB, 8], MysqlSetting::bufferPool(16 * self::GB, 100 * self::GB, 128 * self::MB, false, true));
+        $this->assertSame([48 * self::GB, 8], MysqlSetting::bufferPool(64 * self::GB, 100 * self::GB, 128 * self::MB, false, true));
+    }
+
+    public function test_names_are_not_resolved_without_users_of_host_names(): void
+    {
+        $this->assertFalse(MysqlSetting::hasHostnames(['localhost', '192.168.1.%', '127.0.0.1', '::1', '%', '10.0.0.0/255.0.0.0']));
+        $this->assertTrue(MysqlSetting::hasHostnames(['localhost', 'app.example.com']));
+
+        $names = fn (array $options) => array_column($options, 0);
+        $this->assertContains('skip_name_resolve', $names(MysqlSetting::fixedOptions('8.4.4', false, false, true, true, false)));
+        $this->assertNotContains('skip_name_resolve', $names(MysqlSetting::fixedOptions('8.4.4', false, false, true, true, true)));
+    }
+
     public function test_buffer_pool_is_limited_by_the_data(): void
     {
         // 1.5 × 1.4 GB of data
@@ -139,7 +159,7 @@ class SettingsTest extends TestCase
 
         // MySQL 8.0.46 of wms, 9.7 of ms
         $this->assertSame(
-            ['innodb_ft_min_token_size', 'innodb_ft_enable_stopword', 'table_open_cache', 'innodb_redo_log_capacity', 'log_error_verbosity', 'disable_log_bin'],
+            ['innodb_ft_min_token_size', 'innodb_ft_enable_stopword', 'table_open_cache', 'innodb_redo_log_capacity', 'log_error_verbosity', 'disable_log_bin', 'bind_address'],
             $names(MysqlSetting::fixedOptions('8.0.46', false, false)),
         );
         $this->assertSame($names(MysqlSetting::fixedOptions('8.0.46', false, false)), $names(MysqlSetting::fixedOptions('9.7.2', false, false)));
@@ -152,9 +172,26 @@ class SettingsTest extends TestCase
 
         // MariaDB has no redo capacity, log_error_verbosity nor disable_log_bin
         $this->assertSame(
-            ['innodb_ft_min_token_size', 'innodb_ft_enable_stopword', 'table_open_cache'],
+            ['innodb_ft_min_token_size', 'innodb_ft_enable_stopword', 'table_open_cache', 'bind_address'],
             $names(MysqlSetting::fixedOptions('10.11.6', true, false)),
         );
+    }
+
+    public function test_mysql_listens_on_localhost_without_remote_users(): void
+    {
+        $names = fn (array $options) => array_column($options, 0);
+
+        $this->assertContains('bind_address', $names(MysqlSetting::fixedOptions('9.7.2', false, false, false, true)));
+        $this->assertContains('mysqlx_bind_address', $names(MysqlSetting::fixedOptions('9.7.2', false, false, false, true)));
+        $this->assertNotContains('mysqlx_bind_address', $names(MysqlSetting::fixedOptions('9.7.2', false, false, false, false)));
+
+        // A database server of the web servers in the LAN (users @192.168.1.%) keeps its address
+        $this->assertNotContains('bind_address', $names(MysqlSetting::fixedOptions('8.0.45', false, false, true, true)));
+        $this->assertNotContains('bind_address', $names(MysqlSetting::fixedOptions('8.0.45', false, true, false, true)));
+
+        // bind-address of mysqld.cnf is commented out, the managed file sets it
+        [, $lines] = MysqlSetting::disableOptions("[mysqld]\nbind-address = 0.0.0.0\n", array_column(MysqlSetting::fixedOptions('8.0.45', false, false), 0), 'off');
+        $this->assertSame(['bind-address = 0.0.0.0'], $lines);
     }
 
     public function test_obsolete_options_are_commented_out(): void

@@ -40,9 +40,12 @@ class MysqlSetting extends Setting
      * @param  string  $version  e.g. 8.0.46
      * @param  bool  $mariadb
      * @param  bool  $replication  the server is a source or a replica
+     * @param  bool  $remote  a user may connect from another host
+     * @param  bool  $mysqlx  the X Plugin (port 33060) is active
+     * @param  bool  $hostnames  a user is defined by a host name, which needs the resolving of the clients
      * @return array
      */
-    public static function fixedOptions(string $version, bool $mariadb, bool $replication): array
+    public static function fixedOptions(string $version, bool $mariadb, bool $replication, bool $remote = false, bool $mysqlx = false, bool $hostnames = true): array
     {
         $mysql = ! $mariadb;
 
@@ -69,7 +72,38 @@ class MysqlSetting extends Setting
             $options[] = ['disable_log_bin', null, 'log_bin', '0', false];
         }
 
+        // No DNS lookup of every new connection of a client
+        if (! $hostnames) {
+            $options[] = ['skip_name_resolve', 'ON', 'skip_name_resolve', '1', false];
+        }
+
+        // Without a remote user the ports 3306 and 33060 are open to the scanners of the internet only
+        if (! $remote && ! $replication) {
+            $options[] = ['bind_address', '127.0.0.1', 'bind_address', '127.0.0.1', false];
+
+            if ($mysqlx) {
+                $options[] = ['mysqlx_bind_address', '127.0.0.1', 'mysqlx_bind_address', '127.0.0.1', false];
+            }
+        }
+
         return $options;
+    }
+
+    /**
+     * Determine if a host of the users is a host name, not localhost nor an address or its pattern.
+     *
+     * @param  array  $hosts  e.g. localhost, 192.168.1.%, 10.0.0.0/255.0.0.0, app.example.com
+     * @return bool
+     */
+    public static function hasHostnames(array $hosts): bool
+    {
+        foreach ($hosts as $host) {
+            if ($host !== 'localhost' && ! preg_match('/^[0-9a-f.:%_\/]+$/i', $host)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -114,13 +148,18 @@ class MysqlSetting extends Setting
      * @param  int  $data  data and indexes of the InnoDB tables
      * @param  int  $chunk  innodb_buffer_pool_chunk_size
      * @param  bool  $mariadb  MariaDB has no instances of the buffer pool
+     * @param  bool  $dedicated  a database server without NGINX and PHP-FPM
      * @return array [size, instances]
      */
-    public static function bufferPool(int $ram, int $data, int $chunk = 128 * SystemInfo::MB, bool $mariadb = false): array
+    public static function bufferPool(int $ram, int $data, int $chunk = 128 * SystemInfo::MB, bool $mariadb = false, bool $dedicated = false): array
     {
         $gb = SystemInfo::GB;
 
-        $percent = match (true) {
+        $percent = $dedicated ? match (true) {
+            $ram <= 4 * $gb => 60,
+            $ram <= 16 * $gb => 70,
+            default => 75,
+        } : match (true) {
             $ram <= 2 * $gb => 25,
             $ram <= 4 * $gb => 30,
             $ram <= 16 * $gb => 40,
@@ -286,7 +325,13 @@ class MysqlSetting extends Setting
 
             $mariadb = stripos($variables['version'], 'mariadb') !== false;
             $replication = $this->isReplicated($mysql, $mariadb);
-            $fixed = static::fixedOptions($this->version($variables['version']), $mariadb, $replication);
+            $hosts = array_column($mysql->query('SELECT DISTINCT host FROM mysql.user')->fetch_all(), 0);
+            $remote = array_diff($hosts, ['localhost', '127.0.0.1', '::1']) !== [];
+            $mysqlx = ! $mariadb && (int) $mysql->query("SELECT COUNT(*) FROM information_schema.plugins WHERE plugin_name = 'mysqlx' AND plugin_status = 'ACTIVE'")->fetch_row()[0] > 0;
+            $fixed = static::fixedOptions($this->version($variables['version']), $mariadb, $replication, $remote, $mysqlx, static::hasHostnames($hosts));
+
+            $connections = [$mysql->query('SELECT @@max_connections')->fetch_row()[0], $mysql->query("SHOW GLOBAL STATUS LIKE 'Max_used_connections'")->fetch_row()[1] ?? null];
+            $telescope = $mysql->query("SELECT table_schema, ROUND((data_length + index_length) / 1048576) FROM information_schema.tables WHERE table_name = 'telescope_entries' AND data_length + index_length > 268435456")->fetch_all();
 
             $select = implode(', ', array_map(fn ($option) => '@@'.$option[2].' AS `'.$option[2].'`', $fixed));
             $current = $mysql->query('SELECT '.$select)->fetch_assoc();
@@ -297,7 +342,9 @@ class MysqlSetting extends Setting
 
         $ram = SystemInfo::ram();
         $chunk = max((int) $variables['chunk'], 128 * SystemInfo::MB);
-        [$size, $instances] = static::bufferPool($ram, $data, $chunk, $mariadb);
+        // A database server alone keeps most of RAM for the buffer pool
+        $dedicated = ! $this->run('pgrep -x nginx') && ! $this->run('pgrep -f "php-fpm: master"');
+        [$size, $instances] = static::bufferPool($ram, $data, $chunk, $mariadb, $dedicated);
 
         $state = [
             'installed' => true,
@@ -315,6 +362,18 @@ class MysqlSetting extends Setting
             'warnings' => [],
             'conflicts' => [],
         ];
+
+        if ($dedicated) {
+            $state['warnings'][] = 'A database server without NGINX and PHP-FPM, the buffer pool takes '.(int) round($size / max($ram, 1) * 100).' % of RAM.';
+        }
+
+        if ($connections[1] !== null && (int) $connections[1] >= (int) $connections[0]) {
+            $state['warnings'][] = 'max_connections '.$connections[0].' has been reached ('.$connections[1].' connections), the applications got "Too many connections".';
+        }
+
+        foreach ($telescope as [$schema, $megabytes]) {
+            $state['warnings'][] = 'Telescope of '.$schema.' has '.$megabytes.' MB (telescope_entries), prune it (telescope:prune) or turn it off in production.';
+        }
 
         if (! $directory = $this->directory()) {
             $state['warnings'][] = 'No option files of MySQL in /etc/mysql, the buffer pool is not changed.';
