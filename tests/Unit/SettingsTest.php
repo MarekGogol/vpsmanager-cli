@@ -162,10 +162,16 @@ class SettingsTest extends TestCase
         rmdir($directory);
     }
 
-    public function test_names_are_not_resolved_without_users_of_host_names(): void
+    public function test_names_are_resolved_for_application_users_of_localhost(): void
     {
-        $this->assertFalse(MysqlSetting::hasHostnames(['localhost', '192.168.1.%', '127.0.0.1', '::1', '%', '10.0.0.0/255.0.0.0']));
-        $this->assertTrue(MysqlSetting::hasHostnames(['localhost', 'app.example.com']));
+        // adb1, sdb1: the applications connect from the LAN
+        $this->assertFalse(MysqlSetting::needsResolving([['root', 'localhost'], ['api', '192.168.1.%'], ['debian-sys-maint', 'localhost'], ['mysql.sys', 'localhost']]));
+
+        // qualit, ms: Laravel connects to 127.0.0.1 as alkoholonline_sk@localhost, which needs the resolved name
+        $this->assertTrue(MysqlSetting::needsResolving([['root', 'localhost'], ['alkoholonline_sk', 'localhost']]));
+
+        // A user of a host name
+        $this->assertTrue(MysqlSetting::needsResolving([['api', 'app.example.com']]));
 
         $names = fn (array $options) => array_column($options, 0);
         $this->assertContains('skip_name_resolve', $names(MysqlSetting::fixedOptions('8.4.4', false, false, true, true, false)));

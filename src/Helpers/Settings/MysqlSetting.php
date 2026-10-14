@@ -42,7 +42,7 @@ class MysqlSetting extends Setting
      * @param  bool  $replication  the server is a source or a replica
      * @param  bool  $remote  a user may connect from another host
      * @param  bool  $mysqlx  the X Plugin (port 33060) is active
-     * @param  bool  $hostnames  a user is defined by a host name, which needs the resolving of the clients
+     * @param  bool  $hostnames  the names of the clients must be resolved, see needsResolving()
      * @return array
      */
     public static function fixedOptions(string $version, bool $mariadb, bool $replication, bool $remote = false, bool $mysqlx = false, bool $hostnames = true): array
@@ -77,7 +77,7 @@ class MysqlSetting extends Setting
             $options[] = ['disable_log_bin', null, 'log_bin', '0', false];
         }
 
-        // No DNS lookup of every new connection of a client
+        // No DNS lookup of every new connection, only on a database server of the clients of the LAN
         if (! $hostnames) {
             $options[] = ['skip_name_resolve', 'ON', 'skip_name_resolve', '1', false];
         }
@@ -114,14 +114,22 @@ class MysqlSetting extends Setting
     }
 
     /**
-     * Determine if a host of the users is a host name, not localhost nor an address or its pattern.
+     * Determine if the server must resolve the names of its clients: a user is defined by a host name, or an
+     * application user is defined @localhost. A client over TCP from 127.0.0.1 matches user@localhost only by the
+     * resolved name, with skip_name_resolve it gets "Host '127.0.0.1' is not allowed" (Laravel connects to 127.0.0.1).
      *
-     * @param  array  $hosts  e.g. localhost, 192.168.1.%, 10.0.0.0/255.0.0.0, app.example.com
+     * @param  array  $users  list of [user, host]
      * @return bool
      */
-    public static function hasHostnames(array $hosts): bool
+    public static function needsResolving(array $users): bool
     {
-        foreach ($hosts as $host) {
+        $system = ['root', 'debian-sys-maint', 'mysql.sys', 'mysql.session', 'mysql.infoschema'];
+
+        foreach ($users as [$user, $host]) {
+            if ($host === 'localhost' && ! in_array($user, $system, true)) {
+                return true;
+            }
+
             if ($host !== 'localhost' && ! preg_match('/^[0-9a-f.:%_\/]+$/i', $host)) {
                 return true;
             }
@@ -349,10 +357,10 @@ class MysqlSetting extends Setting
 
             $mariadb = stripos($variables['version'], 'mariadb') !== false;
             $replication = $this->isReplicated($mysql, $mariadb);
-            $hosts = array_column($mysql->query('SELECT DISTINCT host FROM mysql.user')->fetch_all(), 0);
-            $remote = array_diff($hosts, ['localhost', '127.0.0.1', '::1']) !== [];
+            $users = $mysql->query('SELECT user, host FROM mysql.user')->fetch_all();
+            $remote = array_diff(array_column($users, 1), ['localhost', '127.0.0.1', '::1']) !== [];
             $mysqlx = ! $mariadb && (int) $mysql->query("SELECT COUNT(*) FROM information_schema.plugins WHERE plugin_name = 'mysqlx' AND plugin_status = 'ACTIVE'")->fetch_row()[0] > 0;
-            $fixed = static::fixedOptions($this->version($variables['version']), $mariadb, $replication, $remote, $mysqlx, static::hasHostnames($hosts));
+            $fixed = static::fixedOptions($this->version($variables['version']), $mariadb, $replication, $remote, $mysqlx, static::needsResolving($users));
 
             [$datadir, $logBin] = $mysql->query('SELECT @@datadir, @@log_bin')->fetch_row();
             $logBin = (bool) $logBin;
