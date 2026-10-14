@@ -6,7 +6,7 @@ use Closure;
 use Symfony\Component\Console\Output\OutputInterface;
 
 /*
- * Pools of PHP-FPM: the default pool www of a version, which no NGINX host uses, is turned off, every pool restarts
+ * Pools of PHP-FPM: the default pool www of a version, which no NGINX host uses, is turned off (moved into the backups), every pool restarts
  * its processes after pm.max_requests requests (the memory of a process grows with the requests), small pools
  * (pm.max_children up to 5) start their processes on demand and have none while the website is idle.
  */
@@ -20,11 +20,6 @@ class PhpFpmSetting extends Setting
     const SMALL_POOL = 5;
 
     const IDLE_TIMEOUT = '10s';
-
-    /**
-     * Suffix of a turned off pool, php-fpm reads only *.conf.
-     */
-    const DISABLED = '.vpsmanager-disabled';
 
     /**
      * Key of the setting used by --only.
@@ -175,7 +170,7 @@ class PhpFpmSetting extends Setting
             $used = $pool['listen'] === '' || str_contains($nginx, $pool['listen']) || ($pool['name'] === 'www' && str_contains($nginx, 'php-fpm.sock'));
 
             if ($pool['name'] === 'www' && ! $used && $versions[$pool['version']] > 1) {
-                $disable[] = $path;
+                $disable[$path] = $pool['name'];
 
                 continue;
             }
@@ -242,7 +237,7 @@ class PhpFpmSetting extends Setting
             return [];
         }
 
-        $plan = $state['disable'] ? ['turn off unused www: '.implode(', ', array_map(fn ($path) => basename(dirname($path, 3)), $state['disable']))] : [];
+        $plan = $state['disable'] ? ['turn off unused www: '.implode(', ', array_map(fn ($path) => basename(dirname($path, 3)), array_keys($state['disable'])))] : [];
 
         // Pools grouped by their changes, e.g. "pm.max_requests 500, ondemand: kampo.sk (7.4), haus.sk (8.3)"
         $groups = [];
@@ -284,22 +279,29 @@ class PhpFpmSetting extends Setting
             }
         }
 
-        foreach ($state['disable'] as $path) {
-            $previous[$path] = file_get_contents($path);
+        $moved = [];
+
+        foreach (array_keys($state['disable']) as $path) {
             $versions[basename(dirname($path, 3))] = true;
-            rename($path, $path.self::DISABLED);
-            $output->writeln('Turned off <info>'.$path.'</info> (renamed to '.basename($path).self::DISABLED.').');
+
+            if (! $moved[$path] = $this->moveToBackup($path)) {
+                $output->writeln('<error>'.$path.' could not be moved.</error>');
+
+                return $this->restore($previous, $output, 'The pools have been restored.');
+            }
+
+            $output->writeln('Turned off <info>'.$path.'</info> (moved to '.$moved[$path].').');
         }
 
         foreach (array_keys($versions) as $version) {
             if (! $this->run('php-fpm'.$version.' -t', $lines)) {
                 $output->writeln('<error>php-fpm'.$version.' -t failed: '.implode(' ', $lines).'</error>');
 
-                foreach ($state['disable'] as $path) {
-                    @rename($path.self::DISABLED, $path);
+                foreach ($moved as $path => $backup) {
+                    @copy($backup, $path);
                 }
 
-                return $this->restore(array_diff_key($previous, array_flip($state['disable'])), $output, 'The pools have been restored.');
+                return $this->restore($previous, $output, 'The pools have been restored.');
             }
         }
 
@@ -400,9 +402,9 @@ class PhpFpmSetting extends Setting
     {
         $names = [];
 
-        foreach ($this->state()['disable'] as $path) {
-            if (basename(dirname($path, 3)) === $version && preg_match('/^\s*\[([^\]]+)\]/m', (string) @file_get_contents($path.self::DISABLED), $match)) {
-                $names[] = $match[1];
+        foreach ($this->state()['disable'] as $path => $name) {
+            if (basename(dirname($path, 3)) === $version) {
+                $names[] = $name;
             }
         }
 

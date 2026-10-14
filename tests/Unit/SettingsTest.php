@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use Gogol\VpsManagerCLI\Helpers\Settings\JournaldSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\MysqlSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\PhpFpmSetting;
+use Gogol\VpsManagerCLI\Helpers\Settings\Setting;
 use Gogol\VpsManagerCLI\Helpers\Settings\SshSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\StunnelSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\SwappinessSetting;
@@ -18,6 +19,14 @@ class SettingsTest extends TestCase
     const MB = SystemInfo::MB;
 
     const GB = SystemInfo::GB;
+
+    public function test_backups_of_a_run_keep_the_original_paths(): void
+    {
+        $time = mktime(22, 30, 0, 10, 14, 2026);
+
+        $this->assertSame('/var/backups/vpsmanager/20261014-223000/etc/php/8.3/fpm/pool.d/kampo.sk.conf', Setting::backupPath('/etc/php/8.3/fpm/pool.d/kampo.sk.conf', $time));
+        $this->assertSame('/var/backups/vpsmanager/20261014-223000/etc/fstab', Setting::backupPath('/etc/fstab', $time));
+    }
 
     public function test_nominal_ram_rounds_up_the_reserved_memory(): void
     {

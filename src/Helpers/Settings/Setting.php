@@ -18,6 +18,11 @@ abstract class Setting
     const MANAGED = 'Managed by VPS Manager (setup:run), changes are overwritten.';
 
     /**
+     * Backups of the changed files, a directory of each run with the original paths of the files.
+     */
+    const BACKUPS = '/var/backups/vpsmanager';
+
+    /**
      * State read from the system by inspect().
      *
      * @var array|null
@@ -116,7 +121,8 @@ abstract class Setting
     }
 
     /**
-     * Path of the backup of a file before its change.
+     * Path of the backup of a file before its change, e.g.
+     * /var/backups/vpsmanager/20261014-223000/etc/php/8.3/fpm/pool.d/kampo.sk.conf.
      *
      * @param  string  $path
      * @param  int|null  $time
@@ -124,11 +130,28 @@ abstract class Setting
      */
     public static function backupPath(string $path, ?int $time = null): string
     {
-        return $path.'.vpsmanager-'.date('Ymd-His', $time ?? time()).'.bak';
+        return self::BACKUPS.'/'.date('Ymd-His', $time ?? time()).'/'.ltrim($path, '/');
     }
 
     /**
-     * Copy the file next to itself before its change.
+     * Create the directory of the backup of the file, readable by root only.
+     *
+     * @param  string  $backup
+     * @return void
+     */
+    protected function prepareBackup(string $backup): void
+    {
+        if (! is_dir(self::BACKUPS)) {
+            mkdir(self::BACKUPS, 0700, true);
+        }
+
+        if (! is_dir(dirname($backup))) {
+            mkdir(dirname($backup), 0700, true);
+        }
+    }
+
+    /**
+     * Copy the file into the backups of this run before its change.
      *
      * @param  string  $path
      * @return string|null path of the backup, null when the file does not exist
@@ -142,8 +165,27 @@ abstract class Setting
         $backup = static::backupPath($path, static::$backupTime ??= time());
 
         if (! file_exists($backup)) {
+            $this->prepareBackup($backup);
             copy($path, $backup);
             chmod($backup, fileperms($path) & 0777);
+        }
+
+        return $backup;
+    }
+
+    /**
+     * Move the file into the backups of this run, e.g. a turned off pool of PHP-FPM.
+     *
+     * @param  string  $path
+     * @return string|null path of the backup, null when the file could not be moved
+     */
+    protected function moveToBackup(string $path): ?string
+    {
+        $backup = static::backupPath($path, static::$backupTime ??= time());
+        $this->prepareBackup($backup);
+
+        if (! @rename($path, $backup) && ! (copy($path, $backup) && unlink($path))) {
+            return null;
         }
 
         return $backup;
