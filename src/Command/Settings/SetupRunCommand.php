@@ -5,6 +5,7 @@ namespace Gogol\VpsManagerCLI\Command\Settings;
 use Gogol\VpsManagerCLI\Helpers\Settings\MysqlSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\Setting;
 use Gogol\VpsManagerCLI\Helpers\Settings\SshSetting;
+use Gogol\VpsManagerCLI\Helpers\Settings\StunnelSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\SwappinessSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\SwapRefreshSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\SwapSetting;
@@ -26,7 +27,7 @@ class SetupRunCommand extends Command
     protected function configure(): void
     {
         $this->setName('setup:run')
-            ->setDescription('Set the recommended settings of the server: swap, vm.swappiness, swap refresh, memory of MySQL, SSH by keys only')
+            ->setDescription('Set the recommended settings of the server: swap, vm.swappiness, swap refresh, memory of MySQL, stunnel on localhost, SSH by keys only')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Only print the table of the settings, nothing is changed')
             ->addOption('only', null, InputOption::VALUE_REQUIRED, 'Only the given settings separated by commas: '.implode(',', array_keys($this->settings())))
             ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Apply without questions, the risky steps (SSH, restart of MySQL) included');
@@ -41,7 +42,7 @@ class SetupRunCommand extends Command
     {
         $settings = [];
 
-        foreach ([new SwapSetting(), new SwappinessSetting(), new SwapRefreshSetting(), new MysqlSetting(), new SshSetting()] as $setting) {
+        foreach ([new SwapSetting(), new SwappinessSetting(), new SwapRefreshSetting(), new MysqlSetting(), new StunnelSetting(), new SshSetting()] as $setting) {
             $settings[$setting->key()] = $setting;
         }
 

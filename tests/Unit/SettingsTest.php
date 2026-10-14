@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use Gogol\VpsManagerCLI\Helpers\Settings\MysqlSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\SshSetting;
+use Gogol\VpsManagerCLI\Helpers\Settings\StunnelSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\SwappinessSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\SwapRefresh;
 use Gogol\VpsManagerCLI\Helpers\Settings\SwapSetting;
@@ -276,6 +277,41 @@ class SettingsTest extends TestCase
         $this->assertTrue(SshSetting::isKey('sk-ssh-ed25519@openssh.com AAAAGnNr'));
         $this->assertFalse(SshSetting::isKey('# ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI'));
         $this->assertFalse(SshSetting::isKey(''));
+    }
+
+    public function test_client_tunnels_of_stunnel_accept_on_localhost_only(): void
+    {
+        // /etc/stunnel/stunnel.conf of qualit, with the trailing spaces
+        $content = "[samba445] \naccept = 445 \nclient = yes \nconnect = 33643.s43.wedos.net:446\n[samba139]\naccept = 139 \nclient = yes \nconnect = 33643.s43.wedos.net:140\n";
+
+        [$rewritten, $changes] = StunnelSetting::rewrite($content);
+
+        $this->assertSame(
+            "debug = warning\npid = /run/stunnel4/stunnel.pid\n\n[samba445] \naccept = 127.0.0.1:445\nclient = yes \nconnect = 33643.s43.wedos.net:446\n[samba139]\naccept = 127.0.0.1:139\nclient = yes \nconnect = 33643.s43.wedos.net:140\n",
+            $rewritten,
+        );
+        $this->assertSame(['samba445 accept 445 -> 127.0.0.1:445', 'samba139 accept 139 -> 127.0.0.1:139', 'debug notice -> warning', 'pid file'], $changes);
+
+        // A second run changes nothing
+        $this->assertSame([$rewritten, []], StunnelSetting::rewrite($rewritten));
+    }
+
+    public function test_server_tunnels_and_the_debug_level_of_stunnel(): void
+    {
+        // A tunnel of the server mode stays public, debug 7 is lowered
+        [$rewritten, $changes] = StunnelSetting::rewrite("pid = /run/s.pid\ndebug = 7\n[https]\naccept = 0.0.0.0:443\nconnect = 80\n");
+
+        $this->assertSame("pid = /run/s.pid\ndebug = warning\n[https]\naccept = 0.0.0.0:443\nconnect = 80\n", $rewritten);
+        $this->assertSame(['debug 7 -> warning'], $changes);
+
+        $this->assertSame([], StunnelSetting::rewrite("debug = 4\npid = /run/s.pid\n[smb]\nclient = yes\naccept = localhost:445\n")[1]);
+
+        $this->assertSame('/run/stunnel4/backup.pid', StunnelSetting::pidPath('/etc/stunnel/backup.conf'));
+        $this->assertTrue(StunnelSetting::isLocal('127.0.0.1:445'));
+        $this->assertTrue(StunnelSetting::isLocal('[::1]:445'));
+        $this->assertFalse(StunnelSetting::isLocal('445'));
+        $this->assertFalse(StunnelSetting::isLocal('0.0.0.0:445'));
+        $this->assertFalse(StunnelSetting::isLocal(':::445'));
     }
 
     public function test_swap_refresh_keeps_enough_free_ram(): void
