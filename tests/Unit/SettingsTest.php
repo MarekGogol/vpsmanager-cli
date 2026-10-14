@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use Gogol\VpsManagerCLI\Helpers\Settings\AptKeysSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\JournaldSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\MysqlSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\PhpFpmSetting;
@@ -419,6 +420,51 @@ class SettingsTest extends TestCase
     public function test_stub_of_a_new_pool_is_tuned_already(): void
     {
         $this->assertSame([], PhpFpmSetting::tune((string) file_get_contents(__DIR__.'/../../src/Stub/php-pool.conf'))[1]);
+    }
+
+    public function test_expired_keys_of_apt_are_found(): void
+    {
+        // gpg --show-keys --with-colons of the old key of MySQL and of a keyring with two keys
+        $colons = implode("\n", [
+            'pub:e:4096:1:B7B3B788A8D3785C:1698019200:1761091200::-:::sc::::::23::0:',
+            'fpr:::::::::BCA43417C3B485DD128EC6D4B7B3B788A8D3785C:',
+            'uid:e::::1698019200::0D2A::MySQL Release Engineering <mysql-build@oss.oracle.com>::::::::::0:',
+            'sub:e:4096:1:C2A3B2D4E5F60718:1698019200:1761091200:::::e::::::23:',
+            'fpr:::::::::1111111111111111111111111111111111111111:',
+            'pub:-:3072:1:B188E2B695BD4743:1552910400:1833148800::-:::scSC::::::23::0:',
+            'fpr:::::::::15058500A0235D97F5D10063B188E2B695BD4743:',
+            'uid:-::::1552910400::1C2B::DEB.SURY.ORG Automatic Signing Key <deb@sury.org>::::::::::0:',
+        ]);
+
+        $keys = AptKeysSetting::parseKeys($colons, mktime(0, 0, 0, 10, 14, 2026));
+
+        $this->assertCount(2, $keys);
+        $this->assertSame('BCA43417C3B485DD128EC6D4B7B3B788A8D3785C', $keys[0]['fingerprint']);
+        $this->assertSame('MySQL Release Engineering <mysql-build@oss.oracle.com>', $keys[0]['uid']);
+        $this->assertTrue($keys[0]['expired']);
+        $this->assertSame('15058500A0235D97F5D10063B188E2B695BD4743', $keys[1]['fingerprint']);
+        $this->assertFalse($keys[1]['expired']);
+
+        // Both are keys the setting renews
+        $this->assertArrayHasKey($keys[0]['fingerprint'], AptKeysSetting::KNOWN);
+        $this->assertArrayHasKey($keys[1]['fingerprint'], AptKeysSetting::KNOWN);
+    }
+
+    public function test_keyrings_of_the_sources_and_the_end_of_life(): void
+    {
+        $this->assertSame(
+            ['/usr/share/keyrings/mysql-apt-config.gpg', '/usr/share/keyrings/deb.sury.org-php.gpg', '/etc/apt/keyrings/openvpn.asc'],
+            AptKeysSetting::keyringsOf([
+                "deb [signed-by=/usr/share/keyrings/mysql-apt-config.gpg] http://repo.mysql.com/apt/debian/ bookworm mysql-8.4-lts\n"
+                ."deb-src [signed-by=/usr/share/keyrings/mysql-apt-config.gpg] http://repo.mysql.com/apt/debian/ bookworm mysql-8.4-lts\n",
+                "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ bookworm main\n",
+                "Types: deb\nURIs: https://build.openvpn.net/debian/openvpn/stable\nSigned-By: /etc/apt/keyrings/openvpn.asc\n",
+            ]),
+        );
+
+        $this->assertSame('2023-05-31', AptKeysSetting::endOfLife('ubuntu', '18.04'));
+        $this->assertSame('2028-06-30', AptKeysSetting::endOfLife('debian', '12'));
+        $this->assertNull(AptKeysSetting::endOfLife('alpine', '3.20'));
     }
 
     public function test_swap_refresh_keeps_enough_free_ram(): void

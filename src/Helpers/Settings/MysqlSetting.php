@@ -359,7 +359,8 @@ class MysqlSetting extends Setting
             $connections = [$mysql->query('SELECT @@max_connections')->fetch_row()[0], $mysql->query("SHOW GLOBAL STATUS LIKE 'Max_used_connections'")->fetch_row()[1] ?? null];
             $telescope = $mysql->query("SELECT table_schema, ROUND((data_length + index_length) / 1048576) FROM information_schema.tables WHERE table_name = 'telescope_entries' AND data_length + index_length > 268435456")->fetch_all();
 
-            $select = implode(', ', array_map(fn ($option) => '@@'.$option[2].' AS `'.$option[2].'`', $fixed));
+            // The global values, a variable of the session keeps the value of the connect
+            $select = implode(', ', array_map(fn ($option) => '@@GLOBAL.'.$option[2].' AS `'.$option[2].'`', $fixed));
             $current = $mysql->query('SELECT '.$select)->fetch_assoc();
             $fulltext = (int) $mysql->query("SELECT COUNT(DISTINCT table_schema, table_name) FROM information_schema.statistics WHERE index_type = 'FULLTEXT'")->fetch_row()[0];
         } catch (Throwable $e) {
@@ -702,7 +703,7 @@ class MysqlSetting extends Setting
         foreach ($options as [$option, $value, $variable, $expected]) {
             try {
                 $mysql->query('SET GLOBAL '.$variable.' = '.(is_numeric($expected) ? $expected : "'".$mysql->real_escape_string($value)."'"));
-                $current = (string) $mysql->query('SELECT @@'.$variable)->fetch_row()[0];
+                $current = (string) $mysql->query('SELECT @@GLOBAL.'.$variable)->fetch_row()[0];
             } catch (Throwable $e) {
                 $output->writeln('<error>'.$variable.' could not be set: '.$e->getMessage().'</error>');
 
@@ -760,7 +761,7 @@ class MysqlSetting extends Setting
 
         $output->writeln('MySQL is running: buffer pool <info>'.intdiv((int) $variables['size'], SystemInfo::MB).' MB</info>, performance_schema <info>'.($variables['ps'] ? 'ON' : 'OFF').'</info>.');
 
-        $select = implode(', ', array_map(fn ($option) => '@@'.$option[2].' AS `'.$option[2].'`', $state['fixed']));
+        $select = implode(', ', array_map(fn ($option) => '@@GLOBAL.'.$option[2].' AS `'.$option[2].'`', $state['fixed']));
         $current = $state['fixed'] ? vpsManager()->mysql()->connect()->query('SELECT '.$select)->fetch_assoc() : [];
         $differ = array_filter($state['fixed'], fn ($option) => (string) $current[$option[2]] !== $option[3]);
 
