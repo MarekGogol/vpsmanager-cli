@@ -31,6 +31,13 @@ class Backup extends Application
     private const DISK_SPACE_BUFFER = 2000;
 
     /**
+     * Lock held by a running backup:run, swap:refresh waits for its end.
+     *
+     * @var string
+     */
+    const LOCK = '/var/lib/vpsmanager/backup.lock';
+
+    /**
      * Error messages logged during the current backup run.
      *
      * @var array

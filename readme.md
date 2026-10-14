@@ -27,10 +27,11 @@ Everything is ready out of the box. You configure the features with the installa
 8. [Chroot environments](#chroot-environments)
 9. [MySQL databases](#mysql-databases)
 10. [Backups](#backups)
-11. [Laravel queues and Octane](#laravel-queues-and-octane)
-12. [Updating](#updating)
-13. [Local development with Docker](#local-development-with-docker)
-14. [Code style](#code-style)
+11. [Server settings](#server-settings)
+12. [Laravel queues and Octane](#laravel-queues-and-octane)
+13. [Updating](#updating)
+14. [Local development with Docker](#local-development-with-docker)
+15. [Code style](#code-style)
 
 ---
 
@@ -172,6 +173,7 @@ src/
 │   ├── Mysql/              # mysql:create, mysql:reset, mysql:remove
 │   ├── Backup/             # backup:setup, backup:run, backup:test-mail, backup:test-remote
 │   ├── Laravel/            # laravel:queue, laravel:octane
+│   ├── Settings/           # setup:run, swap:refresh
 │   └── Monitor/            # monitor:install, monitor:collect, monitor:listen, monitor:ip:list, monitor:ip:allow,
 │                           #   monitor:ip:deny, monitor:report
 ├── Helpers/                # the actual server logic
@@ -190,6 +192,8 @@ src/
 │   ├── Chroot.php          # chroot jail building and removal
 │   ├── Backup.php          # backups, retention, rsync, email
 │   ├── SSH.php             # sshd config test and restart
+│   ├── Settings/           # settings of setup:run, one class each (Setting.php is their base),
+│   │                       #   SystemInfo.php (memory, swaps), SwapRefresh.php (swap:refresh)
 │   ├── Stub.php            # tiny template engine for files in src/Stub
 │   └── Response.php        # success/error result object with console output
 ├── Stub/                   # templates: nginx.template.conf, nginx.redirect.conf,
@@ -767,6 +771,8 @@ web/storage/app/huge.zip
 0 4 * * * php /root/vpsmanager-cli/vpsmanager backup:run
 ```
 
+`backup:run` holds the lock `/var/lib/vpsmanager/backup.lock` until its end: a second run started meanwhile ends at once, `swap:refresh` skips the night.
+
 ### Test email notifications
 
 This command tests the SMTP configuration. A test email is sent to `email_receiver`. If it fails, the SMTP error is printed and the command exits with failure.
@@ -783,6 +789,59 @@ This command tests your remote server configuration with `ssh -i {backup_path}/.
 
 ```bash
 sudo php vpsmanager backup:test-remote
+```
+
+---
+
+## Server settings
+
+`setup:run` sets the recommended settings of a server with the web, PHP (Octane) and MySQL together. It reads the server, prints a table of the settings and applies only what differs. A second run on a set server changes nothing.
+
+```bash
+sudo php vpsmanager setup:run --dry-run               # only the table, nothing is changed
+sudo php vpsmanager setup:run                         # asks once, the risky steps ask again
+sudo php vpsmanager setup:run --only=swap,swappiness  # only the given settings
+sudo php vpsmanager setup:run --yes                   # no questions, the risky steps included
+```
+
+```
++--------------+---------------------------+---------------------------+----------------------------------------------+
+| Setting      | Current                   | Recommended               | Action                                       |
++--------------+---------------------------+---------------------------+----------------------------------------------+
+| swap         | 2.0 GB (1.4 GB used)      | 2.0 GB                    | up to date                                   |
+| swappiness   | 60                        | 10                        | write /etc/sysctl.d/60-vpsmanager.conf, …    |
+| swap-refresh | none                      | cron at 3:00              | write /etc/cron.d/vpsmanager-swap-refresh    |
+| mysql        | 1024 MB, ps=ON            | 512 MB, ps=OFF            | write zz-vpsmanager.cnf, comment out …       |
+| ssh          | password yes, root yes    | password no, root …       | write 00-vpsmanager.conf, restart ssh        |
++--------------+---------------------------+---------------------------+----------------------------------------------+
+```
+
+Why: on a server with 2 GB of RAM, a buffer pool of 1 GB, `performance_schema`, two Octane servers and the default `vm.swappiness=60` moved the active data (the buffer pool, PHP workers) into the swap. Every short peak (e.g. `monitor:collect`) then stalled the requests for 5-25 s and the OOM killer ended MySQL. Linux never empties the swap by itself, the fix is memory settings under which the active data fit into RAM.
+
+Every changed file is copied first to `<file>.vpsmanager-YYYYmmdd-HHMMSS.bak`. Files written by the command start with `Managed by VPS Manager (setup:run)`. A new setting is a new subclass of `Helpers/Settings/Setting` (`key()`, `current()`, `recommended()`, `plan()`, `apply()`, `isRisky()`) registered in `SetupRunCommand::settings()`.
+
+RAM is the nominal size: `MemTotal` rounded up to 512 MB, a server with 2 GB has `MemTotal` of about 1.9 GB.
+
+| Setting | Recommended | How |
+| --- | --- | --- |
+| `swap` | RAM < 2 GB: 2 × RAM, 2-8 GB: 1 × RAM, 8-64 GB: 0.5 × RAM (4 GB at least), over 64 GB: 4 GB. At most 10 % of the disk and 20 % of the disk stays free, less than 1 GB is no swap. A swap differing by less than 25 % is kept. | Only a swap file: `swapoff` (only when `MemAvailable` holds the used swap + 256 MB, otherwise a second file `/swapfile2` adds the missing size), `fallocate` (`dd` on btrfs, xfs or when it fails), `chmod 600`, `mkswap`, `swapon`, one line in `/etc/fstab`. Swap partitions are never changed. |
+| `swappiness` | `vm.swappiness = 10`: the kernel frees the cache of the files rather than moving the memory of processes into the swap. 0 leads to the OOM killer sooner. | `/etc/sysctl.d/60-vpsmanager.conf`, applied at once by `sysctl -p`. `vm.swappiness` in `/etc/sysctl.conf` and other files of `/etc/sysctl.d` is commented out. |
+| `swap-refresh` | cron of `swap:refresh` at 3:00 | `/etc/cron.d/vpsmanager-swap-refresh`, see below. |
+| `mysql` | `innodb_buffer_pool_size`: RAM ≤ 2 GB: 25 %, ≤ 4 GB: 30 %, ≤ 16 GB: 40 %, more: 50 % (70-80 % holds for a dedicated database server only), at most 1.5 × the InnoDB data and indexes, 128 MB at least, a multiple of chunk × instances (1 instance below 1 GB, 1 per GB up to 8). `performance_schema = OFF` up to 4 GB of RAM (it takes 200-400 MB). Fixed options of all servers: `innodb_ft_min_token_size = 2` and `innodb_ft_enable_stopword = OFF` (fulltext finds words of 2 characters), `table_open_cache = 4000` (more is cut by `open_files_limit` of systemd anyway), `innodb_redo_log_capacity = 512M` (MySQL ≥ 8.0.30, replaces `innodb_log_file_size`), `log_error_verbosity = 2` (warnings stay in the log) and `disable_log_bin` (not on a server which replicates). | `/etc/mysql/mysql.conf.d/zz-vpsmanager.cnf` (read as the last one), the same options in the other option files of the `[mysqld]` sections are commented out (e.g. `innodb_buffer_pool_size=1G` after `!includedir` of `/etc/mysql/mysql.cnf`, which would win). `mysqld --validate-config` checks the files, an error puts them back. The buffer pool is resized online (`SET GLOBAL`) when the running chunk × instances allow it, `performance_schema` and other sizes need a restart, which asks (default no) or takes effect with the next restart. Dynamic fixed options are set online (`SET GLOBAL`), `innodb_ft_min_token_size` and `disable_log_bin` need a restart. `innodb_log_file_size`, `innodb_log_files_in_group`, `log_bin`, `binlog_expire_logs_seconds` and `replica_parallel_workers` of the other files are commented out (the binary log and the replication options stay on a server which replicates). A change of the fulltext options reports the tables whose FULLTEXT indexes need a rebuild. |
+| `ssh` | `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin prohibit-password` (`no` and `forced-commands-only` are kept) | `/etc/ssh/sshd_config.d/00-vpsmanager.conf`: sshd takes the first value, so it wins over `50-cloud-init.conf`. `sshd_config` gets only the missing `Include`. Asks always (default no). Stops unless `/root/.ssh/authorized_keys` has a key and this session logged in by a key (`SSH_CONNECTION` or `who -m`, `Accepted publickey` in the journal or `/var/log/auth.log`). Checks `sshd -T` before the restart (an error puts the files back), restarts by `SSH::restart()` (`sshd -t` first). Open a new login in another window before you log out. |
+
+### Swap refresh
+
+`swap:refresh` loads the swap back into RAM: `swapoff` and `swapon` of each active swap listed in `/etc/fstab`, under `nice -n 19` and `ionice -c3`. The cron runs it at 3:00, before the backups at 4:00 and the synchronization of the orders at 5:00. It skips the night when:
+
+- 64 MB or less is in the swap,
+- `MemAvailable` − used swap would leave 25 % of RAM or less free,
+- `backup:run` is running (its lock `/var/lib/vpsmanager/backup.lock`),
+- another `swap:refresh` is running (`/var/lib/vpsmanager/swap-refresh.lock`).
+
+```bash
+sudo php vpsmanager swap:refresh --dry-run
+tail /var/log/vpsmanager/swap-refresh.log   # swap before and after, duration, reasons of skipped nights
 ```
 
 ---
@@ -992,7 +1051,7 @@ composer install
 composer test
 ```
 
-Unit tests in `tests/Unit` cover the logic which decides about bans without a server: levels of the bans, jails of the shared bans and the plan of `monitor:collect` (`SharedBans`), and addresses never banned (`Fail2ban::isIgnoredIp()`). `RequestStatsTest` covers the hosts of `server_name` and reading the logs across the rotation.
+Unit tests in `tests/Unit` cover the logic which decides about bans without a server: levels of the bans, jails of the shared bans and the plan of `monitor:collect` (`SharedBans`), and addresses never banned (`Fail2ban::isIgnoredIp()`). `RequestStatsTest` covers the hosts of `server_name` and reading the logs across the rotation. `SettingsTest` covers the computations of `setup:run` with given values instead of the system: the swap by RAM and the disk, the buffer pool by RAM and the data with its rounding, `/etc/fstab`, commented out options, the effective options of sshd by the files of `sshd_config.d` and the conditions of `swap:refresh`.
 
 ## Code style
 

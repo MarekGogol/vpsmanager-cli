@@ -35,6 +35,22 @@ class MySQLHelper extends Application
     }
 
     /**
+     * Forget the connection, e.g. after a restart of MySQL.
+     *
+     * @return void
+     */
+    public function disconnect(): void
+    {
+        try {
+            $this->mysqli?->close();
+        } catch (\Throwable $e) {
+            // The connection of a restarted server is gone already
+        }
+
+        $this->mysqli = null;
+    }
+
+    /**
      * Convert the domain into the database name.
      *
      * @param  string  $domain

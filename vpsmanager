@@ -25,6 +25,8 @@ use Gogol\VpsManagerCLI\Command\Monitor\MonitorReportCommand;
 use Gogol\VpsManagerCLI\Command\Mysql\MysqlCreateCommand;
 use Gogol\VpsManagerCLI\Command\Mysql\MysqlRemoveCommand;
 use Gogol\VpsManagerCLI\Command\Mysql\MysqlResetPasswordCommand;
+use Gogol\VpsManagerCLI\Command\Settings\SetupRunCommand;
+use Gogol\VpsManagerCLI\Command\Settings\SwapRefreshCommand;
 use Gogol\VpsManagerCLI\Command\SSLCreateCommand;
 use Symfony\Component\Console\Application;
 
@@ -53,5 +55,7 @@ $application->addCommand(new ChrootUpdateCommand());
 $application->addCommand(new ChrootRemoveCommand());
 $application->addCommand(new LaravelQueueCommand());
 $application->addCommand(new LaravelOctaneCommand());
+$application->addCommand(new SetupRunCommand());
+$application->addCommand(new SwapRefreshCommand());
 
 $application->run();

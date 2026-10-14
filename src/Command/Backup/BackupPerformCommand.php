@@ -3,6 +3,7 @@
 namespace Gogol\VpsManagerCLI\Command\Backup;
 
 use Exception;
+use Gogol\VpsManagerCLI\Helpers\Backup;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -45,6 +46,19 @@ class BackupPerformCommand extends Command
 
         if (count($missing) > 0) {
             throw new Exception('Please, first install missing extensions "apt install -y '.implode(' ', $missing).'"');
+        }
+
+        if (! is_dir(dirname(Backup::LOCK))) {
+            mkdir(dirname(Backup::LOCK), 0700, true);
+        }
+
+        // Held until the end of the run, swap:refresh does not run during a backup
+        $lock = fopen(Backup::LOCK, 'c');
+
+        if (! $lock || ! flock($lock, LOCK_EX | LOCK_NB)) {
+            $output->writeln('<comment>backup:run is running already.</comment>');
+
+            return Command::SUCCESS;
         }
 
         // If no option has been passed, everything will be backed up
