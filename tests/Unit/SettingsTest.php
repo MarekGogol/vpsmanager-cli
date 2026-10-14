@@ -423,26 +423,6 @@ class SettingsTest extends TestCase
         $this->assertNotNull(SwapRefresh::reasonToSkip(2 * self::GB, (int) (1.5 * self::GB), 1 * self::GB));
     }
 
-    public function test_swap_refresh_runs_in_an_hour_without_a_backup(): void
-    {
-        $this->assertSame([0, 6, 12, 18], SwapRefresh::cronHours('*/6'));
-        $this->assertSame([0, 12, 3], SwapRefresh::cronHours('0,12,3'));
-        $this->assertSame([1, 2, 3], SwapRefresh::cronHours('1-3'));
-        $this->assertCount(24, SwapRefresh::cronHours('*'));
-
-        // ms: everything at 4:00, databases every 6 hours
-        $this->assertSame([3, 30], SwapRefresh::time(['0 4 * * * php /root/vpsmanager/vpsmanager backup:run', '0 */6 * * * php /root/vpsmanager/vpsmanager backup:run --databases']));
-
-        // qualit: directories and websites at 3:00, databases every 12 hours
-        $this->assertSame([2, 30], SwapRefresh::time(['0 3 * * * php /root/vpsmanager/vpsmanager backup:run --dirs --www', '0 */12 * * * php /root/vpsmanager/vpsmanager backup:run --databases']));
-
-        // A line of /etc/cron.d with its user, a commented out line
-        $this->assertSame([4, 30], SwapRefresh::time(['0 2,3 * * * root php vpsmanager backup:run', '# 0 4 * * * php vpsmanager backup:run']));
-
-        $this->assertSame([3, 30], SwapRefresh::time([]));
-        $this->assertStringContainsString('30 2 * * * root ', SwapRefresh::cron(2, 30));
-    }
-
     public function test_swap_refresh_turns_only_the_swaps_of_fstab(): void
     {
         $swaps = [

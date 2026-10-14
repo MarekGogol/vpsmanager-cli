@@ -20,7 +20,7 @@ class SwapRefreshCommand extends Command
     protected function configure(): void
     {
         $this->setName('swap:refresh')
-            ->setDescription('Load the swap back into RAM when enough RAM is free (swapoff and swapon of the swaps of /etc/fstab), run by cron in a night hour without a backup')
+            ->setDescription('Load the swap back into RAM when enough RAM is free (swapoff and swapon of the swaps of /etc/fstab), by hand in a quiet hour')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Only print whether the swap would be refreshed');
     }
 

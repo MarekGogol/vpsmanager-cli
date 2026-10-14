@@ -58,7 +58,7 @@ git clone https://github.com/MarekGogol/vpsmanager-cli vpsmanager && cd vpsmanag
 bash install.sh
 ```
 
-VPS Manager lives in **`/root/vpsmanager`** on every server: the alias `vpsmanager` in `/root/.bashrc`, the crons of `backup:run`, `monitor:collect` and `swap:refresh` use this path. To move an older installation from `/root/vpsmanager-cli`, wait until no `vpsmanager` process runs, `mv /root/vpsmanager-cli /root/vpsmanager` and replace the path in `crontab -e`, `/etc/cron.d/vpsmanager-*` and the alias in `/root/.bashrc`.
+VPS Manager lives in **`/root/vpsmanager`** on every server: the alias `vpsmanager` in `/root/.bashrc`, the crons of `backup:run` and `monitor:collect` use this path. To move an older installation from `/root/vpsmanager-cli`, wait until no `vpsmanager` process runs, `mv /root/vpsmanager-cli /root/vpsmanager` and replace the path in `crontab -e`, `/etc/cron.d/vpsmanager-*` and the alias in `/root/.bashrc`.
 
 `install.sh` runs three steps:
 
@@ -773,7 +773,7 @@ web/storage/app/huge.zip
 0 4 * * * php /root/vpsmanager/vpsmanager backup:run
 ```
 
-`backup:run` holds the lock `/var/lib/vpsmanager/backup.lock` until its end: a second run started meanwhile ends at once, `swap:refresh` skips the night.
+`backup:run` holds the lock `/var/lib/vpsmanager/backup.lock` until its end: a second run started meanwhile ends at once, `swap:refresh` and `setup:run` (stunnel) wait for its end.
 
 ### Test email notifications
 
@@ -812,7 +812,6 @@ sudo php vpsmanager setup:run --execute --yes         # no questions, the risky 
 +--------------+---------------------------+---------------------------+----------------------------------------------+
 | swap         | 2.0 GB (1.4 GB used)      | 2.0 GB                    | up to date                                   |
 | swappiness   | 60                        | 10                        | write /etc/sysctl.d/60-vpsmanager.conf, …    |
-| swap-refresh | none                      | cron at 3:30              | write /etc/cron.d/vpsmanager-swap-refresh    |
 | mysql        | 1024 MB, ps=ON            | 512 MB, ps=OFF            | write zz-vpsmanager.cnf, comment out …       |
 | ssh          | password yes, root yes    | password no, root …       | write 00-vpsmanager.conf, restart ssh        |
 +--------------+---------------------------+---------------------------+----------------------------------------------+
@@ -828,7 +827,6 @@ RAM is the nominal size: `MemTotal` rounded up to 512 MB, a server with 2 GB has
 | --- | --- | --- |
 | `swap` | RAM < 2 GB: 2 × RAM, 2-8 GB: 1 × RAM, 8-64 GB: 0.5 × RAM (4 GB at least), over 64 GB: 4 GB. At most 10 % of the disk and 20 % of the disk stays free, less than 1 GB is no swap. A swap differing by less than 25 % is kept. | Only a swap file: `swapoff` (only when `MemAvailable` holds the used swap + 256 MB, otherwise a second file `/swapfile2` adds the missing size), `fallocate` (`dd` on btrfs, xfs or when it fails), `chmod 600`, `mkswap`, `swapon`, one line in `/etc/fstab`. Swap partitions are never changed. |
 | `swappiness` | `vm.swappiness = 10`: the kernel frees the cache of the files rather than moving the memory of processes into the swap. 0 leads to the OOM killer sooner. | `/etc/sysctl.d/60-vpsmanager.conf`, applied at once by `sysctl -p`. `vm.swappiness` in `/etc/sysctl.conf` and other files of `/etc/sysctl.d` is commented out. |
-| `swap-refresh` | cron of `swap:refresh` at 3:30, or 2:30, 4:30, 1:30, 5:30: the first night hour without `backup:run` in the crontab of root or `/etc/cron.d` | `/etc/cron.d/vpsmanager-swap-refresh`, see below. |
 | `journald` | the journal takes at most 200 MB in files of 32 MB | `/etc/systemd/journald.conf.d/60-vpsmanager.conf` (wins over `journald.conf`), restart of journald, `journalctl --rotate` and `--vacuum-size`. With files of 200 MB journald cannot keep `SystemMaxUse` (qualit had 520 MB with 300M). Skipped without systemd. |
 | `laravel-logs` | `storage/logs/*.log` of `data/web` and `data/sub/*` of every hosting rotate monthly (or above 1 GB), 12 kept, compressed | `/etc/logrotate.d/vpsmanager-laravel`, a block with `su <owner> <group>` for each directory (logrotate refuses directories writable by another user), `copytruncate`. Daily logs `laravel-YYYY-MM-DD.log` are skipped. Checked by `logrotate -d`. A big log which needs more free disk for its first rotation is reported. |
 | `php-fpm` | `pm.max_requests = 500` in every pool, `pm = ondemand` with `pm.process_idle_timeout = 10s` for pools with `pm.max_children` up to 5, the pool `www` of a version off when no NGINX host uses its socket | Pools are changed with a backup, `www.conf` is renamed to `www.conf.vpsmanager-disabled` (only when the version has other pools), `php-fpm<version> -t`, graceful reload (systemd, or `USR2` to the master), the turned off pools must have no processes then. Reported when `pm.max_children` × the average process exceeds 60 % of RAM. New pools of `hosting:create` have these values already. |
@@ -837,9 +835,11 @@ RAM is the nominal size: `MemTotal` rounded up to 512 MB, a server with 2 GB has
 | `reboot` | not required | Only reported: the server waits for a reboot after updates (`/var/run/reboot-required`) and its packages. Never rebooted by the command. |
 | `ssh` | `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin prohibit-password` (`no` and `forced-commands-only` are kept) | `/etc/ssh/sshd_config.d/00-vpsmanager.conf`: sshd takes the first value, so it wins over `50-cloud-init.conf`. `sshd_config` gets only the missing `Include`. Asks always (default no). Stops unless `/root/.ssh/authorized_keys` has a key and this session logged in by a key (`SSH_CONNECTION` or `who -m`, `Accepted publickey` in the journal or `/var/log/auth.log`). Checks `sshd -T` before the restart (an error puts the files back), restarts by `SSH::restart()` (`sshd -t` first). Open a new login in another window before you log out. |
 
-### Swap refresh
+### Swap refresh by hand
 
-`swap:refresh` loads the swap back into RAM: `swapoff` and `swapon` of each active swap listed in `/etc/fstab`, under `nice -n 19` and `ionice -c3`. The cron runs it in the first night hour without a backup (3:30, 2:30, 4:30…, see `swap-refresh` above). It skips the night when:
+Linux never empties the swap by itself, pages come back into RAM only when a process needs them. A full but quiet swap does no harm: it mostly holds memory nobody uses. A server which reads from the swap all the time (`si` of `vmstat 1`) is short of memory, `setup:run` fixes it by the sizes of MySQL and PHP-FPM, not by emptying the swap.
+
+`swap:refresh` loads the swap back into RAM by hand, e.g. after a peak which pushed a busy buffer pool into the swap: `swapoff` and `swapon` of each active swap listed in `/etc/fstab`, under `nice -n 19` and `ionice -c3`. Nothing runs it by cron. It skips when:
 
 - 64 MB or less is in the swap,
 - `MemAvailable` − used swap would leave 25 % of RAM or less free,
@@ -848,7 +848,8 @@ RAM is the nominal size: `MemTotal` rounded up to 512 MB, a server with 2 GB has
 
 ```bash
 sudo php vpsmanager swap:refresh --dry-run
-tail /var/log/vpsmanager/swap-refresh.log   # swap before and after, duration, reasons of skipped nights
+sudo php vpsmanager swap:refresh
+tail /var/log/vpsmanager/swap-refresh.log   # swap before and after, duration, reasons of skipping
 ```
 
 ---

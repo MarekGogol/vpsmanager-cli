@@ -5,14 +5,12 @@ namespace Gogol\VpsManagerCLI\Helpers\Settings;
 use Gogol\VpsManagerCLI\Helpers\Backup;
 
 /*
- * Nightly refresh of the swap (swap:refresh): Linux never empties the swap by itself, pages come back only when
- * they are needed, so a short peak leaves the swap full for days. Turning the swaps of /etc/fstab off and on loads
- * them back into RAM while the server is quiet.
+ * Refresh of the swap by hand (swap:refresh): Linux never empties the swap by itself, pages come back only when
+ * they are needed. Turning the swaps of /etc/fstab off and on loads them back into RAM. It is no fix of a server
+ * short of memory, setup:run sizes MySQL and PHP-FPM instead.
  */
 class SwapRefresh
 {
-    const CRON = '/etc/cron.d/vpsmanager-swap-refresh';
-
     const LOG = '/var/log/vpsmanager/swap-refresh.log';
 
     const LOCK = '/var/lib/vpsmanager/swap-refresh.lock';
@@ -110,92 +108,6 @@ class SwapRefresh
         fclose($lock);
 
         return ! $free;
-    }
-
-    /**
-     * Hours of the hour field of a cron line: a number, a list, a range, a step of a range or of all hours.
-     *
-     * @param  string  $field
-     * @return array
-     */
-    public static function cronHours(string $field): array
-    {
-        $hours = [];
-
-        foreach (explode(',', $field) as $part) {
-            [$range, $step] = array_pad(explode('/', $part, 2), 2, '1');
-            [$from, $to] = $range === '*' ? [0, 23] : array_pad(array_map('intval', explode('-', $range, 2)), 2, null);
-            $to ??= str_contains($part, '/') ? 23 : $from;
-
-            for ($hour = (int) $from; $hour <= $to; $hour += max(1, (int) $step)) {
-                $hours[] = $hour;
-            }
-        }
-
-        return array_values(array_unique($hours));
-    }
-
-    /**
-     * Time of the refresh in a night hour without a backup: 3:30, 2:30, 4:30, 1:30 or 5:30.
-     *
-     * @param  array  $lines  cron lines of backup:run
-     * @return array [hour, minute]
-     */
-    public static function time(array $lines): array
-    {
-        $busy = [];
-
-        foreach ($lines as $line) {
-            $fields = preg_split('/\s+/', trim($line));
-
-            if (count($fields) >= 5 && ! str_starts_with($fields[0], '#') && str_contains($line, 'backup:run')) {
-                $busy = array_merge($busy, static::cronHours($fields[1]));
-            }
-        }
-
-        foreach ([3, 2, 4, 1, 5] as $hour) {
-            if (! in_array($hour, $busy, true)) {
-                return [$hour, 30];
-            }
-        }
-
-        // backup:run holds a lock, the refresh skips the night of a running backup
-        return [3, 30];
-    }
-
-    /**
-     * Cron lines of backup:run of root and of /etc/cron.d.
-     *
-     * @return array
-     */
-    public static function backupCronLines(): array
-    {
-        exec('crontab -l -u root 2> /dev/null', $lines);
-
-        foreach (glob('/etc/cron.d/*') ?: [] as $path) {
-            // Fields of /etc/cron.d have the user after the time, the hour stays the second field
-            $lines = array_merge($lines, file($path, FILE_IGNORE_NEW_LINES) ?: []);
-        }
-
-        return array_values(array_filter($lines, fn ($line) => str_contains($line, 'backup:run')));
-    }
-
-    /**
-     * Content of the cron of swap:refresh.
-     *
-     * @param  int  $hour
-     * @param  int  $minute
-     * @return string
-     */
-    public static function cron(int $hour = 3, int $minute = 30): string
-    {
-        $command = escapeshellarg(PHP_BINARY).' '.escapeshellarg(realpath(vpsManagerPath().'/../vpsmanager') ?: vpsManagerPath().'/../vpsmanager').' swap:refresh';
-
-        return '# Loads the swap back into RAM every night at '.$hour.':'.sprintf('%02d', $minute)." when enough RAM is free, in an hour without a backup.\n"
-            .'# The log is '.self::LOG.".\n"
-            ."#\n"
-            .'# '.Setting::MANAGED."\n\n"
-            .$minute.' '.$hour.' * * * root '.$command." > /dev/null 2>&1\n";
     }
 
     /**
