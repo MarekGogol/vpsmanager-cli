@@ -62,6 +62,11 @@ class MysqlSetting extends Setting
             $options[] = ['innodb_redo_log_capacity', '512M', 'innodb_redo_log_capacity', (string) (512 * SystemInfo::MB), true];
         }
 
+        if ($mysql && version_compare($version, '8.4.0', '<')) {
+            // Data are not cached twice, in the buffer pool and in the cache of the files; the default since 8.4
+            $options[] = ['innodb_flush_method', 'O_DIRECT', 'innodb_flush_method', 'O_DIRECT', false];
+        }
+
         if ($mysql) {
             // Errors and warnings, e.g. the limits changed by the server at its start
             $options[] = ['log_error_verbosity', '2', 'log_error_verbosity', '2', true];
@@ -87,6 +92,25 @@ class MysqlSetting extends Setting
         }
 
         return $options;
+    }
+
+    /**
+     * Files of the binary log in the data directory, e.g. binlog.000214 and binlog.index.
+     *
+     * @param  string  $datadir
+     * @return array path => size
+     */
+    public static function binlogFiles(string $datadir): array
+    {
+        $files = [];
+
+        foreach (glob(rtrim($datadir, '/').'/binlog.*') ?: [] as $path) {
+            if (preg_match('/\/binlog\.(\d{6}|index)$/', $path)) {
+                $files[$path] = (int) filesize($path);
+            }
+        }
+
+        return $files;
     }
 
     /**
@@ -330,6 +354,8 @@ class MysqlSetting extends Setting
             $mysqlx = ! $mariadb && (int) $mysql->query("SELECT COUNT(*) FROM information_schema.plugins WHERE plugin_name = 'mysqlx' AND plugin_status = 'ACTIVE'")->fetch_row()[0] > 0;
             $fixed = static::fixedOptions($this->version($variables['version']), $mariadb, $replication, $remote, $mysqlx, static::hasHostnames($hosts));
 
+            [$datadir, $logBin] = $mysql->query('SELECT @@datadir, @@log_bin')->fetch_row();
+            $logBin = (bool) $logBin;
             $connections = [$mysql->query('SELECT @@max_connections')->fetch_row()[0], $mysql->query("SHOW GLOBAL STATUS LIKE 'Max_used_connections'")->fetch_row()[1] ?? null];
             $telescope = $mysql->query("SELECT table_schema, ROUND((data_length + index_length) / 1048576) FROM information_schema.tables WHERE table_name = 'telescope_entries' AND data_length + index_length > 268435456")->fetch_all();
 
@@ -357,6 +383,9 @@ class MysqlSetting extends Setting
             'ps_off' => $ram <= self::PERFORMANCE_SCHEMA_RAM,
             'online' => false,
             'fixed' => $fixed,
+            'datadir' => $datadir,
+            // Old binary logs, removed when the binary log is (or will be after the restart) off
+            'binlogs' => $logBin && ! in_array('disable_log_bin', array_column($fixed, 0), true) ? [] : static::binlogFiles($datadir),
             // Fixed options whose running value differs
             'differ' => array_values(array_filter($fixed, fn ($option) => (string) $current[$option[2]] !== $option[3])),
             'warnings' => [],
@@ -542,6 +571,10 @@ class MysqlSetting extends Setting
             }
         }
 
+        if ($state['binlogs']) {
+            $plan[] = 'remove old binary logs ('.static::size(array_sum($state['binlogs'])).')';
+        }
+
         if ($this->needsRestart()) {
             $plan[] = 'restart MySQL (asks)';
         }
@@ -588,6 +621,8 @@ class MysqlSetting extends Setting
         if (! $this->setOnline(array_filter($state['differ'], fn ($option) => $option[4]), $output)) {
             return false;
         }
+
+        $this->removeBinlogs($output);
 
         if (! $this->needsRestart()) {
             return true;
@@ -739,7 +774,32 @@ class MysqlSetting extends Setting
             return false;
         }
 
+        $this->removeBinlogs($output);
+
         return true;
+    }
+
+    /**
+     * Remove the old binary logs once the running server writes none, PURGE BINARY LOGS does not work then.
+     *
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @return void
+     */
+    protected function removeBinlogs(OutputInterface $output): void
+    {
+        $state = $this->state();
+
+        if (! $state['binlogs'] || (int) vpsManager()->mysql()->connect()->query('SELECT @@log_bin')->fetch_row()[0] !== 0) {
+            return;
+        }
+
+        $files = static::binlogFiles($state['datadir']);
+
+        foreach (array_keys($files) as $path) {
+            @unlink($path);
+        }
+
+        $output->writeln('Removed '.count($files).' old binary logs ('.static::size(array_sum($files)).').');
     }
 
     /**

@@ -5,10 +5,7 @@ namespace Gogol\VpsManagerCLI\Helpers\Settings;
 use Closure;
 use Symfony\Component\Console\Output\OutputInterface;
 
-/*
- * Cron of swap:refresh, every night at 3:00: before the backups at 4:00 and the synchronization of the orders
- * at 5:00.
- */
+// Cron of swap:refresh, every night in an hour without a backup of the crontab (3:30, 2:30, 4:30…).
 class SwapRefreshSetting extends Setting
 {
     /**
@@ -28,9 +25,14 @@ class SwapRefreshSetting extends Setting
      */
     protected function inspect(): array
     {
+        [$hour, $minute] = SwapRefresh::time(SwapRefresh::backupCronLines());
+        $content = SwapRefresh::cron($hour, $minute);
+
         return [
             'exists' => is_file(SwapRefresh::CRON),
-            'written' => is_file(SwapRefresh::CRON) && file_get_contents(SwapRefresh::CRON) === SwapRefresh::cron(),
+            'content' => $content,
+            'time' => $hour.':'.sprintf('%02d', $minute),
+            'written' => is_file(SwapRefresh::CRON) && file_get_contents(SwapRefresh::CRON) === $content,
         ];
     }
 
@@ -51,7 +53,7 @@ class SwapRefreshSetting extends Setting
      */
     public function recommended(): string
     {
-        return 'cron at 3:00';
+        return 'cron at '.$this->state()['time'];
     }
 
     /**
@@ -73,6 +75,6 @@ class SwapRefreshSetting extends Setting
      */
     public function apply(OutputInterface $output, Closure $confirm): bool
     {
-        return $this->write(SwapRefresh::CRON, SwapRefresh::cron(), $output);
+        return $this->write(SwapRefresh::CRON, $this->state()['content'], $output);
     }
 }

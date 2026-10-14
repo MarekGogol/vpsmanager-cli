@@ -2,7 +2,9 @@
 
 namespace Tests\Unit;
 
+use Gogol\VpsManagerCLI\Helpers\Settings\JournaldSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\MysqlSetting;
+use Gogol\VpsManagerCLI\Helpers\Settings\PhpFpmSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\SshSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\StunnelSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\SwappinessSetting;
@@ -132,6 +134,24 @@ class SettingsTest extends TestCase
         $this->assertSame([48 * self::GB, 8], MysqlSetting::bufferPool(64 * self::GB, 100 * self::GB, 128 * self::MB, false, true));
     }
 
+    public function test_binary_logs_of_the_data_directory(): void
+    {
+        $directory = sys_get_temp_dir().'/vpsmanager-binlogs-'.getmypid();
+        mkdir($directory);
+
+        foreach (['binlog.000214', 'binlog.000215', 'binlog.index', 'binlog.000215.tmp', 'ibdata1', 'undo_001'] as $file) {
+            file_put_contents($directory.'/'.$file, 'x');
+        }
+
+        $this->assertSame(
+            [$directory.'/binlog.000214', $directory.'/binlog.000215', $directory.'/binlog.index'],
+            array_keys(MysqlSetting::binlogFiles($directory.'/')),
+        );
+
+        array_map('unlink', glob($directory.'/*'));
+        rmdir($directory);
+    }
+
     public function test_names_are_not_resolved_without_users_of_host_names(): void
     {
         $this->assertFalse(MysqlSetting::hasHostnames(['localhost', '192.168.1.%', '127.0.0.1', '::1', '%', '10.0.0.0/255.0.0.0']));
@@ -159,10 +179,15 @@ class SettingsTest extends TestCase
 
         // MySQL 8.0.46 of wms, 9.7 of ms
         $this->assertSame(
-            ['innodb_ft_min_token_size', 'innodb_ft_enable_stopword', 'table_open_cache', 'innodb_redo_log_capacity', 'log_error_verbosity', 'disable_log_bin', 'bind_address'],
+            ['innodb_ft_min_token_size', 'innodb_ft_enable_stopword', 'table_open_cache', 'innodb_redo_log_capacity', 'innodb_flush_method', 'log_error_verbosity', 'disable_log_bin', 'bind_address'],
             $names(MysqlSetting::fixedOptions('8.0.46', false, false)),
         );
-        $this->assertSame($names(MysqlSetting::fixedOptions('8.0.46', false, false)), $names(MysqlSetting::fixedOptions('9.7.2', false, false)));
+
+        // O_DIRECT is the default since 8.4
+        $this->assertSame(
+            array_values(array_diff($names(MysqlSetting::fixedOptions('8.0.46', false, false)), ['innodb_flush_method'])),
+            $names(MysqlSetting::fixedOptions('9.7.2', false, false)),
+        );
 
         // innodb_redo_log_capacity exists since 8.0.30
         $this->assertNotContains('innodb_redo_log_capacity', $names(MysqlSetting::fixedOptions('8.0.29', false, false)));
@@ -351,6 +376,42 @@ class SettingsTest extends TestCase
         $this->assertFalse(StunnelSetting::isLocal(':::445'));
     }
 
+    public function test_size_of_the_journal_is_parsed(): void
+    {
+        $this->assertSame(520 * self::MB, JournaldSetting::parseUsage('Archived and active journals take up 520.0M in the file system.'));
+        $this->assertSame((int) (1.5 * self::GB), JournaldSetting::parseUsage('Archived and active journals take up 1.5G in the file system.'));
+        $this->assertSame(0, JournaldSetting::parseUsage('No journal files were found.'));
+    }
+
+    public function test_small_pools_run_on_demand_and_every_pool_restarts_its_processes(): void
+    {
+        // A pool of the stub before setup:run
+        $pool = "[qualit.sk]\nlisten = /run/php/php8.3-fpm-qualit.sk.sock\npm = dynamic\npm.max_children = 5\npm.start_servers = 2\n;pm.process_idle_timeout = 10s;\n;pm.max_requests = 500\n";
+
+        [$content, $changes] = PhpFpmSetting::tune($pool);
+
+        $this->assertSame(['pm.max_requests 500', 'ondemand'], $changes);
+        $this->assertSame('ondemand', PhpFpmSetting::directive($content, 'pm'));
+        $this->assertSame('10s', PhpFpmSetting::directive($content, 'pm.process_idle_timeout'));
+        $this->assertSame('500', PhpFpmSetting::directive($content, 'pm.max_requests'));
+        $this->assertSame('2', PhpFpmSetting::directive($content, 'pm.start_servers'));
+        $this->assertSame([$content, []], PhpFpmSetting::tune($content));
+
+        // A busy pool stays dynamic, a missing pm.max_requests is added after pm.max_children
+        [$content, $changes] = PhpFpmSetting::tune("[alkoholonline.sk]\npm = dynamic\npm.max_children = 30\npm.start_servers = 12\n");
+
+        $this->assertSame(['pm.max_requests 500'], $changes);
+        $this->assertSame("[alkoholonline.sk]\npm = dynamic\npm.max_children = 30\npm.max_requests = 500\npm.start_servers = 12\n", $content);
+
+        // An own value is kept
+        $this->assertSame([], PhpFpmSetting::tune("pm = static\npm.max_children = 4\npm.max_requests = 1000\n")[1]);
+    }
+
+    public function test_stub_of_a_new_pool_is_tuned_already(): void
+    {
+        $this->assertSame([], PhpFpmSetting::tune((string) file_get_contents(__DIR__.'/../../src/Stub/php-pool.conf'))[1]);
+    }
+
     public function test_swap_refresh_keeps_enough_free_ram(): void
     {
         $this->assertStringStartsWith('only', SwapRefresh::reasonToSkip(2 * self::GB, 1 * self::GB, 50 * self::MB));
@@ -360,6 +421,26 @@ class SettingsTest extends TestCase
 
         $this->assertNull(SwapRefresh::reasonToSkip(2 * self::GB, (int) (1.5 * self::GB), 500 * self::MB));
         $this->assertNotNull(SwapRefresh::reasonToSkip(2 * self::GB, (int) (1.5 * self::GB), 1 * self::GB));
+    }
+
+    public function test_swap_refresh_runs_in_an_hour_without_a_backup(): void
+    {
+        $this->assertSame([0, 6, 12, 18], SwapRefresh::cronHours('*/6'));
+        $this->assertSame([0, 12, 3], SwapRefresh::cronHours('0,12,3'));
+        $this->assertSame([1, 2, 3], SwapRefresh::cronHours('1-3'));
+        $this->assertCount(24, SwapRefresh::cronHours('*'));
+
+        // ms: everything at 4:00, databases every 6 hours
+        $this->assertSame([3, 30], SwapRefresh::time(['0 4 * * * php /root/vpsmanager/vpsmanager backup:run', '0 */6 * * * php /root/vpsmanager/vpsmanager backup:run --databases']));
+
+        // qualit: directories and websites at 3:00, databases every 12 hours
+        $this->assertSame([2, 30], SwapRefresh::time(['0 3 * * * php /root/vpsmanager/vpsmanager backup:run --dirs --www', '0 */12 * * * php /root/vpsmanager/vpsmanager backup:run --databases']));
+
+        // A line of /etc/cron.d with its user, a commented out line
+        $this->assertSame([4, 30], SwapRefresh::time(['0 2,3 * * * root php vpsmanager backup:run', '# 0 4 * * * php vpsmanager backup:run']));
+
+        $this->assertSame([3, 30], SwapRefresh::time([]));
+        $this->assertStringContainsString('30 2 * * * root ', SwapRefresh::cron(2, 30));
     }
 
     public function test_swap_refresh_turns_only_the_swaps_of_fstab(): void

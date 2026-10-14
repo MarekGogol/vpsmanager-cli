@@ -2,7 +2,11 @@
 
 namespace Gogol\VpsManagerCLI\Command\Settings;
 
+use Gogol\VpsManagerCLI\Helpers\Settings\JournaldSetting;
+use Gogol\VpsManagerCLI\Helpers\Settings\LaravelLogsSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\MysqlSetting;
+use Gogol\VpsManagerCLI\Helpers\Settings\PhpFpmSetting;
+use Gogol\VpsManagerCLI\Helpers\Settings\RebootSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\Setting;
 use Gogol\VpsManagerCLI\Helpers\Settings\SshSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\StunnelSetting;
@@ -42,7 +46,7 @@ class SetupRunCommand extends Command
     {
         $settings = [];
 
-        foreach ([new SwapSetting(), new SwappinessSetting(), new SwapRefreshSetting(), new MysqlSetting(), new StunnelSetting(), new SshSetting()] as $setting) {
+        foreach ([new SwapSetting(), new SwappinessSetting(), new SwapRefreshSetting(), new JournaldSetting(), new LaravelLogsSetting(), new PhpFpmSetting(), new MysqlSetting(), new StunnelSetting(), new SshSetting(), new RebootSetting()] as $setting) {
             $settings[$setting->key()] = $setting;
         }
 
@@ -93,7 +97,8 @@ class SetupRunCommand extends Command
         $changes = array_filter($settings, fn (Setting $setting) => $setting->plan() !== []);
 
         if (! $changes) {
-            $output->writeln('<info>Everything is up to date.</info>');
+            $notes = array_filter($settings, fn (Setting $setting) => $setting->warnings() !== []);
+            $output->writeln($notes ? '<info>Nothing to change</info>, see the notes.' : '<info>Everything is up to date.</info>');
 
             return Command::SUCCESS;
         }
@@ -162,7 +167,7 @@ class SetupRunCommand extends Command
         $table->setHeaders(['Setting', 'Current', 'Recommended', 'Action']);
 
         foreach ($settings as $key => $setting) {
-            $table->addRow([$key, $setting->current(), $setting->recommended(), implode(', ', $setting->plan()) ?: 'up to date']);
+            $table->addRow([$key, $setting->current(), $setting->recommended(), implode(', ', $setting->plan()) ?: ($setting->warnings() ? 'see the notes' : 'up to date')]);
         }
 
         $table->render();
