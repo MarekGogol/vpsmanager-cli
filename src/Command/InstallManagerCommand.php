@@ -101,7 +101,7 @@ class InstallManagerCommand extends Command
             'setSSLEmail' => ['ssl_email', 'noreply@marekgogol.sk'],
             'setDefaultPHPVersion' => ['php_version', '8.5'],
             'setWWWPath' => ['www_path', '/var/www'],
-            'enableSelfSignedSSL' => ['self_signed_ssl', true],
+            'secureDefaultServer' => ['self_signed_ssl', true],
             'setMysqlUser' => ['mysql_user', 'root'],
             'setMysqlPassword' => ['mysql_pass', ''],
             'setMysqlHost' => ['mysql_host', 'localhost'],
@@ -405,7 +405,8 @@ class InstallManagerCommand extends Command
     }
 
     /**
-     * Ask whether self signed SSL certificates should be enabled in NGINX.
+     * Let the NGINX default server answer HTTPS of the unknown names without a question: it refuses their TLS
+     * handshake, an NGINX older than 1.19.4 gets the snakeoil certificate.
      *
      * @param  \Symfony\Component\Console\Input\InputInterface  $input
      * @param  \Symfony\Component\Console\Output\OutputInterface  $output
@@ -414,32 +415,12 @@ class InstallManagerCommand extends Command
      * @param  mixed  $default
      * @return void
      */
-    private function enableSelfSignedSSL($input, $output, $helper, &$config, $default): void
+    private function secureDefaultServer($input, $output, $helper, &$config, $default): void
     {
-        $question = new ConfirmationQuestion('<info>Would you like to allow self signed SSL certificates in NGINX?</info> ('.($default ? 'Y/n' : 'y/N').') ', (bool) $default);
+        $config = vpsManager()->certbot()->secureDefaultServer($output);
 
-        if (! ($config = $helper->ask($input, $output, $question))) {
-            return;
-        }
-
-        // Enable self signed certs in sites-available/default
-        vpsManager()->certbot()->enableDefaultSSLCert();
-
-        $command = 'make-ssl-cert generate-default-snakeoil --force-overwrite';
-
-        $certPath = '/etc/ssl/certs/ssl-cert-snakeoil.pem';
-        $keyPath = '/etc/ssl/private/ssl-cert-snakeoil.key';
-
-        if (file_exists($certPath) && file_exists($keyPath)) {
-            return;
-        }
-
-        exec($command, $commandOutput, $return_var);
-
-        if ($return_var == 0) {
-            $output->writeln('SSL snakeoil certificate has been created: '.$certPath);
-        } else {
-            $output->writeln('<error>SSL snakeoil certificate does not exist and could not be created at: '.$certPath.'</error>'."\n".'<info>Run command:</info> '.$command);
+        if (! $config) {
+            $output->writeln('<error>The default server of NGINX has not been changed, run php vpsmanager setup:run --only=nginx-default.</error>');
         }
     }
 

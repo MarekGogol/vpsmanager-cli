@@ -6,6 +6,7 @@ use Gogol\VpsManagerCLI\Helpers\Settings\AptKeysSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\JournaldSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\LaravelLogsSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\MysqlSetting;
+use Gogol\VpsManagerCLI\Helpers\Settings\NginxDefaultSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\PhpFpmSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\RebootSetting;
 use Gogol\VpsManagerCLI\Helpers\Settings\Setting;
@@ -31,7 +32,7 @@ class SetupRunCommand extends Command
     protected function configure(): void
     {
         $this->setName('setup:run')
-            ->setDescription('Print the recommended settings of the server and apply them with --execute: swap, swappiness, journald, rotation of Laravel logs, PHP-FPM pools, MySQL, stunnel, SSH, keys of APT')
+            ->setDescription('Print the recommended settings of the server and apply them with --execute: swap, swappiness, journald, rotation of Laravel logs, PHP-FPM pools, HTTPS of unknown names, MySQL, stunnel, SSH, keys of APT')
             ->addOption('execute', null, InputOption::VALUE_NONE, 'Apply the changes, without it only the table of the settings is printed')
             ->addOption('only', null, InputOption::VALUE_REQUIRED, 'Only the given settings separated by commas: '.implode(',', array_keys($this->settings())))
             ->addOption('yes', 'y', InputOption::VALUE_NONE, 'With --execute apply without questions, the risky steps (SSH, restart of MySQL) included');
@@ -46,7 +47,7 @@ class SetupRunCommand extends Command
     {
         $settings = [];
 
-        foreach ([new SwapSetting(), new SwappinessSetting(), new JournaldSetting(), new LaravelLogsSetting(), new PhpFpmSetting(), new MysqlSetting(), new StunnelSetting(), new SshSetting(), new AptKeysSetting(), new RebootSetting()] as $setting) {
+        foreach ([new SwapSetting(), new SwappinessSetting(), new JournaldSetting(), new LaravelLogsSetting(), new PhpFpmSetting(), new NginxDefaultSetting(), new MysqlSetting(), new StunnelSetting(), new SshSetting(), new AptKeysSetting(), new RebootSetting()] as $setting) {
             $settings[$setting->key()] = $setting;
         }
 

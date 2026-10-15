@@ -3,6 +3,8 @@
 namespace Gogol\VpsManagerCLI\Helpers;
 
 use Gogol\VpsManagerCLI\Application;
+use Gogol\VpsManagerCLI\Helpers\Settings\NginxDefaultSetting;
+use Symfony\Component\Console\Output\OutputInterface;
 
 class Certbot extends Application
 {
@@ -218,22 +220,58 @@ class Certbot extends Application
     }
 
     /**
-     * Enable self signed certificates in sites-available/default.
+     * Let the default server of sites-available/default answer HTTPS of the unknown names: it refuses their TLS
+     * handshake (NGINX 1.19.4+), an older NGINX gets the snakeoil certificate.
      *
-     * @return void
+     * @param  \Symfony\Component\Console\Output\OutputInterface|null  $output
+     * @return bool
      */
-    public function enableDefaultSSLCert(): void
+    public function secureDefaultServer(?OutputInterface $output = null): bool
     {
         $default_path = $this->nginx()->getAvailablePath('default');
 
-        $default = @file_get_contents($default_path) ?: '';
+        if (! $default = @file_get_contents($default_path)) {
+            return false;
+        }
 
-        // Uncomment self signed certificates
-        $default = str_replace('# listen 443 ssl default_server;', 'listen 443 ssl default_server;', $default);
-        $default = str_replace('# listen [::]:443 ssl default_server;', 'listen [::]:443 ssl default_server;', $default);
-        $default = str_replace('# include snippets/snakeoil.conf;', 'include snippets/snakeoil.conf;', $default);
+        $reject = NginxDefaultSetting::rejects(NginxDefaultSetting::version());
 
-        file_put_contents($default_path, $default);
+        if (! $reject && ! $this->createSnakeoilCertificate($output)) {
+            return false;
+        }
+
+        file_put_contents($default_path, NginxDefaultSetting::content($default, $reject));
+
+        $output?->writeln('HTTPS of unknown names: <comment>'.($reject ? 'refused' : 'snakeoil certificate').'</comment>');
+
+        return true;
+    }
+
+    /**
+     * Create the self-signed snakeoil certificate of the default server when it is missing.
+     *
+     * @param  \Symfony\Component\Console\Output\OutputInterface|null  $output
+     * @return bool
+     */
+    public function createSnakeoilCertificate(?OutputInterface $output = null): bool
+    {
+        $command = 'make-ssl-cert generate-default-snakeoil --force-overwrite';
+
+        if (file_exists('/etc/ssl/certs/ssl-cert-snakeoil.pem') && file_exists('/etc/ssl/private/ssl-cert-snakeoil.key')) {
+            return true;
+        }
+
+        exec($command.' 2>&1', $lines, $return_var);
+
+        if ($return_var !== 0) {
+            $output?->writeln('<error>The snakeoil certificate could not be created.</error> <info>Run command:</info> '.$command);
+
+            return false;
+        }
+
+        $output?->writeln('SSL snakeoil certificate has been created: /etc/ssl/certs/ssl-cert-snakeoil.pem');
+
+        return true;
     }
 
     /**
