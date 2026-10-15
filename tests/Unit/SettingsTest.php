@@ -505,6 +505,29 @@ class SettingsTest extends TestCase
         $this->assertFalse(NginxDefaultSetting::rejects(null));
     }
 
+    public function test_only_the_default_server_of_the_file_is_changed(): void
+    {
+        // cech: the commented out example of Debian and a host of certbot in the same file
+        $cech = (string) file_get_contents(__DIR__.'/fixtures/nginx-default-cech.conf');
+        $changed = NginxDefaultSetting::content($cech, true);
+
+        $this->assertSame('reject', NginxDefaultSetting::mode($changed));
+        $this->assertSame(2, preg_match_all('/^[ \t]*listen[^;#\n]*443[^;\n]*default_server/m', $changed));
+        $this->assertStringContainsString("\t# listen 443 ssl default_server;", $changed);
+        $this->assertStringContainsString("\t# include snippets/snakeoil.conf;", $changed);
+        $this->assertSame(1, substr_count($changed, 'ssl_reject_handshake on;'));
+        $this->assertSame($changed, NginxDefaultSetting::content($changed, true));
+
+        // wms: listen 443 ssl http2 default_server
+        $wms = (string) file_get_contents(__DIR__.'/fixtures/nginx-default-wms.conf');
+        $this->assertSame('self-signed', NginxDefaultSetting::mode($wms));
+
+        $changed = NginxDefaultSetting::content($wms, true);
+        $this->assertSame('reject', NginxDefaultSetting::mode($changed));
+        $this->assertSame(2, preg_match_all('/^[ \t]*listen[^;#\n]*443[^;\n]*default_server/m', $changed));
+        $this->assertStringContainsString("listen [::]:443 ssl http2 default_server;\n\tssl_reject_handshake on;", $changed);
+    }
+
     public function test_swap_refresh_keeps_enough_free_ram(): void
     {
         $this->assertStringStartsWith('only', SwapRefresh::reasonToSkip(2 * self::GB, 1 * self::GB, 50 * self::MB));

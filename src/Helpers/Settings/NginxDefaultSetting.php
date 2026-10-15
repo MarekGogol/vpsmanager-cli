@@ -55,6 +55,44 @@ class NginxDefaultSetting extends Setting
     }
 
     /**
+     * Position of the block of the default server: the server with an active listen … default_server. Other blocks
+     * of the file (the commented out example of Debian, a host added by certbot) are not changed.
+     *
+     * @param  string  $content
+     * @return array|null [offset, length]
+     */
+    public static function defaultBlock(string $content): ?array
+    {
+        if (! preg_match('/^[ \t]*listen[ \t][^;#\n]*default_server[^;\n]*;/m', $content, $listen, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        if (! preg_match_all('/^[ \t]*server[ \t]*\{/m', substr($content, 0, $listen[0][1]), $servers, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+
+        $start = end($servers[0])[1];
+        $depth = 0;
+        $comment = false;
+
+        for ($i = $start, $length = strlen($content); $i < $length; $i++) {
+            $char = $content[$i];
+
+            if ($comment) {
+                $comment = $char !== "\n";
+            } elseif ($char === '#') {
+                $comment = true;
+            } elseif ($char === '{') {
+                $depth++;
+            } elseif ($char === '}' && --$depth === 0) {
+                return [$start, $i - $start + 1];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Content of the default server listening on 443, refusing the handshake or with the snakeoil certificate.
      *
      * @param  string  $content  sites-available/default
@@ -63,28 +101,44 @@ class NginxDefaultSetting extends Setting
      */
     public static function content(string $content, bool $reject): string
     {
-        // Lines of 443 of the default file of Debian and Ubuntu are commented out
-        $content = preg_replace('/^([ \t]*)#[ \t]*(listen (\[::\]:)?443 ssl default_server;)/m', '$1$2', $content);
+        if (! $position = static::defaultBlock($content)) {
+            return $content;
+        }
 
-        if (! preg_match('/^[ \t]*listen 443 ssl default_server;/m', $content)) {
-            $content = preg_replace('/^([ \t]*)(listen (\[::\]:)?80 default_server;)(?![\s\S]*listen (\[::\]:)?80 default_server;)/m', "$1$2\n$1listen 443 ssl default_server;\n$1listen [::]:443 ssl default_server;", $content, 1);
+        [$offset, $length] = $position;
+        $block = substr($content, $offset, $length);
+        $listen443 = '/^[ \t]*listen[ \t]+(\[::\]:)?443\b[^;#\n]*default_server[^;\n]*;/m';
+
+        // Lines of 443 of the default file of Debian and Ubuntu are commented out
+        if (! preg_match($listen443, $block)) {
+            $block = preg_replace('/^([ \t]*)#[ \t]*(listen[ \t]+(\[::\]:)?443\b[^;\n]*default_server[^;\n]*;)/m', '$1$2', $block);
+        }
+
+        if (! preg_match($listen443, $block)) {
+            $block = preg_replace('/^([ \t]*)(listen[ \t]+(\[::\]:)?80\b[^;\n]*default_server[^;\n]*;)(?![\s\S]*listen[ \t]+(\[::\]:)?80\b[^;\n]*default_server)/m', "$1$2\n$1listen 443 ssl default_server;\n$1listen [::]:443 ssl default_server;", $block, 1);
         }
 
         $active = $reject ? self::REJECT : self::SNAKEOIL;
         $other = $reject ? self::SNAKEOIL : self::REJECT;
 
         // The other way is turned off
-        $content = preg_replace('/^[ \t]*'.preg_quote($other, '/').'[ \t]*\n/m', '', $content);
+        $block = preg_replace('/^[ \t]*'.preg_quote($other, '/').'[ \t]*\n/m', '', $block);
 
-        if (! preg_match('/^[ \t]*'.preg_quote($active, '/').'/m', $content)) {
+        if (! preg_match('/^[ \t]*'.preg_quote($active, '/').'/m', $block)) {
             $commented = '/^([ \t]*)#[ \t]*'.preg_quote($active, '/').'/m';
 
-            $content = preg_match($commented, $content)
-                ? preg_replace($commented, '$1'.$active, $content, 1)
-                : preg_replace('/^([ \t]*)(listen \[::\]:443 ssl default_server;)/m', "$1$2\n$1".$active, $content, 1);
+            if (preg_match($commented, $block)) {
+                $block = preg_replace($commented, '$1'.$active, $block, 1);
+            } else {
+                // After the last line of 443
+                preg_match_all($listen443, $block, $lines, PREG_OFFSET_CAPTURE);
+                [$line, $at] = end($lines[0]);
+                $indent = preg_match('/^[ \t]*/', $line, $match) ? $match[0] : "\t";
+                $block = substr($block, 0, $at + strlen($line))."\n".$indent.$active.substr($block, $at + strlen($line));
+            }
         }
 
-        return $content;
+        return substr($content, 0, $offset).$block.substr($content, $offset + $length);
     }
 
     /**
@@ -95,15 +149,21 @@ class NginxDefaultSetting extends Setting
      */
     public static function mode(string $content): string
     {
-        if (! preg_match('/^[ \t]*listen 443 ssl default_server;/m', $content)) {
+        if (! $position = static::defaultBlock($content)) {
             return 'first website';
         }
 
-        if (preg_match('/^[ \t]*'.preg_quote(self::REJECT, '/').'/m', $content)) {
+        $block = substr($content, ...$position);
+
+        if (! preg_match('/^[ \t]*listen[ \t]+(\[::\]:)?443\b[^;#\n]*default_server[^;\n]*;/m', $block)) {
+            return 'first website';
+        }
+
+        if (preg_match('/^[ \t]*'.preg_quote(self::REJECT, '/').'/m', $block)) {
             return 'reject';
         }
 
-        return preg_match('/^[ \t]*'.preg_quote(self::SNAKEOIL, '/').'/m', $content) ? 'self-signed' : 'no certificate';
+        return preg_match('/^[ \t]*'.preg_quote(self::SNAKEOIL, '/').'/m', $block) ? 'self-signed' : 'no certificate';
     }
 
     /**
