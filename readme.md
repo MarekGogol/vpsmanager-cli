@@ -735,7 +735,7 @@ Backup folders are named `Y-m-d_H-00-00` in the `Europe/Bratislava` timezone, so
 At the end of every `backup:run` the server sends the monitor (`POST /api/agent/backups`) the folder of the run (the snapshot), and for each type its end and the databases, directories and users of the websites which were backed up. A failed one is not sent. When the monitor does not answer, they wait in `/var/lib/vpsmanager/monitor-backups.json` for the next `monitor:collect`.
 
 - **Zálohy**: one row of each snapshot with the end of the backup of the databases, the websites and the directories, the users of the backup under it. `backup:run --databases` and `backup:run --www` in one hour fill one row.
-- **Sledované zálohy**: every user, database and directory backed up at least once, with its last backup. The metric `backup_missing_hours` of the server is the age of the oldest of them in hours, an alert (e.g. `backup_missing_hours > 24`) sends an email. The monitor checks all alerts every 5 minutes (`app:check-alerts`) and sends one summary email of all servers when the alerts change, without a change it repeats it after 12 hours. A removed website or database stops being checked once it is unpublished there.
+- **Sledované zálohy**: every user, database and directory backed up at least once, with its last backup. The metric `backup_missing_hours` of the server is the age of the oldest of them in hours, an alert (e.g. `backup_missing_hours > 48`) sends an email. The monitor checks all alerts every 5 minutes (`app:check-alerts`) and sends one summary email of all servers when the alerts change, without a change it repeats it after 12 hours. A removed website or database stops being checked once it is unpublished there.
 
 ### Retention (rotation)
 
