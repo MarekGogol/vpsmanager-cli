@@ -178,8 +178,8 @@ class Monitor extends Application
                     'referer' => $m[9],
                     'agent' => $m[10],
                     'content_type' => ($m[11] ?? '-') === '-' ? '' : $m[11],
-                    // null without the header (chunked body or a line from before the field)
-                    'content_length' => is_numeric($m[12] ?? null) ? (int) $m[12] : null,
+                    // null without the header (chunked body), false for lines from before the field
+                    'content_length' => isset($m[12]) ? (is_numeric($m[12]) ? (int) $m[12] : null) : false,
                 ];
             }
 

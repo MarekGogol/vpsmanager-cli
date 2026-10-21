@@ -3,3 +3,4 @@
 2.2.2.2 [2026-10-21T18:00:02+02:00] "example.com" "POST /index.php" 502 10 0.100 "-" "curl" "multipart/form-data; boundary=x" -
 3.3.3.3 [2026-10-21T18:00:03+02:00] "example.com" "POST /" 301 10 0.100 "-" "Mozilla" "multipart/form-data; boundary=----php2shellscan1" 300
 4.4.4.4 [2026-10-21T18:00:04+02:00] "example.com" "POST /api" 200 10 0.100 "-" "Mozilla" "application/json" 20
+5.5.5.5 [2026-10-21T18:00:05+02:00] "example.com" "POST /old" 200 10 0.100 "-" "Mozilla" "multipart/form-data; boundary=y"
