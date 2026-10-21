@@ -64,6 +64,8 @@ class MonitorReportCommand extends Command
         $this->table($output, 'Busiest addresses', ['IP', 'Peak/min', 'Requests', 'Failed', 'Banned'], array_map(fn ($row) => [...array_slice(array_values($row), 0, 4), $row['banned'] ? 'yes' : ''], $report['busiest_addresses']));
         $this->table($output, 'User agents of failed requests', ['User agent', 'Failed'], array_map(fn ($agent, $count) => [mb_strimwidth($agent, 0, 90, '…'), $count], array_keys($report['failing_agents']), $report['failing_agents']));
 
+        $this->table($output, 'Multipart requests (PHP2Shell: without the length, 5xx of PHP, scanners)', ['IP', 'Requests', 'No length', '5xx', 'PHP2Shell', 'Banned', 'Hosts', 'Paths'], array_map(fn ($row) => [$row['ip'], $row['requests'], $row['without_length'], $row['server_errors'], $row['php2shell'] ? 'yes' : '', $row['banned'] ? 'yes' : '', $row['hosts'], $row['paths']], $report['multipart_addresses']));
+
         $output->writeln('');
         $output->writeln('For an analysis by AI: <comment>php vpsmanager monitor:report --json</comment>');
 

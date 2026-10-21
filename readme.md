@@ -459,7 +459,7 @@ A scanner which comes back gets a longer ban each time, a single mistake (an emp
 | Log | Content | Rotation |
 | --- | --- | --- |
 | `/var/log/nginx/vpsmanager-scanners.log` | blocked requests: `IP - - [time] "request" 403 size "referer" "agent" "host"` (format `vpsmanager_fail2ban`, the combined format with the host at the end) | NGINX logrotate of the distribution (daily, 14 days) |
-| `/var/log/vpsmanager/access.log` | other requests: `IP [time] "host" "METHOD url" status size duration "referer" "agent" "content type"` (format `vpsmanager_monitor`, older lines have no content type) | hourly by VPS Manager: daily and over 100 MB, compressed, deleted after 7 days |
+| `/var/log/vpsmanager/access.log` | other requests: `IP [time] "host" "METHOD url" status size duration "referer" "agent" "content type" content-length` (format `vpsmanager_monitor`, older lines have no content type and length) | hourly by VPS Manager: daily and over 100 MB, compressed, deleted after 7 days |
 | `/var/log/fail2ban.log` | bans and unbans of all jails | logrotate of the distribution |
 
 The address starts every line, fail2ban and the commands rely on it.

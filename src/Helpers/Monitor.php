@@ -42,9 +42,10 @@ class Monitor extends Application
     const MAX_SIZE = '100M';
 
     /**
-     * Parts of a line of the vpsmanager_monitor log format. The content type is optional, older lines have none.
+     * Parts of a line of the vpsmanager_monitor log format. The content type and the Content-Length header
+     * are optional, older lines have none of them.
      */
-    const LINE = '#^(\S+) \[([^\]]+)\] "([^"]*)" "(\S+) ([^"]*)" (\d{3}) (\d+) ([\d.]+) "([^"]*)" "([^"]*)"(?: "([^"]*)")?$#';
+    const LINE = '#^(\S+) \[([^\]]+)\] "([^"]*)" "(\S+) ([^"]*)" (\d{3}) (\d+) ([\d.]+) "([^"]*)" "([^"]*)"(?: "([^"]*)"(?: (\S+))?)?$#';
 
     /**
      * Get the files of the log rotation, path => content.
@@ -144,7 +145,7 @@ class Monitor extends Application
      * Parse requests of the log since the given time, rotated logs included (also compressed).
      *
      * @param  int  $since  unix timestamp
-     * @return \Generator of ['ip', 'time', 'host', 'method', 'url', 'status', 'bytes', 'duration', 'referer', 'agent']
+     * @return \Generator of ['ip', 'time', 'host', 'method', 'url', 'status', 'bytes', 'duration', 'referer', 'agent', 'content_type', 'content_length']
      */
     public function readRequests(int $since): \Generator
     {
@@ -176,7 +177,9 @@ class Monitor extends Application
                     'duration' => (float) $m[8],
                     'referer' => $m[9],
                     'agent' => $m[10],
-                    'content_type' => $m[11] ?? '',
+                    'content_type' => ($m[11] ?? '-') === '-' ? '' : $m[11],
+                    // null without the header (chunked body or a line from before the field)
+                    'content_length' => is_numeric($m[12] ?? null) ? (int) $m[12] : null,
                 ];
             }
 
@@ -198,7 +201,7 @@ class Monitor extends Application
         $banned = array_flip($banned);
         $ignored = array_flip($ignored);
         $total = 0;
-        $statuses = $hosts = $ips = $errors = $paths = $agents = $minutes = [];
+        $statuses = $hosts = $ips = $errors = $paths = $agents = $minutes = $multipart = [];
 
         foreach ($this->readRequests($since) as $request) {
             $total++;
@@ -228,6 +231,21 @@ class Monitor extends Application
                 $agents[$request['agent']] = ($agents[$request['agent']] ?? 0) + 1;
             }
 
+            // Multipart requests reach the parser of PHP before any application code (PHP2Shell, CVE-2026-109618
+            // and CVE-2026-109619): without the length they pass post_max_size, a crash of PHP answers 5xx
+            if (stripos($request['content_type'], 'multipart/') === 0) {
+                $multipart[$ip] ??= ['requests' => 0, 'without_length' => 0, 'server_errors' => 0, 'php2shell' => false, 'hosts' => [], 'paths' => []];
+                $multipart[$ip]['requests']++;
+                $multipart[$ip]['without_length'] += $request['content_length'] === null ? 1 : 0;
+                $multipart[$ip]['server_errors'] += $request['status'] >= 500 ? 1 : 0;
+                $multipart[$ip]['php2shell'] = $multipart[$ip]['php2shell'] || stripos($request['content_type'], 'php2shell') !== false;
+                $multipart[$ip]['hosts'][$request['host']] = true;
+
+                if (count($multipart[$ip]['paths']) < 5) {
+                    $multipart[$ip]['paths'][$path] = true;
+                }
+            }
+
             $minute = $ip.'|'.intdiv($request['time'], 60);
             $minutes[$minute] = ($minutes[$minute] ?? 0) + 1;
         }
@@ -245,6 +263,8 @@ class Monitor extends Application
         $suspicious = array_filter($notBanned, fn ($data, $ip) => $data['errors'] > 0 && ! isset($ignored[$ip]) && ! str_starts_with($ip, '127.'), ARRAY_FILTER_USE_BOTH);
         uasort($suspicious, fn ($a, $b) => $b['errors'] <=> $a['errors']);
 
+        // Most suspicious first: scanners of PHP2Shell, requests without the length, crashes of PHP
+        uasort($multipart, fn ($a, $b) => [$b['php2shell'], $b['without_length'], $b['server_errors'], $b['requests']] <=> [$a['php2shell'], $a['without_length'], $a['server_errors'], $a['requests']]);
         uasort($paths, fn ($a, $b) => count($b['ips']) <=> count($a['ips']) ?: $b['requests'] <=> $a['requests']);
         arsort($hosts);
         arsort($agents);
@@ -282,6 +302,16 @@ class Monitor extends Application
                 'banned' => isset($banned[$ip]),
             ], array_slice($peaks, 0, $limit, true), array_keys(array_slice($peaks, 0, $limit, true))),
             'failing_agents' => array_slice($agents, 0, $limit, true),
+            'multipart_addresses' => array_map(fn ($data, $ip) => [
+                'ip' => $ip,
+                'requests' => $data['requests'],
+                'without_length' => $data['without_length'],
+                'server_errors' => $data['server_errors'],
+                'php2shell' => $data['php2shell'],
+                'banned' => isset($banned[$ip]),
+                'hosts' => count($data['hosts']),
+                'paths' => implode(' ', array_keys($data['paths'])),
+            ], array_slice($multipart, 0, $limit, true), array_keys(array_slice($multipart, 0, $limit, true))),
         ];
     }
 
