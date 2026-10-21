@@ -42,9 +42,9 @@ class Monitor extends Application
     const MAX_SIZE = '100M';
 
     /**
-     * Parts of a line of the vpsmanager_monitor log format.
+     * Parts of a line of the vpsmanager_monitor log format. The content type is optional, older lines have none.
      */
-    const LINE = '#^(\S+) \[([^\]]+)\] "([^"]*)" "(\S+) ([^"]*)" (\d{3}) (\d+) ([\d.]+) "([^"]*)" "([^"]*)"$#';
+    const LINE = '#^(\S+) \[([^\]]+)\] "([^"]*)" "(\S+) ([^"]*)" (\d{3}) (\d+) ([\d.]+) "([^"]*)" "([^"]*)"(?: "([^"]*)")?$#';
 
     /**
      * Get the files of the log rotation, path => content.
@@ -176,6 +176,7 @@ class Monitor extends Application
                     'duration' => (float) $m[8],
                     'referer' => $m[9],
                     'agent' => $m[10],
+                    'content_type' => $m[11] ?? '',
                 ];
             }
 

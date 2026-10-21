@@ -107,6 +107,9 @@ class RequestStatsTest extends TestCase
         $request = $stats->parseRequest('1.2.3.4 [2026-10-11T13:15:02+02:00] "www.example.com" "GET /path?a=1" 502 120 0.250 "-" "curl/8"');
         $this->assertSame(['time' => strtotime('2026-10-11T13:15:02+02:00'), 'host' => 'www.example.com', 'method' => 'GET', 'url' => '/path?a=1', 'status' => 502, 'duration' => 0.25], $request);
 
+        $upload = $stats->parseRequest('1.2.3.4 [2026-10-11T13:15:02+02:00] "www.example.com" "POST /upload.php" 200 120 0.250 "-" "curl/8" "multipart/form-data; boundary=x"');
+        $this->assertSame('/upload.php', $upload['url']);
+
         $blocked = $stats->parseBlocked('1.2.3.4 - - [11/Oct/2026:13:15:02 +0200] "GET /.env HTTP/1.1" 403 1234 "-" "Mozilla \x22quoted\x22" "example.com"');
         $this->assertSame(['time' => strtotime('2026-10-11T13:15:02+02:00'), 'host' => 'example.com'], $blocked);
 
