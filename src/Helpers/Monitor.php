@@ -232,11 +232,13 @@ class Monitor extends Application
             }
 
             // Multipart requests reach the parser of PHP before any application code (PHP2Shell, CVE-2026-109618
-            // and CVE-2026-109619): without the length they pass post_max_size, a crash of PHP answers 5xx
-            if (stripos($request['content_type'], 'multipart/') === 0) {
+            // and CVE-2026-109619): without the length they pass post_max_size, a crash of PHP answers 5xx.
+            // Addresses of the server (tests) are left out
+            if (stripos($request['content_type'], 'multipart/') === 0 && ! isset($ignored[$ip]) && ! str_starts_with($ip, '127.')) {
                 $multipart[$ip] ??= ['requests' => 0, 'without_length' => 0, 'server_errors' => 0, 'php2shell' => false, 'hosts' => [], 'paths' => []];
                 $multipart[$ip]['requests']++;
-                $multipart[$ip]['without_length'] += $request['content_length'] === null ? 1 : 0;
+                // Only requests with a body, clients following a redirect keep the header in GET requests
+                $multipart[$ip]['without_length'] += $request['content_length'] === null && in_array($request['method'], ['POST', 'PUT', 'PATCH'], true) ? 1 : 0;
                 $multipart[$ip]['server_errors'] += $request['status'] >= 500 ? 1 : 0;
                 $multipart[$ip]['php2shell'] = $multipart[$ip]['php2shell'] || stripos($request['content_type'], 'php2shell') !== false;
                 $multipart[$ip]['hosts'][$request['host']] = true;

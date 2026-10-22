@@ -4,3 +4,5 @@
 3.3.3.3 [2026-10-21T18:00:03+02:00] "example.com" "POST /" 301 10 0.100 "-" "Mozilla" "multipart/form-data; boundary=----php2shellscan1" 300
 4.4.4.4 [2026-10-21T18:00:04+02:00] "example.com" "POST /api" 200 10 0.100 "-" "Mozilla" "application/json" 20
 5.5.5.5 [2026-10-21T18:00:05+02:00] "example.com" "POST /old" 200 10 0.100 "-" "Mozilla" "multipart/form-data; boundary=y"
+6.6.6.6 [2026-10-21T18:00:06+02:00] "example.com" "GET /" 200 10 0.100 "-" "aiohttp" "multipart/form-data; boundary=bissa_cve_boundary" -
+127.0.0.1 [2026-10-21T18:00:07+02:00] "example.com" "POST /" 403 10 0.100 "-" "curl" "multipart/form-data; boundary=----php2shelltest" 1

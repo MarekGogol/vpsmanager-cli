@@ -9,8 +9,9 @@ class MonitorReportTest extends TestCase
 {
     public function test_multipart_requests_are_listed_most_suspicious_first(): void
     {
-        // Upload of a user, a chunked body without the length answered 502, a banned scanner of PHP2Shell and
-        // a line from before the length, which is not counted as a request without it
+        // Upload of a user, a chunked body without the length answered 502, a banned scanner of PHP2Shell,
+        // a line from before the length and a GET after a redirect, which are not counted as requests without
+        // the length, and a test of the server itself, which is left out
         $monitor = new class extends Monitor
         {
             const LOG = __DIR__.'/fixtures/monitor-report.log';
@@ -18,11 +19,11 @@ class MonitorReportTest extends TestCase
 
         $rows = $monitor->report(0, ['3.3.3.3'])['multipart_addresses'];
 
-        $this->assertSame(['3.3.3.3', '2.2.2.2', '1.1.1.1', '5.5.5.5'], array_column($rows, 'ip'));
+        $this->assertSame(['3.3.3.3', '2.2.2.2', '1.1.1.1', '5.5.5.5', '6.6.6.6'], array_column($rows, 'ip'));
         $this->assertTrue($rows[0]['php2shell'] && $rows[0]['banned']);
         $this->assertSame([1, 1], [$rows[1]['without_length'], $rows[1]['server_errors']]);
         $this->assertSame([0, 0, '/upload'], [$rows[2]['without_length'], $rows[2]['server_errors'], $rows[2]['paths']]);
-        $this->assertSame(0, $rows[3]['without_length']);
+        $this->assertSame([0, 0], [$rows[3]['without_length'], $rows[4]['without_length']]);
     }
 
     public function test_lines_without_the_content_type_and_length_are_read(): void
