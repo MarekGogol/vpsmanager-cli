@@ -351,16 +351,16 @@ class Backup extends Application
             $errors = [];
 
             foreach ($databases as $database) {
-                $this->response()
-                    ->success('Saving <comment>'.$database.'</comment> database.')
-                    ->writeln();
+                $this->startItem('Saving <comment>'.$database.'</comment> database.');
 
                 // A failed mysqldump fails the backup, no snapshot is created
                 $code = $this->restic()->niced()->run(array_merge(
-                    ['backup', '--host', $this->host(), '--tag', 'databases', '--stdin-from-command', '--stdin-filename', 'databases/'.$database.'.sql', '--'],
+                    ['backup', '--json', '--host', $this->host(), '--tag', 'databases', '--stdin-from-command', '--stdin-filename', 'databases/'.$database.'.sql', '--'],
                     Restic::NICE,
                     ['mysqldump', '--defaults-extra-file='.$optionFile, '--single-transaction', '--quick', '--routines', '--events', '--triggers', $database],
                 ), $output, $error);
+
+                $this->finishItem($code, $output);
 
                 if ($code === 0) {
                     $this->backedUp['databases'][] = $database;
@@ -405,15 +405,15 @@ class Backup extends Application
         }
 
         if ($paths) {
-            $this->response()
-                ->success('Saving directories <comment>'.implode(' ', $paths).'</comment>.')
-                ->writeln();
+            $this->startItem('Saving directories <comment>'.implode(' ', $paths).'</comment>.');
 
             $code = $this->restic()->niced()->run(array_merge(
-                ['backup', '--host', $this->host(), '--tag', 'dirs'],
+                ['backup', '--json', '--host', $this->host(), '--tag', 'dirs'],
                 $this->excludeArguments($excludes),
                 $paths,
             ), $output, $error);
+
+            $this->finishItem($code, $output);
 
             if ($code !== 0) {
                 return $this->sendError('Could not backup directories: '.Restic::errorMessage($error));
@@ -427,6 +427,77 @@ class Backup extends Application
         }
 
         return $this->response()->success('<info>Directories have been successfully backed up.</info>');
+    }
+
+    /**
+     * Write the start of the backup of an item, its result follows on the same line.
+     *
+     * @param  string  $message
+     * @return void
+     */
+    private function startItem(string $message): void
+    {
+        vpsManager()->getOutput()?->write($message);
+    }
+
+    /**
+     * Write the result of the backup of an item: its size, the added data and the duration from the summary of restic.
+     *
+     * @param  int  $code
+     * @param  string|null  $output  JSON output of restic backup
+     * @return void
+     */
+    private function finishItem(int $code, ?string $output): void
+    {
+        if (! $console = vpsManager()->getOutput()) {
+            return;
+        }
+
+        if ($code !== 0) {
+            $console->writeln(' <error>Failed.</error>');
+
+            return;
+        }
+
+        $console->writeln(($summary = Restic::backupSummary($output)) ? ' '.self::describeSummary($summary) : '');
+    }
+
+    /**
+     * Describe the summary of a backup, e.g. "1.2 GB, added 3.4 MB in 5.2s".
+     *
+     * @param  array  $summary
+     * @return string
+     */
+    public static function describeSummary(array $summary): string
+    {
+        $added = $summary['data_added_packed'] ?? $summary['data_added'] ?? null;
+
+        return '<comment>'.self::formatBytes($summary['total_bytes_processed'] ?? null).'</comment>'.
+            ($added !== null ? ', added '.self::formatBytes($added) : '').
+            (isset($summary['total_duration']) ? ' in '.round($summary['total_duration'], 1).'s' : '');
+    }
+
+    /**
+     * Format bytes for humans.
+     *
+     * @param  int|float|null  $bytes
+     * @return string
+     */
+    public static function formatBytes($bytes): string
+    {
+        if ($bytes === null) {
+            return '-';
+        }
+
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $unit = 0;
+
+        while ($bytes >= 1024 && $unit < count($units) - 1) {
+            $bytes /= 1024;
+            $unit++;
+        }
+
+        return round($bytes, $unit > 1 ? 1 : 0).' '.$units[$unit];
     }
 
     /**
@@ -483,18 +554,18 @@ class Backup extends Application
                 continue;
             }
 
-            $this->response()
-                ->success('Saving <comment>'.$domain.'</comment> domain.')
-                ->writeln();
+            $this->startItem('Saving <comment>'.$domain.'</comment> domain.');
 
             $webPath = $this->getWebsitePath($domain);
             $ignore = @file_get_contents($webPath.'/'.$this->ignoreFile) ?: null;
 
             $code = $this->restic()->niced()->run(array_merge(
-                ['backup', '--host', $this->host(), '--tag', 'www'],
+                ['backup', '--json', '--host', $this->host(), '--tag', 'www'],
                 $this->excludeArguments(Restic::websiteExcludes($webPath, $ignore)),
                 [$webPath],
             ), $output, $error);
+
+            $this->finishItem($code, $output);
 
             if ($code === 0) {
                 $this->backedUp['www'][] = $domain;

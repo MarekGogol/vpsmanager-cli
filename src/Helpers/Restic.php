@@ -533,6 +533,25 @@ class Restic extends Application
     }
 
     /**
+     * Get the summary of a restic backup from its JSON output.
+     *
+     * @param  string|null  $output
+     * @return array|null
+     */
+    public static function backupSummary(?string $output): ?array
+    {
+        foreach (array_reverse(explode("\n", trim((string) $output))) as $line) {
+            $message = json_decode($line, true);
+
+            if (is_array($message) && ($message['message_type'] ?? null) === 'summary') {
+                return $message;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Get the last line of a restic error output, its message.
      *
      * @param  string|null  $error

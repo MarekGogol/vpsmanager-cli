@@ -172,18 +172,6 @@ class BackupListCommand extends Command
      */
     public static function formatBytes($bytes): string
     {
-        if ($bytes === null) {
-            return '-';
-        }
-
-        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        $unit = 0;
-
-        while ($bytes >= 1024 && $unit < count($units) - 1) {
-            $bytes /= 1024;
-            $unit++;
-        }
-
-        return round($bytes, $unit > 1 ? 1 : 0).' '.$units[$unit];
+        return Backup::formatBytes($bytes);
     }
 }

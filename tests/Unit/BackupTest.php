@@ -177,4 +177,16 @@ class BackupTest extends TestCase
         $this->assertSame('512 B', BackupListCommand::formatBytes(512));
         $this->assertSame('1.5 MB', BackupListCommand::formatBytes(1572864));
     }
+
+    public function test_summary_of_a_backup_is_read_from_the_json_output(): void
+    {
+        $output = '{"message_type":"status","percent_done":0.5}'."\n".
+            '{"message_type":"summary","total_bytes_processed":1288490189,"data_added":10485760,"data_added_packed":3565158,"total_duration":5.23}'."\n";
+
+        $summary = Restic::backupSummary($output);
+
+        $this->assertSame(1288490189, $summary['total_bytes_processed']);
+        $this->assertSame('<comment>1.2 GB</comment>, added 3.4 MB in 5.2s', Backup::describeSummary($summary));
+        $this->assertNull(Restic::backupSummary('not json'));
+    }
 }
