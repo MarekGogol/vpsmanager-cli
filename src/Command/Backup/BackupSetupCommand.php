@@ -132,6 +132,7 @@ class BackupSetupCommand extends Command
             'askSftpKey',
             'askWWWPath',
             'askBackupDirectories',
+            'askDatabases',
             'askEmailNotifications',
             'askEmailReceiver',
             'askEmailServer',
@@ -437,6 +438,23 @@ class BackupSetupCommand extends Command
     }
 
     /**
+     * Ask if the databases are backed up, by default when a MySQL server runs on this server.
+     *
+     * @param  array  $config
+     * @return void
+     */
+    private function askDatabases(array &$config): void
+    {
+        $default = $config['backup_databases'] ?? Backup::hasMysqlServer();
+
+        $question = new ConfirmationQuestion('<info>Would you like to backup the databases of this server? '.$this->getConfirmationHint($default).'</info> ', (bool) $default);
+
+        $config['backup_databases'] = $value = (bool) $this->ask($question);
+
+        $this->output->writeln('Databases: <comment>'.($value ? 'ON' : 'OFF (e.g. an application server, the databases are backed up on their server)').'</comment>');
+    }
+
+    /**
      * Ask if error email notifications should be enabled.
      *
      * @param  array  $config
@@ -564,6 +582,10 @@ class BackupSetupCommand extends Command
         $config['backup_cron_minute'] ??= Cron::minuteOf((string) $config['backup_server_name']);
 
         $this->output->writeln('Minute of the backups: <comment>'.$config['backup_cron_minute'].'</comment> (backup_cron_minute)');
+
+        if (empty($config['backup_databases'])) {
+            return;
+        }
 
         $default = $config['backup_databases_interval'] ?? Cron::DATABASES_INTERVAL;
         $intervals = implode(', ', array_filter(Cron::DATABASES_INTERVALS));

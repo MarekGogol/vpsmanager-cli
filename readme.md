@@ -157,6 +157,7 @@ All configuration lives in **`src/config.php`**, a plain PHP file that returns a
 | `email_password` | | SMTP password. You type it hidden and it is shown as `********` |
 | `crontab_add` | `true` | Run the backups from `/etc/cron.d/vpsmanager`: everything daily at 4 AM, the maintenance on Sundays at 5 AM, at `backup_cron_minute` |
 | `backup_cron_minute` | derived from `backup_server_name` | Minute (0-59) of all backup jobs, so the servers on one storage do not start at once. Set once by `backup:setup`, change it here and run `cron:write` |
+| `backup_databases` | `true` when MySQL or MariaDB is installed | Back up the databases of this server. Off on an application server whose databases are on another server, then `mysqldump` is not required and cron has no job of the databases |
 | `backup_databases_interval` | `6` | The databases are backed up also every 1, 2, 3, 4, 6, 8 or 12 hours, `0` only daily |
 
 The `backup_local_path` key is asked only for a local repository, the `backup_sftp_*` keys only for an SFTP repository, the email keys only when `email_notifications` is on. The retention keys are not asked, change them in `src/config.php`.
@@ -737,10 +738,10 @@ sudo php vpsmanager backup:run --databases --dirs # back up databases and custom
 sudo php vpsmanager backup:run --www              # back up only web directories
 ```
 
-Before it starts, the command checks that `backup:setup` has been run, that restic 0.17 or newer and `mysqldump` are installed. **A server with the old configuration (tar.gz backups) stops here** with an error in the log and an email, until `backup:setup` is run. A run then does the following:
+Before it starts, the command checks that `backup:setup` has been run, that restic 0.17 or newer and, with `backup_databases`, `mysqldump` are installed. **A server with the old configuration (tar.gz backups) stops here** with an error in the log and an email, until `backup:setup` is run. A run then does the following:
 
 1. **Checks the space and the repository.** At least 2000 MB must be free in a local repository, or in `/root` for the cache of restic. Stale locks of a crashed run are removed (`restic unlock`), the repository must open.
-2. **Databases.** Every database except `information_schema` and `performance_schema` is dumped with `mysqldump --single-transaction --quick --routines --events --triggers` straight into restic (`--stdin-from-command`), one snapshot of `/databases/{db}.sql` each, tagged `databases`. The MySQL credentials go through a temporary option file, not through the command line. A failed dump is reported and creates no snapshot.
+2. **Databases**, when `backup_databases` is on (otherwise they are skipped with a note). Every database except `information_schema` and `performance_schema` is dumped with `mysqldump --single-transaction --quick --routines --events --triggers` straight into restic (`--stdin-from-command`), one snapshot of `/databases/{db}.sql` each, tagged `databases`. The MySQL credentials go through a temporary option file, not through the command line. A failed dump is reported and creates no snapshot.
 3. **Directories.** All entries of `backup_directories` are one snapshot tagged `dirs`. Their `--exclude=` patterns are respected, for example `/etc/mysql --exclude="*/debian.cnf"`. A missing directory is reported.
 4. **WWW.** Each subdirectory of `backup_www_path` is one snapshot tagged `www`. For the new layout only the `data/` folder is backed up. Always excluded:
    - `node_modules`, `vendor`, `cache` directories and `laravel.log` anywhere in the project

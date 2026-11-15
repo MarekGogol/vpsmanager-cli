@@ -147,7 +147,8 @@ class Cron extends Application
         }
 
         if ($this->areBackupsEnabled()) {
-            $interval = (int) $this->config('backup_databases_interval', self::DATABASES_INTERVAL);
+            // Without the databases there are no backups of them between the daily backups
+            $interval = vpsManager()->backup()->backsUpDatabases() ? (int) $this->config('backup_databases_interval', self::DATABASES_INTERVAL) : 0;
 
             $sections[] = "# Backups into the restic repository: everything daily, the databases more often, the maintenance on Sundays\n"
                 ."# (backup:setup). The minute is derived from the name of the server (backup_cron_minute).\n"

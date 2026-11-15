@@ -279,11 +279,31 @@ class Backup extends Application
             $missing[] = 'restic '.Restic::MINIMAL_VERSION.' or newer (installed by backup:setup)';
         }
 
-        if (! trim((string) shell_exec('command -v mysqldump 2>/dev/null'))) {
-            $missing[] = 'mysqldump';
+        if ($this->backsUpDatabases() && ! trim((string) shell_exec('command -v mysqldump 2>/dev/null'))) {
+            $missing[] = 'mysqldump (or turn off the databases with backup:setup)';
         }
 
         return $missing;
+    }
+
+    /**
+     * Determine if a MySQL or MariaDB server is installed on this server.
+     *
+     * @return bool
+     */
+    public static function hasMysqlServer(): bool
+    {
+        return trim((string) shell_exec('command -v mysqld mariadbd 2>/dev/null')) !== '' || file_exists('/usr/sbin/mysqld') || file_exists('/usr/sbin/mariadbd');
+    }
+
+    /**
+     * Determine if this server backs up its databases, e.g. not an application server with the databases elsewhere.
+     *
+     * @return bool
+     */
+    public function backsUpDatabases(): bool
+    {
+        return (bool) $this->config('backup_databases', self::hasMysqlServer());
     }
 
     /**
@@ -852,6 +872,13 @@ class Backup extends Application
 
         $start = microtime(true);
         $types = array_values(array_filter(self::TYPES, fn ($type) => ! empty($backup[$type])));
+
+        // A server without its databases, e.g. an application server with a separate database server
+        if (in_array('databases', $types) && ! $this->backsUpDatabases()) {
+            $types = array_values(array_diff($types, ['databases']));
+
+            $this->response()->message('<comment>Databases are not backed up on this server (backup_databases).</comment>')->writeln();
+        }
 
         if ($this->hasEnoughSpace()) {
             // Locks left by a crashed run would block the backups, only stale locks are removed
