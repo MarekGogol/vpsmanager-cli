@@ -3,10 +3,14 @@
 
 require_once __DIR__.'/vendor/autoload.php';
 
+use Gogol\VpsManagerCLI\Command\Backup\BackupListCommand;
+use Gogol\VpsManagerCLI\Command\Backup\BackupMaintenanceCommand;
 use Gogol\VpsManagerCLI\Command\Backup\BackupPerformCommand;
+use Gogol\VpsManagerCLI\Command\Backup\BackupResticCommand;
+use Gogol\VpsManagerCLI\Command\Backup\BackupRestoreCommand;
 use Gogol\VpsManagerCLI\Command\Backup\BackupSetupCommand;
+use Gogol\VpsManagerCLI\Command\Backup\BackupTestCommand;
 use Gogol\VpsManagerCLI\Command\Backup\BackupTestMailServer;
-use Gogol\VpsManagerCLI\Command\Backup\BackupTestRemoteServer;
 use Gogol\VpsManagerCLI\Command\Chroot\ChrootCreateCommand;
 use Gogol\VpsManagerCLI\Command\Chroot\ChrootRemoveCommand;
 use Gogol\VpsManagerCLI\Command\Chroot\ChrootUpdateCommand;
@@ -45,7 +49,11 @@ $application->addCommand(new MonitorReportCommand());
 $application->addCommand(new MonitorCollectCommand());
 $application->addCommand(new BackupSetupCommand());
 $application->addCommand(new BackupPerformCommand());
-$application->addCommand(new BackupTestRemoteServer());
+$application->addCommand(new BackupTestCommand());
+$application->addCommand(new BackupListCommand());
+$application->addCommand(new BackupRestoreCommand());
+$application->addCommand(new BackupMaintenanceCommand());
+$application->addCommand(new BackupResticCommand());
 $application->addCommand(new BackupTestMailServer());
 $application->addCommand(new MysqlCreateCommand());
 $application->addCommand(new MysqlResetPasswordCommand());

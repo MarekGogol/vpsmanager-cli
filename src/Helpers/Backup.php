@@ -7,35 +7,64 @@ use Gogol\VpsManagerCLI\Application;
 use PHPMailer\PHPMailer\Exception as MailerException;
 use PHPMailer\PHPMailer\PHPMailer;
 
+// Backups of the databases, websites and server directories into a restic repository, local or on an SFTP server.
 class Backup extends Application
 {
     /**
-     * Timezone used for backup directory names and logs.
+     * Timezone used for backup names and logs.
      *
      * @var string
      */
     private const TIMEZONE = 'Europe/Bratislava';
 
     /**
-     * Format of dated backup directory names.
-     *
-     * @var string
-     */
-    private const DIRECTORY_FORMAT = 'Y-m-d_H-i-s';
-
-    /**
-     * Minimal free disk space buffer in MB required above the size of the latest backup.
+     * Minimal free disk space in MB, of a local repository or for the cache of restic.
      *
      * @var int
      */
     private const DISK_SPACE_BUFFER = 2000;
 
     /**
-     * Lock held by a running backup:run, swap:refresh waits for its end.
+     * Lock held by a running backup:run or backup:maintenance, swap:refresh waits for its end.
      *
      * @var string
      */
     const LOCK = '/var/lib/vpsmanager/backup.lock';
+
+    /**
+     * Log of the backups.
+     *
+     * @var string
+     */
+    const LOG = '/var/log/vpsmanager/backup.log';
+
+    /**
+     * Logrotate configuration of the log.
+     *
+     * @var string
+     */
+    const LOGROTATE = '/etc/logrotate.d/vpsmanager-backup';
+
+    /**
+     * Retention of the databases: everything from the last day, then one backup per day, week and month.
+     *
+     * @var array
+     */
+    const KEEP_DATABASES = ['within' => '1d', 'daily' => 7, 'weekly' => 4, 'monthly' => 6];
+
+    /**
+     * Retention of the websites and the directories.
+     *
+     * @var array
+     */
+    const KEEP_DATA = ['daily' => 7, 'weekly' => 4, 'monthly' => 3];
+
+    /**
+     * Types of the backups, by their tag in restic.
+     *
+     * @var array
+     */
+    const TYPES = ['databases', 'dirs', 'www'];
 
     /**
      * Error messages logged during the current backup run.
@@ -80,15 +109,54 @@ class Backup extends Application
     }
 
     /**
-     * Get backup path for given directory and storage.
+     * Get the restic helper.
      *
-     * @param  string|null  $directory
-     * @param  string|null  $storage
+     * @return \Gogol\VpsManagerCLI\Helpers\Restic
+     */
+    public function restic(): Restic
+    {
+        return vpsManager()->restic();
+    }
+
+    /**
+     * Get the host name of the snapshots of this server.
+     *
      * @return string
      */
-    private function getBackupPath($directory = null, $storage = 'local'): string
+    public function host(): string
     {
-        return trim_end($this->config('backup_path').'/'.($storage ? $storage.'/' : '').$directory, '/');
+        return (string) $this->config('backup_server_name', gethostname());
+    }
+
+    /**
+     * Determine if the backups are configured with a restic repository.
+     *
+     * @return bool
+     */
+    public function isConfigured(): bool
+    {
+        return Restic::isConfigured($this->config());
+    }
+
+    /**
+     * Acquire the lock of the backups.
+     *
+     * @param  bool  $wait  wait for a running backup instead of failing
+     * @return resource|null the lock held until it is closed, null when another backup holds it
+     */
+    public static function lock(bool $wait = false)
+    {
+        if (! is_dir(dirname(self::LOCK))) {
+            mkdir(dirname(self::LOCK), 0700, true);
+        }
+
+        $lock = fopen(self::LOCK, 'c');
+
+        if (! $lock || ! flock($lock, $wait ? LOCK_EX : LOCK_EX | LOCK_NB)) {
+            return null;
+        }
+
+        return $lock;
     }
 
     /**
@@ -117,15 +185,33 @@ class Backup extends Application
      */
     private function log($type, $message): void
     {
-        $this->log[] = $message;
+        if ($type === 'ERROR') {
+            $this->log[] = $message;
+        }
 
-        $text = $this->now()->format('Y-m-d H:i:s').' ['.$type.'] - '.$message;
+        if (! is_dir(dirname(self::LOG))) {
+            @mkdir(dirname(self::LOG), 0750, true);
+        }
 
-        file_put_contents($this->config('backup_path').'/logs.log', $text."\n", FILE_APPEND);
+        @file_put_contents(self::LOG, $this->now()->format('Y-m-d H:i:s').' ['.$type.'] - '.$message."\n", FILE_APPEND);
     }
 
     /**
-     * Get required packages which are not installed.
+     * Write the logrotate configuration of the log.
+     *
+     * @return void
+     */
+    public function installLogrotate(): void
+    {
+        if (! is_dir(dirname(self::LOG))) {
+            mkdir(dirname(self::LOG), 0750, true);
+        }
+
+        file_put_contents(self::LOGROTATE, self::LOG." {\n    monthly\n    rotate 12\n    compress\n    missingok\n    notifempty\n}\n");
+    }
+
+    /**
+     * Get missing requirements of the backups.
      *
      * @return array
      */
@@ -133,463 +219,275 @@ class Backup extends Application
     {
         $missing = [];
 
-        foreach (['zip', 'tar', 'rsync'] as $apt) {
-            if (! $this->server()->isInstalledExtension($apt)) {
-                $missing[] = $apt;
-            }
+        if (! Restic::isSupportedVersion($this->restic()->installedVersion())) {
+            $missing[] = 'restic '.Restic::MINIMAL_VERSION.' or newer (installed by backup:setup)';
+        }
+
+        if (! trim((string) shell_exec('command -v mysqldump 2>/dev/null'))) {
+            $missing[] = 'mysqldump';
         }
 
         return $missing;
     }
 
     /**
-     * Check if MySQL connection works and return available databases.
+     * Log an error which stops the backups and send it by email, e.g. a server with the old tar.gz backups after an update.
      *
-     * @return array
+     * @param  string  $message
+     * @return string the error
      */
-    private function testMysql(): array
+    public function reportError(string $message): string
     {
-        $user = $this->config('mysql_user', 'root');
-        $pass = $this->config('mysql_pass', '');
+        $this->log = [];
+        $this->log('ERROR', $message);
+        $this->sendNotification();
 
-        exec('mysql -u'.$user.' '.($pass ? '-p"'.$pass.'"' : '').' -e "show databases;" -s --skip-column-names', $output, $return_var);
-
-        return [
-            'result' => $return_var == 0,
-            'databases' => $output,
-        ];
+        return $message;
     }
 
     /**
-     * Backup all databases.
+     * Create a temporary MySQL option file with the credentials, so the password is not visible in the processes.
+     *
+     * @return string path of the file, remove it after use
+     */
+    public function createMysqlOptionFile(): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'vpsmanager-mysql-');
+        chmod($path, 0600);
+
+        $escape = fn ($value) => str_replace(['\\', '"'], ['\\\\', '\\"'], (string) $value);
+
+        file_put_contents($path, "[client]\nuser=\"".$escape($this->config('mysql_user', 'root'))."\"\npassword=\"".$escape($this->config('mysql_pass', ''))."\"\n");
+
+        return $path;
+    }
+
+    /**
+     * Get all databases of the server except the system ones.
+     *
+     * @param  string  $optionFile
+     * @return array|null null when MySQL is not reachable
+     */
+    private function getDatabases(string $optionFile): ?array
+    {
+        exec('mysql --defaults-extra-file='.escapeshellarg($optionFile).' -e "SHOW DATABASES;" -s --skip-column-names 2>/dev/null', $output, $code);
+
+        if ($code !== 0) {
+            return null;
+        }
+
+        return array_values(array_diff($output, ['information_schema', 'performance_schema']));
+    }
+
+    /**
+     * Backup all databases, each into its own snapshot of /databases/{name}.sql.
      *
      * @return \Gogol\VpsManagerCLI\Helpers\Response
      */
     public function backupDatabases(): Response
     {
-        if (! ($test_result = $this->testMysql())['result']) {
-            return $this->sendError('Could not connect to database.');
+        $optionFile = $this->createMysqlOptionFile();
+
+        try {
+            if (($databases = $this->getDatabases($optionFile)) === null) {
+                return $this->sendError('Could not connect to database.');
+            }
+
+            $errors = [];
+
+            foreach ($databases as $database) {
+                $this->response()
+                    ->success('Saving <comment>'.$database.'</comment> database.')
+                    ->writeln();
+
+                // A failed mysqldump fails the backup, no snapshot is created
+                $code = $this->restic()->niced()->run(array_merge(
+                    ['backup', '--host', $this->host(), '--tag', 'databases', '--stdin-from-command', '--stdin-filename', 'databases/'.$database.'.sql', '--'],
+                    Restic::NICE,
+                    ['mysqldump', '--defaults-extra-file='.$optionFile, '--single-transaction', '--quick', '--routines', '--events', '--triggers', $database],
+                ), $output, $error);
+
+                if ($code === 0) {
+                    $this->backedUp['databases'][] = $database;
+                } else {
+                    $errors[] = $database.' ('.Restic::errorMessage($error).')';
+                }
+            }
+        } finally {
+            @unlink($optionFile);
         }
 
-        if (! $this->hasEnoughSpace(['databases'], 'Could not backup databases.')) {
-            return $this->response();
-        }
-
-        $backup_path = $this->createIfNotExists('databases');
-
-        // Backup all databases except system ones
-        $backup_databases = array_diff($test_result['databases'], ['information_schema', 'performance_schema']);
-
-        $user = $this->config('mysql_user', 'root');
-        $pass = $this->config('mysql_pass', '');
-
-        foreach ($backup_databases as $database) {
-            $filename = $backup_path.'/'.$database.'.sql.gz';
-
-            $this->response()
-                ->success('Saving and compressing <comment>'.$database.'</comment> database.')
-                ->writeln();
-
-            // On mysqldump failure the dump file is removed, so it will be reported as missing
-            exec(
-                '(nice -n 15 ionice -c2 -n7 mysqldump --single-transaction --quick --routines --events --triggers -u'.$user.' '.
-                ($pass ? '-p"'.$pass.'"' : '').' '.$database.' || rm -f "'.$filename.'") | gzip -1 > "'.$filename.'"',
-            );
-        }
-
-        $backed_up = $this->getTree($backup_path);
-
-        $all_databases = array_map(fn ($database) => $database.'.sql.gz', $backup_databases);
-
-        $this->backedUp['databases'] = array_values(array_filter($backup_databases, fn ($database) => in_array($database.'.sql.gz', $backed_up)));
-
-        // Check if some databases are missing in the backup
-        if (count($missing = array_diff($all_databases, $backed_up)) > 0) {
-            return $this->sendError('Databases could not be backed up: '.implode(' ', $missing));
+        if (count($errors) > 0) {
+            return $this->sendError('Databases could not be backed up: '.implode(', ', $errors));
         }
 
         return $this->response()->success('<info>Databases have been successfully backed up.</info>');
     }
 
     /**
-     * Compress directory into tar.gz archive.
-     *
-     * @param  string  $dir
-     * @param  string  $where
-     * @param  string|null  $except  Tar exclude arguments, e.g. "--exclude='*\/vendor/*'"
-     * @return bool
-     */
-    public function tarDirectory(string $dir, string $where, ?string $except = null): bool
-    {
-        $dir = rtrim($dir, '/');
-        $directory = basename($dir);
-        $baseDir = dirname($dir);
-
-        $excludePart = $except ? ' '.$except : '';
-
-        // Streaming tar into gzip with lower priority and fast compression
-        $cmd = sprintf('cd %s && nice -n 15 ionice -c2 -n7 tar -cf -%s %s | gzip -1 > %s', escapeshellarg($baseDir), $excludePart, escapeshellarg($directory), escapeshellarg($where));
-
-        exec($cmd, $output, $returnVar);
-
-        return $returnVar === 0;
-    }
-
-    /**
-     * Create dated backup directory if it does not exist.
-     *
-     * @param  string  $directory
-     * @return string
-     */
-    private function createIfNotExists($directory): string
-    {
-        $directory = $this->getBackupPath($directory).'/'.$this->getSnapshot();
-
-        if (! file_exists($directory)) {
-            exec('mkdir -p "'.$directory.'"');
-        }
-
-        return $directory;
-    }
-
-    /**
-     * Get directory listing.
-     *
-     * @param  string|null  $path
-     * @return array
-     */
-    private function getTree($path): array
-    {
-        if (! $path || ! file_exists($path)) {
-            return [];
-        }
-
-        return array_values(array_diff(scandir($path), ['.', '..']));
-    }
-
-    /**
-     * Get archive file name from path.
-     *
-     * @param  string  $name
-     * @return string
-     */
-    private function getTarName($name): string
-    {
-        return str_replace('/', '_', ltrim($name, '/')).'.tar.gz';
-    }
-
-    /**
-     * Backup all configured server directories.
+     * Backup all configured server directories into one snapshot.
      *
      * @return \Gogol\VpsManagerCLI\Helpers\Response
      */
     public function backupDirectories(): Response
     {
         // Skip when no directories should be backed up
-        if (($backup_directories = (string) $this->config('backup_directories')) == '-') {
+        if (($directories = trim((string) $this->config('backup_directories'))) === '-' || $directories === '') {
             return $this->response();
         }
 
-        if (! $this->hasEnoughSpace(['dirs'], 'Could not backup server directories.')) {
-            return $this->response();
+        $paths = $excludes = $missing = [];
+
+        foreach (Restic::directoryEntries($directories) as $entry) {
+            if (! file_exists($entry['path'])) {
+                $missing[] = $entry['path'];
+
+                continue;
+            }
+
+            $paths[] = $entry['path'];
+            $excludes = array_merge($excludes, $entry['excludes']);
         }
 
-        $backup_path = $this->createIfNotExists('dirs');
-
-        $errors = [];
-
-        foreach (array_filter(explode(';', $backup_directories)) as $dir) {
+        if ($paths) {
             $this->response()
-                ->success('Saving and compressing <comment>'.$dir.'</comment> directory.')
+                ->success('Saving directories <comment>'.implode(' ', $paths).'</comment>.')
                 ->writeln();
 
-            // Split directory path and additional tar parameters
-            $dir_parts = explode(' ', $dir);
-            $dir = $dir_parts[0];
+            $code = $this->restic()->niced()->run(array_merge(
+                ['backup', '--host', $this->host(), '--tag', 'dirs'],
+                $this->excludeArguments($excludes),
+                $paths,
+            ), $output, $error);
 
-            $except = count($dir_parts) > 1 ? implode(' ', array_slice($dir_parts, 1)) : null;
-
-            if (! $this->tarDirectory($dir, $backup_path.'/'.$this->getTarName($dir), $except)) {
-                $errors[] = $dir;
-            } else {
-                $this->backedUp['dirs'][] = $dir;
+            if ($code !== 0) {
+                return $this->sendError('Could not backup directories: '.Restic::errorMessage($error));
             }
+
+            $this->backedUp['dirs'] = $paths;
         }
 
-        if (count($errors) > 0) {
-            return $this->sendError('Could not backup directories: '.implode(', ', $errors));
+        if ($missing) {
+            return $this->sendError('Directories do not exist: '.implode(', ', $missing));
         }
 
         return $this->response()->success('<info>Directories have been successfully backed up.</info>');
     }
 
     /**
-     * Get tar exclude arguments for website backup.
+     * Get the --exclude arguments of restic.
      *
-     * @param  string  $domain
-     * @param  string  $domain_path
-     * @return string
+     * @param  array  $excludes
+     * @return array
      */
-    private function getExcludeDirectories($domain, $domain_path): string
+    private function excludeArguments(array $excludes): array
     {
-        $exclude = '';
+        $arguments = [];
 
-        // Things excluded from user's home directory
-        $exclude_domain_root = ['.config/*', '.cache/*', '.local/*', '.npm/*', '.pm2/*', '.nano/*', '.gnupg/*', '.bash_history', '.selected_editor'];
-
-        // Things excluded anywhere inside project
-        $exclude_global_folders = ['node_modules/*', 'vendor/*', 'cache/*', 'laravel.log'];
-
-        $dataDir = $this->getWebDirectory();
-
-        foreach ($exclude_global_folders as $item) {
-            $exclude .= ' --exclude='.escapeshellarg('*/'.$item);
+        foreach (array_unique($excludes) as $exclude) {
+            $arguments[] = '--exclude='.$exclude;
         }
 
-        $isWebDirWithData = file_exists($domain_path.$dataDir);
-        $webDir = $isWebDirWithData ? $domain_path.$dataDir : $domain_path;
-        $relativePath = $isWebDirWithData ? trim($dataDir, '/') : $domain;
-
-        // Read ignore file with custom excluded paths
-        if (file_exists($ignore_file = $webDir.'/'.$this->ignoreFile)) {
-            foreach (explode("\n", file_get_contents($ignore_file)) as $item) {
-                $item = trim($item);
-
-                if ($item === '' || str_starts_with($item, '#')) {
-                    continue;
-                }
-
-                $pattern = $relativePath.'/'.trim($item, '/');
-
-                if (is_dir($webDir.'/'.$item)) {
-                    $pattern .= '/*';
-                }
-
-                $exclude .= ' --exclude='.escapeshellarg($pattern);
-            }
-        }
-
-        // Exclude home directory garbage inside domain root
-        foreach ($exclude_domain_root as $item) {
-            $exclude .= ' --exclude='.escapeshellarg($relativePath.'/'.$item);
-        }
-
-        return $exclude;
+        return $arguments;
     }
 
     /**
-     * Backup all websites data.
+     * Get the backed up directory of a website, only the data folder with the new directory structure.
+     *
+     * @param  string  $domain
+     * @return string
+     */
+    public function getWebsitePath(string $domain): string
+    {
+        $domainPath = rtrim((string) $this->config('backup_www_path', '/var/www'), '/').'/'.$domain;
+
+        if (file_exists($dataPath = $domainPath.$this->getWebDirectory())) {
+            return $dataPath;
+        }
+
+        return $domainPath;
+    }
+
+    /**
+     * Backup all websites, each into its own snapshot.
      *
      * @return \Gogol\VpsManagerCLI\Helpers\Response
      */
     public function backupWWWData(): Response
     {
-        if (! $this->hasEnoughSpace(['www'], 'Could not backup WWW directories.')) {
-            return $this->response();
+        $wwwPath = rtrim((string) $this->config('backup_www_path', '/var/www'), '/');
+
+        if (! is_dir($wwwPath)) {
+            return $this->sendError('WWW directory '.$wwwPath.' does not exist.');
         }
-
-        $backup_path = $this->createIfNotExists('www');
-
-        $www_path = $this->config('backup_www_path');
 
         $errors = [];
 
-        foreach ($this->getTree($www_path) as $domain) {
-            $this->response()
-                ->success('Saving and compressing <comment>'.$domain.'</comment> domain.')
-                ->writeln();
-
-            $domainPath = $www_path.'/'.$domain;
-            $webPath = $domainPath;
-
-            // With new directory structure, backup only data folder
-            if (file_exists($dataWebPath = $webPath.$this->getWebDirectory())) {
-                $webPath = $dataWebPath;
+        foreach (array_diff(scandir($wwwPath), ['.', '..']) as $domain) {
+            if (! is_dir($wwwPath.'/'.$domain)) {
+                continue;
             }
 
-            $except = $this->getExcludeDirectories($domain, $domainPath);
+            $this->response()
+                ->success('Saving <comment>'.$domain.'</comment> domain.')
+                ->writeln();
 
-            if (! $this->tarDirectory($webPath, $backup_path.'/'.$this->getTarName($domain), $except)) {
-                $errors[] = $domain;
-            } else {
+            $webPath = $this->getWebsitePath($domain);
+            $ignore = @file_get_contents($webPath.'/'.$this->ignoreFile) ?: null;
+
+            $code = $this->restic()->niced()->run(array_merge(
+                ['backup', '--host', $this->host(), '--tag', 'www'],
+                $this->excludeArguments(Restic::websiteExcludes($webPath, $ignore)),
+                [$webPath],
+            ), $output, $error);
+
+            if ($code === 0) {
                 $this->backedUp['www'][] = $domain;
+            } else {
+                $errors[] = $domain.' ('.Restic::errorMessage($error).')';
             }
         }
 
         if (count($errors) > 0) {
-            return $this->sendError('Could not backup directories: '.implode(', ', $errors));
+            return $this->sendError('Could not backup websites: '.implode(', ', $errors));
         }
 
         return $this->response()->success('<info>WWW directories have been successfully backed up.</info>');
     }
 
     /**
-     * Check if backup type is allowed.
+     * Get the retention policy of a type of the backups.
      *
-     * @param  array  $config
-     * @param  string  $key
-     * @return bool
-     */
-    private function isAllowed($config, $key): bool
-    {
-        return array_key_exists($key, $config) && $config[$key] == true;
-    }
-
-    /**
-     * Name of the directories of the current backup run in every type of the backups.
-     *
-     * @return string
-     */
-    public function getSnapshot(): string
-    {
-        return $this->now()->format('Y-m-d_H-00-00');
-    }
-
-    /**
-     * Get dated backup directories sorted from oldest to newest.
-     *
-     * @param  string  $backup_path
+     * @param  string  $type
      * @return array
      */
-    private function getDatedBackups($backup_path): array
+    public function getRetention(string $type): array
     {
-        $backups = array_values(array_filter(
-            $this->getTree($backup_path),
-            fn ($dir) => $this->parseBackupDate($dir) !== null,
-        ));
-
-        sort($backups);
-
-        return $backups;
-    }
-
-    /**
-     * Parse date from backup directory name.
-     *
-     * @param  string  $dir
-     * @return \Carbon\Carbon|null
-     */
-    private function parseBackupDate($dir): ?Carbon
-    {
-        try {
-            return Carbon::createFromFormat(self::DIRECTORY_FORMAT, $dir, self::TIMEZONE) ?: null;
-        } catch (\Throwable $e) {
-            return null;
+        if ($type === 'databases') {
+            return (array) $this->config('backup_keep_databases', self::KEEP_DATABASES);
         }
+
+        return (array) $this->config('backup_keep_data', self::KEEP_DATA);
     }
 
     /**
-     * Remove old database backups in intervals.
+     * Remove old snapshots of the given types by their retention, each database, website and the directories apart.
+     * The data is removed by prune in backup:maintenance.
      *
-     * Last 24 hours: keep everything.
-     * Last 7 days: keep one backup per day.
-     * Last month: keep one backup per week.
-     *
-     * @param  string  $storage
+     * @param  array  $types
      * @return void
      */
-    public function removeOldDatabaseBackups($storage): void
+    public function removeOldBackups(array $types): void
     {
-        $backup_path = $this->getBackupPath('databases', $storage);
-        $backups = $this->getDatedBackups($backup_path);
+        foreach ($types as $type) {
+            $code = $this->restic()->run(array_merge(
+                ['forget', '--tag', $type, '--group-by', 'host,paths'],
+                Restic::keepArguments($this->getRetention($type)),
+            ), $output, $error);
 
-        // Always keep 2 latest backups, so there will be something left if backups stop working
-        $allow = array_slice($backups, -2);
-
-        $yesterday = $this->now()->subDay();
-        $week_before = $this->now()->subWeek();
-        $month_before = $this->now()->subMonth();
-
-        foreach ($backups as $date_dir) {
-            $date = $this->parseBackupDate($date_dir);
-
-            // Keep everything from last 24 hours
-            if ($date >= $yesterday) {
-                $allow[] = $date_dir;
+            if ($code !== 0) {
+                $this->sendError('Old backups of '.$type.' could not be removed: '.Restic::errorMessage($error));
             }
-
-            // Keep one backup per day from last week
-            if ($date >= $week_before && $date < $yesterday) {
-                $allow[$date->format('y-m-d')] = $date_dir;
-            }
-
-            // Keep one backup per week from last month
-            if ($date >= $month_before && $date < $week_before && ! array_key_exists($key = 'week-'.$date->format('y-m-W'), $allow)) {
-                $allow[$key] = $date_dir;
-            }
-        }
-
-        foreach (array_diff($backups, array_unique($allow)) as $dir) {
-            exec('rm -rf "'.$backup_path.'/'.$dir.'"');
-        }
-    }
-
-    /**
-     * Remove old data backups in intervals.
-     *
-     * Today: keep the latest backup.
-     * Last 2 weeks: keep backups from Mondays.
-     * Only configured count of newest backups is kept.
-     *
-     * @param  string  $storage
-     * @param  string  $type
-     * @return void
-     */
-    public function removeOldDataBackups($storage, $type): void
-    {
-        $backup_path = $this->getBackupPath($type, $storage);
-        $backups = $this->getDatedBackups($backup_path);
-
-        $allow = [];
-
-        // Always keep the latest backup, so there will be something left if backups stop working
-        if ($latestBackup = end($backups)) {
-            $allow['today'] = $latestBackup;
-        }
-
-        $today = $this->now()->startOfDay();
-        $weeks2_before = $this->now()->startOfWeek()->subWeek();
-
-        foreach ($backups as $date_dir) {
-            $date = $this->parseBackupDate($date_dir);
-
-            // Keep the latest backup from today
-            if ($date >= $today) {
-                $allow['today'] = $date_dir;
-            }
-
-            // Keep backups from last 2 Mondays
-            if ($date >= $weeks2_before && $date->isMonday() && $date < $today && ! array_key_exists($key = 'week-'.$date->format('y-m-d'), $allow)) {
-                $allow[$key] = $date_dir;
-            }
-        }
-
-        // Keep only configured count of newest backups
-        $latestBackups = array_values($allow);
-        sort($latestBackups);
-        $whitelistedBackups = array_slice($latestBackups, -max(1, (int) $this->config('backup_www_max_limit', 2)));
-
-        foreach (array_diff($backups, $whitelistedBackups) as $dir) {
-            exec('rm -rf "'.$backup_path.'/'.$dir.'"');
-        }
-    }
-
-    /**
-     * Remove all old unnecessary backups from all storages.
-     *
-     * @return void
-     */
-    public function removeOldBackups(): void
-    {
-        foreach ($this->getTree($this->getBackupPath(null, null)) as $storage) {
-            // Skip files and hidden directories (e.g. .ssh, logs.log) in backup root
-            if (str_starts_with($storage, '.') || ! is_dir($this->getBackupPath(null, $storage))) {
-                continue;
-            }
-
-            $this->removeOldDatabaseBackups($storage);
-            $this->removeOldDataBackups($storage, 'dirs');
-            $this->removeOldDataBackups($storage, 'www');
         }
 
         $this->response()
@@ -598,19 +496,56 @@ class Backup extends Application
     }
 
     /**
-     * Test SSH connection to remote backup server.
+     * Remove the data of the forgotten snapshots and check the repository.
      *
-     * @return bool
+     * @return \Gogol\VpsManagerCLI\Helpers\Response
      */
-    public function testRemoteServer(): bool
+    public function maintenance(): Response
     {
-        $cmd = 'ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=5 '.
-            $this->config('remote_user').'@'.$this->config('remote_server').
-            ' -i '.$this->getRemoteRSAKeyPath().' -t "exit" 2>&1';
+        $this->date = null;
+        $this->log = [];
+        $start = microtime(true);
 
-        exec($cmd, $output, $return_var);
+        $this->restic()->run(['unlock'], $output, $error);
 
-        return $return_var == 0;
+        $this->response()->success('Removing unused data of old backups.')->writeln();
+
+        if ($this->restic()->run(['prune'], $output, $error) !== 0) {
+            $this->sendError('Prune of the repository failed: '.Restic::errorMessage($error));
+        }
+
+        $this->response()->success('Checking the repository and 5% of its data.')->writeln();
+
+        if ($this->restic()->run(['check', '--read-data-subset=5%'], $output, $error) !== 0) {
+            $this->sendError('Check of the repository failed: '.Restic::errorMessage($error));
+        }
+
+        $this->sendNotification();
+
+        $this->log('INFO', 'Maintenance end | '.round((microtime(true) - $start) / 60, 1).' Min.');
+
+        if ($this->log) {
+            return $this->response()->error(implode(' ', $this->log));
+        }
+
+        return $this->response()->success('Maintenance of the backups has been successfully performed.');
+    }
+
+    /**
+     * Test the connection to the repository.
+     *
+     * @return true|string true, or the error
+     */
+    public function testRepository(): bool|string
+    {
+        $code = $this->restic()->run(['cat', 'config'], $output, $error);
+
+        return match ($code) {
+            0 => true,
+            Restic::EXIT_NO_REPOSITORY => 'Repository '.Restic::repository($this->config()).' does not exist, run backup:setup.',
+            Restic::EXIT_WRONG_PASSWORD => 'The password of the configuration does not open the repository.',
+            default => Restic::errorMessage($error),
+        };
     }
 
     /**
@@ -671,100 +606,6 @@ class Backup extends Application
     }
 
     /**
-     * Get rsync exclude arguments for backups which should not be synced to remote server.
-     *
-     * @param  string  $backup_path
-     * @return array
-     */
-    private function getExcludedRsyncBackups($backup_path): array
-    {
-        $exclude = [];
-        $limit = max(1, (int) $this->config('remote_backup_limit', 2));
-
-        foreach ($this->getTree($backup_path) as $dir) {
-            $backups = $this->getTree($backup_path.'/'.$dir);
-
-            $allowed_backups = array_slice($backups, -$limit);
-
-            $exclude_folders = array_map(
-                fn ($backup) => '--exclude \''.$dir.'/'.$backup.'\'',
-                array_diff($backups, $allowed_backups),
-            );
-
-            $exclude = array_merge($exclude, $exclude_folders);
-        }
-
-        return $exclude;
-    }
-
-    /**
-     * Sync local backups to remote server.
-     *
-     * @return void
-     */
-    public function sendLocalBackupsToRemoteServer(): void
-    {
-        if (! $this->config('remote_backups')) {
-            return;
-        }
-
-        $remote_server = $this->config('remote_server');
-
-        $this->response()
-            ->success('Syncing backups to remote <comment>'.$remote_server.'</comment> server.')
-            ->writeln();
-
-        if (! file_exists($this->getRemoteRSAKeyPath())) {
-            $this->sendError('SSH key for authentication with remote server does not exist.');
-
-            return;
-        }
-
-        $backup_path = $this->getBackupPath();
-        $exclude = $this->getExcludedRsyncBackups($backup_path);
-
-        exec(
-            'rsync -avzP --delete --delete-excluded '.implode(' ', $exclude).
-            ' -e \'ssh -o StrictHostKeyChecking=no -i '.$this->getRemoteRSAKeyPath().'\' '.
-            $backup_path.'/* '.$this->config('remote_user').'@'.$remote_server.':'.$this->config('remote_path'),
-            $output,
-            $return_var,
-        );
-
-        if ($return_var == 0) {
-            $this->response()
-                ->success('<info>All backups have been synced to remote</info> <comment>'.$remote_server.'</comment> <info>server.</info>')
-                ->writeln();
-        } else {
-            $this->sendError('Files could not be synced to remote server.');
-        }
-    }
-
-    /**
-     * Get SSH private key path used for remote server.
-     *
-     * @return string
-     */
-    public function getRemoteRSAKeyPath(): string
-    {
-        return $this->config('backup_path').'/.ssh/id_rsa';
-    }
-
-    /**
-     * Save remote server private key.
-     *
-     * @param  string  $value
-     * @return void
-     */
-    public function setRemoteKey($value): void
-    {
-        $key_path = $this->getRemoteRSAKeyPath();
-
-        file_put_contents($key_path, $value);
-        exec('chmod 600 '.$key_path);
-    }
-
-    /**
      * Send email with errors if notifications are enabled.
      *
      * @return void
@@ -772,7 +613,7 @@ class Backup extends Application
     private function sendNotification(): void
     {
         if ($this->config('email_notifications') && count($this->log) > 0) {
-            $this->sendMail('Error notification', implode('<br>', $this->log));
+            $this->sendMail('Error notification', implode('<br>', array_map('htmlspecialchars', $this->log)));
         }
     }
 
@@ -796,6 +637,16 @@ class Backup extends Application
     }
 
     /**
+     * Name of the current backup run, the monitor groups the backups of one hour under it.
+     *
+     * @return string
+     */
+    public function getSnapshot(): string
+    {
+        return $this->now()->format('Y-m-d_H-00-00');
+    }
+
+    /**
      * Get free disk space in MB.
      *
      * @param  string  $path
@@ -804,6 +655,24 @@ class Backup extends Application
     public function getFreeDiskSpace($path = '/'): float
     {
         return round((float) @disk_free_space($path) / 1000000, 1);
+    }
+
+    /**
+     * Check if there is enough disk space for a local repository, or for the cache of restic.
+     *
+     * @return bool
+     */
+    private function hasEnoughSpace(): bool
+    {
+        $path = $this->config('backup_repository_type') === 'local' ? $this->config('backup_local_path') : '/root';
+
+        if (($freeSpace = $this->getFreeDiskSpace($path)) <= self::DISK_SPACE_BUFFER) {
+            $this->sendError('Disk space of '.$path.' is too low for backups, '.$freeSpace.'MB is free. At least '.self::DISK_SPACE_BUFFER.'MB is required.');
+
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -823,30 +692,40 @@ class Backup extends Application
             ->writeln();
 
         $start = microtime(true);
+        $types = array_values(array_filter(self::TYPES, fn ($type) => ! empty($backup[$type])));
 
-        if ($this->isAllowed($backup, 'databases')) {
-            $this->backupDatabases()->writeln();
+        if ($this->hasEnoughSpace()) {
+            // Locks left by a crashed run would block the backups, only stale locks are removed
+            $this->restic()->run(['unlock'], $output, $error);
+
+            if (($test = $this->testRepository()) !== true) {
+                $this->sendError('Repository is not available: '.$test);
+            } else {
+                if (in_array('databases', $types)) {
+                    $this->backupDatabases()->writeln();
+                }
+
+                if (in_array('dirs', $types)) {
+                    $this->backupDirectories()->writeln();
+                }
+
+                if (in_array('www', $types)) {
+                    $this->backupWWWData()->writeln();
+                }
+
+                $this->removeOldBackups($types);
+            }
         }
 
-        if ($this->isAllowed($backup, 'dirs')) {
-            $this->backupDirectories()->writeln();
-        }
-
-        if ($this->isAllowed($backup, 'www')) {
-            $this->backupWWWData()->writeln();
-        }
-
-        $this->removeOldBackups();
-        $this->sendLocalBackupsToRemoteServer();
         $this->sendNotification();
         $this->sendToMonitor();
 
         $this->log(
             'INFO',
             'Backup end'.
-            ' | DB:'.($this->isAllowed($backup, 'databases') ? 'YES' : 'NO').
-            ' | WWW:'.($this->isAllowed($backup, 'www') ? 'YES' : 'NO').
-            ' | DIRS:'.($this->isAllowed($backup, 'dirs') ? 'YES' : 'NO').
+            ' | DB:'.(in_array('databases', $types) ? 'YES' : 'NO').
+            ' | WWW:'.(in_array('www', $types) ? 'YES' : 'NO').
+            ' | DIRS:'.(in_array('dirs', $types) ? 'YES' : 'NO').
             ' | '.round((microtime(true) - $start) / 60, 1).' Min.',
         );
 
@@ -854,52 +733,28 @@ class Backup extends Application
     }
 
     /**
-     * Get total size in MB of the latest backups of given types.
+     * Get the type and the name of a snapshot, e.g. ['databases', 'shop'], ['www', 'example.com'], ['dirs', '/etc/nginx /etc/php'].
      *
-     * @param  array  $sumDirectories
-     * @return float
+     * @param  array  $snapshot
+     * @param  string  $wwwPath
+     * @return array
      */
-    private function getLatestTotalBackupSize($sumDirectories): float
+    public static function describeSnapshot(array $snapshot, string $wwwPath = '/var/www'): array
     {
-        $totalSum = 0;
+        $tags = $snapshot['tags'] ?? [];
+        $paths = $snapshot['paths'] ?? [];
+        $type = current(array_intersect(self::TYPES, $tags)) ?: 'other';
 
-        foreach ($sumDirectories as $directory) {
-            $backups = $this->getDatedBackups($this->getBackupPath($directory));
-
-            if (! $latestBackup = end($backups)) {
-                continue;
-            }
-
-            $totalSum += round(getDirectorySize($this->getBackupPath($directory).'/'.$latestBackup) / 1000000);
+        if ($type === 'databases') {
+            return [$type, preg_replace('/\.sql$/', '', basename((string) ($paths[0] ?? '')))];
         }
 
-        return $totalSum;
-    }
+        if ($type === 'www') {
+            $relative = ltrim(substr((string) ($paths[0] ?? ''), strlen(rtrim($wwwPath, '/'))), '/');
 
-    /**
-     * Check if there is enough disk space for the next backup.
-     *
-     * @param  array  $sumDirectories
-     * @param  string  $error
-     * @return bool
-     */
-    private function hasEnoughSpace($sumDirectories, $error): bool
-    {
-        $latestBackupSize = $this->getLatestTotalBackupSize($sumDirectories);
-
-        $freeSpace = $this->getFreeDiskSpace($this->config('backup_path'));
-
-        // Free space must be larger than the latest backup plus buffer
-        if ($freeSpace <= $latestBackupSize + self::DISK_SPACE_BUFFER) {
-            $this->sendError(
-                $error.' Disk space is too low for backup of '.$latestBackupSize.'MB (size of the previous backup). '.
-                'Current free disk space is '.$freeSpace.'MB. '.
-                'Please expand your disk space to at least '.self::DISK_SPACE_BUFFER.'MB above the size of the latest backup.',
-            );
-
-            return false;
+            return [$type, explode('/', $relative)[0]];
         }
 
-        return true;
+        return [$type, implode(' ', $paths)];
     }
 }

@@ -19,7 +19,7 @@ class BackupPerformCommand extends Command
     protected function configure(): void
     {
         $this->setName('backup:run')
-            ->setDescription('Backup all databases, websites data, and other files. Also copies data to other server.')
+            ->setDescription('Backup all databases, websites and server directories into the restic repository')
             ->addOption('databases', null, InputOption::VALUE_OPTIONAL, 'Backup all databases', false)
             ->addOption('dirs', null, InputOption::VALUE_OPTIONAL, 'Backup all directories', false)
             ->addOption('www', null, InputOption::VALUE_OPTIONAL, 'Backup all www data', false);
@@ -38,25 +38,20 @@ class BackupPerformCommand extends Command
     {
         vpsManager()->bootConsole($output, $input, $this->getHelper('question'));
 
-        if (! vpsManager()->config('backup_path')) {
-            throw new Exception('Please, first start backups configuration with "php vpsmanager backup:setup" command.');
+        $backup = vpsManager()->backup();
+
+        // Servers with the old tar.gz backups stop here until backup:setup, with an email
+        if (! $backup->isConfigured()) {
+            throw new Exception($backup->reportError('Backups are not configured, nothing was backed up. Please, run "php vpsmanager backup:setup".'));
         }
 
-        $missing = vpsManager()->backup()->checkRequirements();
-
-        if (count($missing) > 0) {
-            throw new Exception('Please, first install missing extensions "apt install -y '.implode(' ', $missing).'"');
-        }
-
-        if (! is_dir(dirname(Backup::LOCK))) {
-            mkdir(dirname(Backup::LOCK), 0700, true);
+        if (count($missing = $backup->checkRequirements()) > 0) {
+            throw new Exception($backup->reportError('Backups could not run, missing requirements: '.implode(', ', $missing)));
         }
 
         // Held until the end of the run, swap:refresh does not run during a backup
-        $lock = fopen(Backup::LOCK, 'c');
-
-        if (! $lock || ! flock($lock, LOCK_EX | LOCK_NB)) {
-            $output->writeln('<comment>backup:run is running already.</comment>');
+        if (! $lock = Backup::lock()) {
+            $output->writeln('<comment>backup:run or backup:maintenance is running already.</comment>');
 
             return Command::SUCCESS;
         }

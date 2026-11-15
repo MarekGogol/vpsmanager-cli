@@ -3,14 +3,31 @@
 namespace Gogol\VpsManagerCLI\Command\Backup;
 
 use Exception;
+use Gogol\VpsManagerCLI\Helpers\Backup;
+use Gogol\VpsManagerCLI\Helpers\Restic;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Question\ChoiceQuestion;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Console\Question\Question;
 
 class BackupSetupCommand extends Command
 {
+    /**
+     * Keys of the old tar.gz backups and the remote rsync, removed by the setup.
+     *
+     * @var array
+     */
+    const OBSOLETE_KEYS = ['backup_path', 'backup_www_max_limit', 'remote_backups', 'remote_server', 'remote_user', 'remote_path', 'remote_backup_limit'];
+
+    /**
+     * Default directory of a local repository.
+     *
+     * @var string
+     */
+    const DEFAULT_LOCAL_PATH = '/var/vpsmanager_backups/restic';
+
     /**
      * The console output.
      *
@@ -19,11 +36,18 @@ class BackupSetupCommand extends Command
     private $output;
 
     /**
-     * Linux user which owns the backups directory.
+     * The console input.
      *
-     * @var string
+     * @var \Symfony\Component\Console\Input\InputInterface
      */
-    private $default_backup_user = 'vpsmanager_backups';
+    private $input;
+
+    /**
+     * The console question helper.
+     *
+     * @var \Symfony\Component\Console\Helper\QuestionHelper
+     */
+    private $helper;
 
     /**
      * Configure the command.
@@ -32,7 +56,7 @@ class BackupSetupCommand extends Command
      */
     protected function configure(): void
     {
-        $this->setName('backup:setup')->setDescription('Setup backup configuration');
+        $this->setName('backup:setup')->setDescription('Setup backups into a restic repository, local or on an SFTP server');
     }
 
     /**
@@ -49,115 +73,106 @@ class BackupSetupCommand extends Command
         vpsManager()->bootConsole($output);
 
         $this->output = $output;
+        $this->input = $input;
+        $this->helper = $this->getHelper('question');
+
+        // The passwords of the repository can be typed only interactively
+        if (! $input->isInteractive()) {
+            throw new Exception('backup:setup must run interactively.');
+        }
 
         $output->writeln('');
 
-        $this->setConfig($input, $output, $this->getHelper('question'));
+        $config = $this->askConfig(vpsManager()->config());
 
+        $this->save($config);
+
+        $this->installRestic();
+
+        $config = $this->prepareRepository($config);
+
+        $this->save($config);
+
+        $this->addRecoveryPassword($config);
+
+        $config = $this->removeOldBackups($config);
+
+        $this->save($config);
+
+        vpsManager()->backup()->installLogrotate();
+
+        $output->writeln('');
         $output->writeln('<info>Backup setup has been successfully completed.</info>');
+        $output->writeln('Test it with <comment>php vpsmanager backup:run</comment> and <comment>php vpsmanager backup:list</comment>.');
 
         return Command::SUCCESS;
     }
 
     /**
-     * Ask for all backup configuration values and save them into config file.
+     * Ask for all backup configuration values.
      *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
+     * @param  array  $config
+     * @return array
+     */
+    private function askConfig(array $config): array
+    {
+        $steps = [
+            'askServerName',
+            'askRepositoryType',
+            'askLocalPath',
+            'askSftpHost',
+            'askSftpUser',
+            'askSftpPort',
+            'askSftpPath',
+            'askSftpKey',
+            'askWWWPath',
+            'askBackupDirectories',
+            'askEmailNotifications',
+            'askEmailReceiver',
+            'askEmailServer',
+            'askEmailUsername',
+            'askEmailPassword',
+            'askCrontab',
+        ];
+
+        foreach ($steps as $step) {
+            if ($this->{$step}($config) !== false) {
+                $this->output->writeln('');
+            }
+        }
+
+        $config['backup_keep_databases'] ??= Backup::KEEP_DATABASES;
+        $config['backup_keep_data'] ??= Backup::KEEP_DATA;
+
+        return $config;
+    }
+
+    /**
+     * Save the configuration and reload it.
+     *
+     * @param  array  $config
      * @return void
      *
      * @throws \Exception
      */
-    public function setConfig($input, $output, $helper): void
+    private function save(array $config): void
     {
-        $vm = vpsManager();
-        $config = $vm->config();
-
-        $config_data = [
-            'setBackupServerName' => [
-                'config_key' => ($k = 'backup_server_name'),
-                'default' => $vm->config($k, 'MyVpsServer'),
-            ],
-            'setBackupPath' => [
-                'config_key' => ($k = 'backup_path'),
-                'default' => $vm->config($k, '/var/vpsmanager_backups'),
-            ],
-            'setWWWPath' => [
-                'config_key' => ($k = 'backup_www_path'),
-                'default' => $vm->config($k, '/var/www'),
-            ],
-            'setMaxWWWBackups' => [
-                'config_key' => ($k = 'backup_www_max_limit'),
-                'default' => $vm->config($k, 2),
-            ],
-            'setBackupDirectories' => [
-                'config_key' => ($k = 'backup_directories'),
-                'default' => $vm->config($k, implode(';', ['/etc/nginx', '/etc/php', '/etc/mysql --exclude="*/debian.cnf"', '/etc/ssh/sshd_config', '/var/spool/cron/crontabs'])),
-            ],
-            'setEmailNotifications' => [
-                'config_key' => ($k = 'email_notifications'),
-                'default' => $vm->config($k, true),
-            ],
-            'setEmailReceiver' => [
-                'config_key' => ($k = 'email_receiver'),
-                'default' => $vm->config($k, null),
-            ],
-            'setEmailServer' => [
-                'config_key' => ($k = 'email_server'),
-                'default' => $vm->config($k, null),
-            ],
-            'setEmailUsername' => [
-                'config_key' => ($k = 'email_username'),
-                'default' => $vm->config($k, null),
-            ],
-            'setEmailPassword' => [
-                'config_key' => ($k = 'email_password'),
-                'default' => $vm->config($k, null),
-            ],
-            'setRemoteBackups' => [
-                'config_key' => ($k = 'remote_backups'),
-                'default' => $vm->config($k, true),
-            ],
-            'setRemoteServer' => [
-                'config_key' => ($k = 'remote_server'),
-                'default' => $vm->config($k, null),
-            ],
-            'setRemoteUser' => [
-                'config_key' => ($k = 'remote_user'),
-                'default' => $vm->config($k, $this->default_backup_user),
-            ],
-            'setRemoteBackupPath' => [
-                'config_key' => ($k = 'remote_path'),
-                'default' => $vm->config($k),
-            ],
-            'setRemoteBackupLimit' => [
-                'config_key' => ($k = 'remote_backup_limit'),
-                'default' => $vm->config($k, 2),
-            ],
-            'addIntoCrontab' => [
-                'config_key' => ($k = 'crontab_add'),
-                'default' => $vm->config($k, true),
-            ],
-        ];
-
-        // Ask for each config property, skipped questions return false
-        foreach ($config_data as $method => $data) {
-            $config[$data['config_key']] ??= null;
-
-            $answered = $this->{$method}($input, $output, $helper, $config[$data['config_key']], $data['default'], $config);
-
-            if ($answered !== false) {
-                $output->writeln('');
-            }
-        }
-
         if (! vpsManager()->saveConfig($config)) {
             throw new Exception('Setup failed. Config could not be saved into '.vpsManagerPath().'/config.php');
         }
 
-        // Force reloading of config
         vpsManager()->bootConfig(true);
+    }
+
+    /**
+     * Ask a question.
+     *
+     * @param  \Symfony\Component\Console\Question\Question  $question
+     * @return mixed
+     */
+    private function ask(Question $question)
+    {
+        return $this->helper->ask($this->input, $this->output, $question);
     }
 
     /**
@@ -172,504 +187,642 @@ class BackupSetupCommand extends Command
     }
 
     /**
-     * Ask if backups should be synced to remote server.
+     * Ask for the name of the server, the host of its snapshots.
      *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
+     * @param  array  $config
      * @return void
      */
-    public function setRemoteBackups($input, $output, $helper, &$config, $default): void
+    private function askServerName(array &$config): void
     {
-        $question = new ConfirmationQuestion('<info>Would you like to backup your data remotely? '.$this->getConfirmationHint($default).'</info> ', (bool) $default);
+        $default = $config['backup_server_name'] ?? 'MyVpsServer';
 
-        $value = $config = $helper->ask($input, $output, $question);
+        $this->output->writeln('<info>Please set name of your server:</info>');
 
-        $output->writeln('Remote backups: <comment>'.($value ? 'ON' : 'OFF').'</comment>');
+        $value = $this->ask(new Question('Set name of your server or press enter to use <comment>'.$default.'</comment>: ')) ?: $default;
+
+        $config['backup_server_name'] = $value;
+
+        $this->output->writeln('Used name: <comment>'.$value.'</comment>');
     }
 
     /**
-     * Ask if error email notifications should be enabled.
+     * Ask where the repository is stored.
      *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
+     * @param  array  $config
      * @return void
      */
-    public function setEmailNotifications($input, $output, $helper, &$config, $default): void
+    private function askRepositoryType(array &$config): void
     {
-        $question = new ConfirmationQuestion('<info>Would you like to enable error email notifications? '.$this->getConfirmationHint($default).'</info> ', (bool) $default);
+        $choices = ['sftp' => 'SFTP server (e.g. Hetzner Storage Box)', 'local' => 'Local directory (or a mounted disk)'];
+        $default = $config['backup_repository_type'] ?? 'sftp';
 
-        $value = $config = $helper->ask($input, $output, $question);
+        $question = new ChoiceQuestion('<info>Where should the backups be stored?</info>', $choices, $default);
 
-        $output->writeln('Email notifications: <comment>'.($value ? 'ON' : 'OFF').'</comment>');
+        $config['backup_repository_type'] = $value = $this->ask($question);
+
+        $this->output->writeln('Repository: <comment>'.$choices[$value].'</comment>');
     }
 
     /**
-     * Ask for server name.
+     * Ask for the directory of a local repository.
      *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
-     * @return void
-     */
-    private function setBackupServerName($input, $output, $helper, &$config, $default): void
-    {
-        $output->writeln('<info>Please set name of your server:</info>');
-
-        $question = new Question('Set name of your local server or press enter to use default name <comment>'.$default.'</comment>: ', null);
-
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
-
-        $output->writeln('Used name: <comment>'.$value.'</comment>');
-    }
-
-    /**
-     * Ask for SMTP server address.
-     *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
-     * @param  array  $total_config
+     * @param  array  $config
      * @return false|void
      */
-    private function setEmailServer($input, $output, $helper, &$config, $default, $total_config)
+    private function askLocalPath(array &$config)
     {
-        if (! $total_config['email_notifications']) {
+        if ($config['backup_repository_type'] !== 'local') {
             return false;
         }
 
-        $output->writeln('<info>Please set SMTP server address:</info>');
+        $default = $config['backup_local_path'] ?? self::DEFAULT_LOCAL_PATH;
 
-        $question = new Question(
-            'Type SMTP server address in format <comment>(smtp.example.com:465)</comment>'.($default ? ' or press enter to use default address <comment>'.$default.'</comment>' : '').': ',
-            null,
-        );
-        $question->setValidator($this->requiredValidator($default, 'Please fill SMTP address of mail server.'));
+        $this->output->writeln('<info>Please set the directory of the repository.</info>');
 
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+        $value = rtrim($this->ask(new Question('Type new path or press enter to use <comment>'.$default.'</comment>: ')) ?: $default, '/');
 
-        $output->writeln('Used SMTP server: <comment>'.$value.'</comment>');
+        exec('mkdir -p '.escapeshellarg($value).' && chmod 700 '.escapeshellarg($value));
+
+        $config['backup_local_path'] = $value;
+
+        $this->output->writeln('Used path: <comment>'.$value.'</comment>');
     }
 
     /**
-     * Ask for SMTP username.
+     * Ask for the address of the SFTP server.
      *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
-     * @param  array  $total_config
+     * @param  array  $config
      * @return false|void
      */
-    private function setEmailUsername($input, $output, $helper, &$config, $default, $total_config)
+    private function askSftpHost(array &$config)
     {
-        if (! $total_config['email_notifications']) {
+        if ($config['backup_repository_type'] !== 'sftp') {
             return false;
         }
 
-        $output->writeln('<info>Please set SMTP username:</info>');
+        $default = $config['backup_sftp_host'] ?? null;
 
-        $question = new Question(
-            'Type SMTP username in format <comment>(vpsmanager@example.com)</comment>'.($default ? ' or press enter to use default username <comment>'.$default.'</comment>' : '').': ',
-            null,
-        );
-        $question->setValidator($this->requiredValidator($default, 'Please fill SMTP username of mail server.'));
+        $this->output->writeln('<info>Please set the address of the SFTP server.</info>');
 
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+        $question = new Question('Type the address, e.g. <comment>u123456-sub1.your-storagebox.de</comment>'.($default ? ', or press enter to use <comment>'.$default.'</comment>' : '').': ');
+        $question->setValidator($this->requiredValidator($default, 'Please fill the address of the SFTP server.'));
 
-        $output->writeln('Used SMTP username: <comment>'.$value.'</comment>');
+        $config['backup_sftp_host'] = $value = $this->ask($question) ?: $default;
+
+        $this->output->writeln('Used server: <comment>'.$value.'</comment>');
     }
 
     /**
-     * Ask for notifications receiver email address.
+     * Ask for the user of the SFTP server.
      *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
-     * @param  array  $total_config
+     * @param  array  $config
      * @return false|void
      */
-    private function setEmailReceiver($input, $output, $helper, &$config, $default, $total_config)
+    private function askSftpUser(array &$config)
     {
-        if (! $total_config['email_notifications']) {
+        if ($config['backup_repository_type'] !== 'sftp') {
             return false;
         }
 
-        $output->writeln('<info>Please set your email address:</info>');
+        // A Storage Box sub-account has the name of its host
+        $default = $config['backup_sftp_user'] ?? (str_ends_with($config['backup_sftp_host'], '.your-storagebox.de') ? explode('.', $config['backup_sftp_host'])[0] : null);
 
-        $question = new Question(
-            'Type your email address where you want to receive email notifications'.($default ? ' or press enter to use default email <comment>'.$default.'</comment>' : '').': ',
-            null,
-        );
-        $question->setValidator($this->requiredValidator($default, 'Please fill email address.'));
+        $this->output->writeln('<info>Please set the user of the SFTP server.</info>');
 
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+        $question = new Question('Type the user'.($default ? ' or press enter to use <comment>'.$default.'</comment>' : '').': ');
+        $question->setValidator($this->requiredValidator($default, 'Please fill the user of the SFTP server.'));
 
-        $output->writeln('Used email address: <comment>'.$value.'</comment>');
+        $config['backup_sftp_user'] = $value = $this->ask($question) ?: $default;
+
+        $this->output->writeln('Used user: <comment>'.$value.'</comment>');
     }
 
     /**
-     * Ask for SMTP password.
+     * Ask for the SSH port of the SFTP server.
      *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
-     * @param  array  $total_config
+     * @param  array  $config
      * @return false|void
      */
-    private function setEmailPassword($input, $output, $helper, &$config, $default, $total_config)
+    private function askSftpPort(array &$config)
     {
-        if (! $total_config['email_notifications']) {
+        if ($config['backup_repository_type'] !== 'sftp') {
             return false;
         }
 
-        $output->writeln('<info>Please set SMTP password:</info>');
+        // A Storage Box accepts keys of the authorized_keys file on port 23
+        $default = $config['backup_sftp_port'] ?? (str_ends_with($config['backup_sftp_host'], '.your-storagebox.de') ? 23 : 22);
 
-        $question = new Question('Type SMTP password'.($default ? ' or press enter to keep current password' : '').': ', null);
-        $question->setHidden(true);
-        $question->setHiddenFallback(true);
-        $question->setValidator($this->requiredValidator($default, 'Please fill SMTP password of your account.'));
+        $question = new Question('<info>Type the SSH port</info> or press enter to use <comment>'.$default.'</comment>: ');
+        $question->setValidator(function ($value) {
+            if ($value !== null && $value !== '' && (! ctype_digit((string) $value) || (int) $value < 1 || (int) $value > 65535)) {
+                throw new Exception('Please fill a valid port.');
+            }
 
-        $config = $helper->ask($input, $output, $question) ?: $default;
+            return $value;
+        });
 
-        $output->writeln('Used SMTP password: <comment>********</comment>');
+        $config['backup_sftp_port'] = $value = (int) ($this->ask($question) ?: $default);
+
+        $this->output->writeln('Used port: <comment>'.$value.'</comment>');
+    }
+
+    /**
+     * Ask for the directory of the repository on the SFTP server.
+     *
+     * @param  array  $config
+     * @return false|void
+     */
+    private function askSftpPath(array &$config)
+    {
+        if ($config['backup_repository_type'] !== 'sftp') {
+            return false;
+        }
+
+        $default = $config['backup_sftp_path'] ?? 'restic';
+
+        $question = new Question('<info>Type the directory of the repository</info>, relative to the home of the user, or press enter to use <comment>'.$default.'</comment>: ');
+
+        $config['backup_sftp_path'] = $value = trim($this->ask($question) ?: $default);
+
+        $this->output->writeln('Used directory: <comment>'.$value.'</comment>');
+    }
+
+    /**
+     * Ask for the SSH key of the SFTP server, generate it when it does not exist and wait until it is authorized.
+     *
+     * @param  array  $config
+     * @return false|void
+     */
+    private function askSftpKey(array &$config)
+    {
+        if ($config['backup_repository_type'] !== 'sftp') {
+            return false;
+        }
+
+        $default = $config['backup_sftp_key'] ?? Restic::KEY_PATH;
+
+        $question = new Question('<info>Type the path of the SSH key</info> or press enter to use <comment>'.$default.'</comment>: ');
+
+        $config['backup_sftp_key'] = $path = $this->ask($question) ?: $default;
+
+        if (! file_exists($path)) {
+            exec('mkdir -p '.escapeshellarg(dirname($path)).' && chmod 700 '.escapeshellarg(dirname($path)));
+            exec('ssh-keygen -t ed25519 -q -N "" -C '.escapeshellarg('vpsmanager-backup-'.$config['backup_server_name']).' -f '.escapeshellarg($path), $output, $code);
+
+            if ($code !== 0) {
+                throw new Exception('SSH key '.$path.' could not be generated.');
+            }
+
+            $this->output->writeln('Generated SSH key: <comment>'.$path.'</comment>');
+        }
+
+        $this->output->writeln('Add this public key into <comment>.ssh/authorized_keys</comment> of <comment>'.$config['backup_sftp_user'].'</comment> on the SFTP server:');
+        $this->output->writeln('<info>'.trim((string) @file_get_contents($path.'.pub')).'</info>');
+
+        $this->ask(new Question('Press enter when the key is added.'));
     }
 
     /**
      * Ask for WWW path of websites which should be backed up.
      *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
+     * @param  array  $config
      * @return void
      */
-    private function setWWWPath($input, $output, $helper, &$config, $default): void
+    private function askWWWPath(array &$config): void
     {
-        $output->writeln('<info>Please set WWW path of your websites which you want to backup.</info>');
+        $default = $config['backup_www_path'] ?? '/var/www';
 
-        $question = new Question('Type new path or press enter to use default <comment>'.$default.'</comment> path: ', null);
+        $this->output->writeln('<info>Please set WWW path of your websites which you want to backup.</info>');
+
+        $question = new Question('Type new path or press enter to use default <comment>'.$default.'</comment> path: ');
         $question->setValidator(function ($path) {
-            if (! $path) {
-                return $path;
-            }
-
-            if (! file_exists($path)) {
+            if ($path && ! file_exists($path)) {
                 throw new Exception('Please fill valid existing path.');
             }
 
-            return trim_end($path, '/');
+            return $path ? rtrim($path, '/') : $path;
         });
 
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
+        $config['backup_www_path'] = $value = $this->ask($question) ?: $default;
 
-        $output->writeln('Used path: <comment>'.$value.'</comment>');
-    }
-
-    /**
-     * Ask for remote server address.
-     *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
-     * @param  array  $total_config
-     * @return false|void
-     */
-    private function setRemoteServer($input, $output, $helper, &$config, $default, $total_config)
-    {
-        if (! $total_config['remote_backups']) {
-            return false;
-        }
-
-        $output->writeln('<info>Please set remote server address</info>');
-
-        $question = new Question(
-            'Type IP address or domain name of your server where backup data will be stored'.($default ? ' or press enter to use default address <comment>'.$default.'</comment>' : '').': ',
-            null,
-        );
-        $question->setValidator($this->requiredValidator($default, 'Please fill valid address of server.'));
-
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
-
-        $output->writeln('Used IP/Domain: <comment>'.$value.'</comment>');
-    }
-
-    /**
-     * Ask how many local WWW and directory backups should be kept.
-     *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
-     * @return void
-     */
-    public function setMaxWWWBackups($input, $output, $helper, &$config, $default): void
-    {
-        $question = new Question('<info>How many backups would you like to keep? (1-3)</info>'."\n".'Or press enter to use default <comment>'.$default.'</comment> backups: ', null);
-        $question->setValidator($this->numericValidator());
-
-        $value = $config = (int) ($helper->ask($input, $output, $question) ?: $default);
-
-        $output->writeln('Max WWW backups: <comment>'.$value.'</comment>');
-    }
-
-    /**
-     * Ask how many latest backups should be stored on remote server.
-     *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
-     * @param  array  $total_config
-     * @return false|void
-     */
-    private function setRemoteBackupLimit($input, $output, $helper, &$config, $default, $total_config)
-    {
-        if (! $total_config['remote_backups']) {
-            return false;
-        }
-
-        $output->writeln('<info>Please set remote backups limit</info>');
-
-        $question = new Question(
-            'Type how many latest backups from local machine should be stored on remote server.'."\n".
-            'All older backups on remote server will be deleted.'."\n".
-            'Or press enter to use default <comment>'.$default.'</comment> backups: ',
-            null,
-        );
-        $question->setValidator($this->numericValidator());
-
-        $value = $config = (int) ($helper->ask($input, $output, $question) ?: $default);
-
-        $output->writeln('Latest remote backups: <comment>'.$value.'</comment>');
-    }
-
-    /**
-     * Ask for remote server user and generate SSH keys.
-     *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
-     * @param  array  $total_config
-     * @return false|void
-     */
-    private function setRemoteUser($input, $output, $helper, &$config, $default, $total_config)
-    {
-        if (! $total_config['remote_backups']) {
-            return false;
-        }
-
-        $output->writeln('<info>Please set user of remote server</info>');
-
-        $question = new Question('Type linux user of remote backup server or press enter to use default <comment>'.$default.'</comment>: ', null);
-
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
-
-        $output->writeln('Used user: <comment>'.$value.'</comment>');
-
-        $this->generateRSA($total_config);
-    }
-
-    /**
-     * Generate SSH keys for remote backups if they do not exist.
-     *
-     * @param  array  $total_config
-     * @return void
-     */
-    private function generateRSA($total_config): void
-    {
-        $rsa_dir = $total_config['backup_path'].'/.ssh';
-        $rsa_path = $rsa_dir.'/id_rsa';
-
-        // Generate RSA keys only if they do not exist yet
-        if (! file_exists($rsa_path)) {
-            $this->output->writeln('<info>Generating RSA keys into:</info> '.$rsa_dir);
-            exec('mkdir -p '.$rsa_dir);
-            exec('ssh-keygen -t rsa -q -N "" -f '.$rsa_path);
-            file_put_contents($rsa_dir.'/authorized_keys', '# Paste here your public key from remote server');
-        }
-
-        $this->output->writeln(
-            'Add this public key to your remote server into <info>'.$rsa_dir.'/authorized_keys</info> file: '."\n".'<comment>'.trim(file_get_contents($rsa_path.'.pub')).'</comment>',
-        );
-    }
-
-    /**
-     * Ask for backup path on remote server.
-     *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
-     * @param  array  $total_config
-     * @return false|void
-     */
-    private function setRemoteBackupPath($input, $output, $helper, &$config, $default, $total_config)
-    {
-        if (! $total_config['remote_backups']) {
-            return false;
-        }
-
-        $default = $default ?: '/var/vpsmanager_backups/remote/'.$total_config['backup_server_name'];
-
-        $output->writeln('<info>Please set backup path on remote server where all backups of your local resources will be stored.</info>');
-
-        $question = new Question('Type new path or press enter to use default remote <comment>'.$default.'</comment> destination path: ', null);
-
-        $value = $config = $helper->ask($input, $output, $question) ?: $default;
-
-        $output->writeln('Used path: <comment>'.$value.'</comment>');
-    }
-
-    /**
-     * Ask for local backup path, create backup user and set directory permissions.
-     *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
-     * @return void
-     *
-     * @throws \Exception
-     */
-    private function setBackupPath($input, $output, $helper, &$config, $default): void
-    {
-        $output->writeln('<info>Please set backup path where all local backups of your resources will be stored.</info>');
-
-        $question = new Question('Type new path or press enter to use default <comment>'.$default.'</comment> path: ', null);
-
-        $value = $config = trim_end($helper->ask($input, $output, $question) ?: $default, '/');
-
-        $this->createUserForBackupDirectory($value);
-        $this->setBackupDirectoryPermissions($value);
-    }
-
-    /**
-     * Create user which owns backup directory.
-     *
-     * @param  string  $path
-     * @return void
-     *
-     * @throws \Exception
-     */
-    private function createUserForBackupDirectory($path): void
-    {
-        if (vpsManager()->server()->existsUser($this->default_backup_user)) {
-            return;
-        }
-
-        exec('useradd -s /bin/bash -d '.$path.' -U '.$this->default_backup_user, $output, $return_var);
-
-        if ($return_var != 0) {
-            throw new Exception('Directory user '.$this->default_backup_user.' could not be created.');
-        }
-
-        $this->output->writeln('User created: <comment>'.$this->default_backup_user.'</comment>');
-    }
-
-    /**
-     * Create backup directory and set its permissions.
-     *
-     * @param  string  $path
-     * @return void
-     */
-    private function setBackupDirectoryPermissions($path): void
-    {
-        exec('mkdir -p '.$path);
-        exec('chmod 700 -R '.$path);
-        exec('chown '.$this->default_backup_user.':'.$this->default_backup_user.' -R '.$path);
-
-        $this->output->writeln('Directory used and permissions changed: <comment>'.$path.'</comment>');
+        $this->output->writeln('Used path: <comment>'.$value.'</comment>');
     }
 
     /**
      * Ask for additional directories which should be backed up.
      *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
+     * @param  array  $config
      * @return void
      */
-    private function setBackupDirectories($input, $output, $helper, &$config, $default): void
+    private function askBackupDirectories(array &$config): void
     {
-        $output->writeln('<info>Please set which additional directories should be backed up.</info>');
+        $default = $config['backup_directories'] ?? implode(';', ['/etc/nginx', '/etc/php', '/etc/mysql --exclude="*/debian.cnf"', '/etc/ssh/sshd_config', '/var/spool/cron/crontabs']);
+
+        $this->output->writeln('<info>Please set which additional directories should be backed up.</info>');
 
         $question = new Question(
             'Type multiple paths separated with <comment>;</comment> in format <comment>path1;path2;path3</comment>.'."\n".
             'If you don\'t want to backup any directories, type <comment>-</comment> and hit enter.'."\n".
             'Or press enter to use default <comment>'.$default.'</comment> paths: ',
-            null,
         );
 
-        $value = $config = trim_end($helper->ask($input, $output, $question) ?: $default, '/');
+        $config['backup_directories'] = $value = trim_end($this->ask($question) ?: $default, '/');
 
-        $output->writeln('Used paths: <comment>'.$value.'</comment>');
+        $this->output->writeln('Used paths: <comment>'.$value.'</comment>');
     }
 
     /**
-     * Ask if backups should be added into root crontab.
+     * Ask if error email notifications should be enabled.
      *
-     * @param  \Symfony\Component\Console\Input\InputInterface  $input
-     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
-     * @param  \Symfony\Component\Console\Helper\QuestionHelper  $helper
-     * @param  mixed  $config
-     * @param  mixed  $default
+     * @param  array  $config
      * @return void
      */
-    private function addIntoCrontab($input, $output, $helper, &$config, $default): void
+    private function askEmailNotifications(array &$config): void
     {
-        $question = new ConfirmationQuestion('<info>Would you like to run backups daily at</info> <comment>4AM</comment><info>? Crontab entry will be added. '.$this->getConfirmationHint($default).'</info> ', (bool) $default);
+        $default = $config['email_notifications'] ?? true;
 
-        $value = $config = $helper->ask($input, $output, $question);
+        $question = new ConfirmationQuestion('<info>Would you like to enable error email notifications? '.$this->getConfirmationHint($default).'</info> ', (bool) $default);
 
-        $output->writeln('Crontab: <comment>'.($value ? 'ON' : 'OFF').'</comment>');
+        $config['email_notifications'] = $value = $this->ask($question);
+
+        $this->output->writeln('Email notifications: <comment>'.($value ? 'ON' : 'OFF').'</comment>');
+    }
+
+    /**
+     * Ask for notifications receiver email address.
+     *
+     * @param  array  $config
+     * @return false|void
+     */
+    private function askEmailReceiver(array &$config)
+    {
+        return $this->askEmailValue($config, 'email_receiver', 'Please set your email address:', 'Type your email address where you want to receive email notifications', 'Please fill email address.');
+    }
+
+    /**
+     * Ask for SMTP server address.
+     *
+     * @param  array  $config
+     * @return false|void
+     */
+    private function askEmailServer(array &$config)
+    {
+        return $this->askEmailValue($config, 'email_server', 'Please set SMTP server address:', 'Type SMTP server address in format <comment>(smtp.example.com:465)</comment>', 'Please fill SMTP address of mail server.');
+    }
+
+    /**
+     * Ask for SMTP username.
+     *
+     * @param  array  $config
+     * @return false|void
+     */
+    private function askEmailUsername(array &$config)
+    {
+        return $this->askEmailValue($config, 'email_username', 'Please set SMTP username:', 'Type SMTP username in format <comment>(vpsmanager@example.com)</comment>', 'Please fill SMTP username of mail server.');
+    }
+
+    /**
+     * Ask for a value of the email notifications.
+     *
+     * @param  array  $config
+     * @param  string  $key
+     * @param  string  $title
+     * @param  string  $text
+     * @param  string  $required
+     * @return false|void
+     */
+    private function askEmailValue(array &$config, string $key, string $title, string $text, string $required)
+    {
+        if (! $config['email_notifications']) {
+            return false;
+        }
+
+        $default = $config[$key] ?? null;
+
+        $this->output->writeln('<info>'.$title.'</info>');
+
+        $question = new Question($text.($default ? ' or press enter to use <comment>'.$default.'</comment>' : '').': ');
+        $question->setValidator($this->requiredValidator($default, $required));
+
+        $config[$key] = $value = $this->ask($question) ?: $default;
+
+        $this->output->writeln('Used: <comment>'.$value.'</comment>');
+    }
+
+    /**
+     * Ask for SMTP password.
+     *
+     * @param  array  $config
+     * @return false|void
+     */
+    private function askEmailPassword(array &$config)
+    {
+        if (! $config['email_notifications']) {
+            return false;
+        }
+
+        $default = $config['email_password'] ?? null;
+
+        $this->output->writeln('<info>Please set SMTP password:</info>');
+
+        $question = new Question('Type SMTP password'.($default ? ' or press enter to keep current password' : '').': ');
+        $question->setHidden(true);
+        $question->setHiddenFallback(true);
+        $question->setValidator($this->requiredValidator($default, 'Please fill SMTP password of your account.'));
+
+        $config['email_password'] = $this->ask($question) ?: $default;
+
+        $this->output->writeln('Used SMTP password: <comment>********</comment>');
+    }
+
+    /**
+     * Ask if the backups and their maintenance should be added into root crontab.
+     *
+     * @param  array  $config
+     * @return void
+     */
+    private function askCrontab(array &$config): void
+    {
+        $default = $config['crontab_add'] ?? true;
+
+        $question = new ConfirmationQuestion('<info>Would you like to run backups daily at</info> <comment>4AM</comment> <info>and their maintenance on Sundays? Crontab entries will be added. '.$this->getConfirmationHint($default).'</info> ', (bool) $default);
+
+        $config['crontab_add'] = $value = $this->ask($question);
 
         $app_path = implode('/', array_slice(explode('/', __DIR__), 0, -3));
-        $line = '0 4 * * * php '.$app_path.'/vpsmanager backup:run';
+
+        $lines = [
+            'vpsmanager backup:run' => '0 4 * * * php '.$app_path.'/vpsmanager backup:run',
+            'vpsmanager backup:maintenance' => '30 5 * * 0 php '.$app_path.'/vpsmanager backup:maintenance',
+        ];
 
         if (! $value) {
-            $output->writeln('You can add crontab manually later: <info>'.$line.'</info>');
+            $this->output->writeln('You can add crontab manually later:');
+
+            foreach ($lines as $line) {
+                $this->output->writeln('<info>'.$line.'</info>');
+            }
 
             return;
         }
 
         $crontab_path = '/var/spool/cron/crontabs/root';
-        $crontab_data = @file_get_contents($crontab_path) ?: '';
 
-        if (str_contains($crontab_data, 'vpsmanager backup:run')) {
-            $output->writeln('Crontab for backups already exists.');
+        foreach ($lines as $search => $line) {
+            $crontab_data = @file_get_contents($crontab_path) ?: '';
+
+            if (str_contains($crontab_data, $search)) {
+                $this->output->writeln('Crontab already exists: <comment>'.$search.'</comment>');
+
+                continue;
+            }
+
+            @file_put_contents($crontab_path, $line."\n", FILE_APPEND);
+
+            $this->output->writeln('Crontab has been added: <comment>'.$line.'</comment>');
+        }
+    }
+
+    /**
+     * Install the pinned restic release when restic is missing or too old.
+     *
+     * @return void
+     *
+     * @throws \Exception
+     */
+    private function installRestic(): void
+    {
+        $version = vpsManager()->restic()->installedVersion();
+
+        if (Restic::isSupportedVersion($version)) {
+            $this->output->writeln('Installed restic: <comment>'.$version.'</comment>');
 
             return;
         }
 
-        @file_put_contents($crontab_path, $line."\n", FILE_APPEND);
+        $this->output->writeln('<info>Installing restic '.Restic::VERSION.' into '.Restic::BINARY.'...</info>');
 
-        $output->writeln('Crontab has been added at: <comment>4AM</comment>');
+        if (($result = vpsManager()->restic()->install()) !== true) {
+            throw new Exception($result);
+        }
+
+        $this->output->writeln('Installed restic: <comment>'.vpsManager()->restic()->installedVersion().'</comment>');
+    }
+
+    /**
+     * Connect to the repository with the password of the server, create the repository when it does not exist, or add
+     * the password of the server into an existing repository opened by another of its passwords.
+     *
+     * @param  array  $config
+     * @return array
+     *
+     * @throws \Exception
+     */
+    private function prepareRepository(array $config): array
+    {
+        $config['backup_password'] = ($config['backup_password'] ?? null) ?: getRandomPassword(40);
+
+        $restic = vpsManager()->restic()->using($config);
+        $repository = Restic::repository($config);
+
+        $this->output->writeln('');
+        $this->output->writeln('<info>Connecting to the repository</info> <comment>'.$repository.'</comment>');
+
+        $code = $restic->run(['cat', 'config'], $output, $error);
+
+        if ($code === 0) {
+            $this->output->writeln('The repository exists and the password of the server opens it.');
+
+            return $config;
+        }
+
+        if ($code === Restic::EXIT_NO_REPOSITORY) {
+            if ($restic->run(['init'], $output, $error) !== 0) {
+                throw new Exception('The repository could not be created: '.Restic::errorMessage($error));
+            }
+
+            $this->output->writeln('<info>The repository has been created.</info>');
+
+            return $config;
+        }
+
+        if ($code !== Restic::EXIT_WRONG_PASSWORD) {
+            throw new Exception('The repository is not available: '.Restic::errorMessage($error));
+        }
+
+        // The repository exists with other passwords, e.g. of a reinstalled server
+        $this->output->writeln('<comment>The repository exists, but the password of the server does not open it.</comment>');
+
+        while (true) {
+            $existing = $this->askHidden('Type a password which opens the repository (e.g. the recovery password): ');
+
+            if ($restic->run(['cat', 'config'], $output, $error, $existing) === 0) {
+                break;
+            }
+
+            $this->output->writeln('<error>The password does not open the repository.</error>');
+        }
+
+        $this->addKey($restic, $config['backup_password'], 'vpsmanager', $existing);
+
+        $this->output->writeln('<info>The password of the server has been added into the repository.</info>');
+
+        return $config;
+    }
+
+    /**
+     * Ask for the recovery password and add it into the repository, unless it opens the repository already.
+     *
+     * @param  array  $config
+     * @return void
+     *
+     * @throws \Exception
+     */
+    private function addRecoveryPassword(array $config): void
+    {
+        $restic = vpsManager()->restic()->using($config);
+
+        $this->output->writeln('');
+        $this->output->writeln('<info>Recovery password</info>');
+        $this->output->writeln('The recovery password opens the repository without this server. It is not saved on the server, keep it in your password manager.');
+
+        while (true) {
+            $password = $this->askHidden('Type the recovery password: ');
+
+            if (mb_strlen($password) < 12) {
+                $this->output->writeln('<error>The recovery password must have at least 12 characters.</error>');
+
+                continue;
+            }
+
+            if ($this->askHidden('Type the recovery password again: ') !== $password) {
+                $this->output->writeln('<error>The passwords do not match.</error>');
+
+                continue;
+            }
+
+            break;
+        }
+
+        if ($restic->run(['cat', 'config'], $output, $error, $password) === 0) {
+            $this->output->writeln('The recovery password opens the repository already.');
+
+            return;
+        }
+
+        $this->addKey($restic, $password, 'recovery', $config['backup_password']);
+
+        $this->output->writeln('<info>The recovery password has been added into the repository.</info>');
+    }
+
+    /**
+     * Add a password into the repository.
+     *
+     * @param  \Gogol\VpsManagerCLI\Helpers\Restic  $restic
+     * @param  string  $password  new password
+     * @param  string  $user  label of the password
+     * @param  string  $opening  password which opens the repository
+     * @return void
+     *
+     * @throws \Exception
+     */
+    private function addKey(Restic $restic, string $password, string $user, string $opening): void
+    {
+        $file = tempnam(sys_get_temp_dir(), 'vpsmanager-restic-');
+        chmod($file, 0600);
+        file_put_contents($file, $password);
+
+        try {
+            $code = $restic->run(['key', 'add', '--new-password-file', $file, '--user', $user, '--host', (string) vpsManager()->config('backup_server_name')], $output, $error, $opening);
+        } finally {
+            @unlink($file);
+        }
+
+        if ($code !== 0) {
+            throw new Exception('The password could not be added into the repository: '.Restic::errorMessage($error));
+        }
+    }
+
+    /**
+     * Remove the old tar.gz backups and the obsolete keys of the configuration.
+     *
+     * @param  array  $config
+     * @return array
+     */
+    private function removeOldBackups(array $config): array
+    {
+        $path = rtrim((string) ($config['backup_path'] ?? ''), '/');
+        $directories = $path ? self::oldBackupDirectories($path) : [];
+        $repository = rtrim((string) ($config['backup_local_path'] ?? ''), '/');
+
+        // Never remove a local repository placed among the old backups
+        $directories = array_values(array_filter($directories, fn ($directory) => ! $repository || ! str_starts_with($repository.'/', $directory.'/')));
+
+        if ($directories) {
+            $size = trim((string) shell_exec('du -sch '.implode(' ', array_map('escapeshellarg', $directories)).' 2>/dev/null | tail -1 | cut -f1'));
+
+            $this->output->writeln('');
+            $this->output->writeln('<info>Old tar.gz backups:</info> <comment>'.count($directories).'</comment> backups of <comment>'.$size.'</comment> in <comment>'.$path.'/local</comment>');
+
+            if ($this->ask(new ConfirmationQuestion('<info>Delete the old tar.gz backups? (Y/n)</info> ', true))) {
+                foreach ($directories as $directory) {
+                    exec('rm -rf '.escapeshellarg($directory));
+                }
+
+                // Remove the emptied type directories
+                foreach (['databases', 'dirs', 'www'] as $type) {
+                    @rmdir($path.'/local/'.$type);
+                }
+
+                @rmdir($path.'/local');
+
+                $this->output->writeln('Old backups have been deleted.');
+            } else {
+                $this->output->writeln('Old backups are kept in <comment>'.$path.'/local</comment>, delete them manually.');
+            }
+        }
+
+        foreach (self::OBSOLETE_KEYS as $key) {
+            unset($config[$key]);
+        }
+
+        return $config;
+    }
+
+    /**
+     * Get the dated directories of the old tar.gz backups.
+     *
+     * @param  string  $path  backup_path of the old backups
+     * @return array
+     */
+    public static function oldBackupDirectories(string $path): array
+    {
+        $directories = [];
+
+        foreach (['databases', 'dirs', 'www'] as $type) {
+            foreach (glob($path.'/local/'.$type.'/*', GLOB_ONLYDIR) ?: [] as $directory) {
+                if (preg_match('/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/', basename($directory))) {
+                    $directories[] = $directory;
+                }
+            }
+        }
+
+        return $directories;
+    }
+
+    /**
+     * Ask for a hidden value.
+     *
+     * @param  string  $text
+     * @return string
+     */
+    private function askHidden(string $text): string
+    {
+        $question = new Question('<info>'.$text.'</info>');
+        $question->setHidden(true);
+        $question->setHiddenFallback(false);
+
+        return (string) $this->ask($question);
     }
 
     /**
@@ -684,22 +837,6 @@ class BackupSetupCommand extends Command
         return function ($value) use ($default, $message) {
             if (! $default && empty($value)) {
                 throw new Exception($message);
-            }
-
-            return $value;
-        };
-    }
-
-    /**
-     * Get validator which allows only empty or positive numeric values.
-     *
-     * @return \Closure
-     */
-    private function numericValidator(): \Closure
-    {
-        return function ($value) {
-            if ($value !== null && $value !== '' && (! is_numeric($value) || (int) $value < 1)) {
-                throw new Exception('Please fill valid number of backups.');
             }
 
             return $value;

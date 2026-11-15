@@ -15,6 +15,7 @@ use Gogol\VpsManagerCLI\Helpers\Nginx;
 use Gogol\VpsManagerCLI\Helpers\PHP;
 use Gogol\VpsManagerCLI\Helpers\RequestStats;
 use Gogol\VpsManagerCLI\Helpers\Response;
+use Gogol\VpsManagerCLI\Helpers\Restic;
 use Gogol\VpsManagerCLI\Helpers\Router;
 use Gogol\VpsManagerCLI\Helpers\Server;
 use Gogol\VpsManagerCLI\Helpers\SSH;
@@ -231,6 +232,16 @@ class Application
     public function backup(): Backup
     {
         return $this->boot(Backup::class);
+    }
+
+    /**
+     * Get the restic helper of the backups.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\Restic
+     */
+    public function restic(): Restic
+    {
+        return $this->boot(Restic::class);
     }
 
     /**
