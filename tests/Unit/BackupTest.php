@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use Carbon\Carbon;
 use Gogol\VpsManagerCLI\Command\Backup\BackupListCommand;
 use Gogol\VpsManagerCLI\Command\Backup\BackupSetupCommand;
 use Gogol\VpsManagerCLI\Helpers\Backup;
@@ -153,6 +154,21 @@ class BackupTest extends TestCase
         } finally {
             @unlink($path);
         }
+    }
+
+    public function test_weekly_check_reads_every_part_in_twenty_weeks(): void
+    {
+        $start = Carbon::parse('2026-11-15 05:30', 'Europe/Bratislava');
+        $parts = [];
+
+        // 20 Sundays in a row, over the end of the year
+        for ($week = 0; $week < 20; $week++) {
+            $parts[] = Backup::readDataSubset($start->copy()->addWeeks($week));
+        }
+
+        natsort($parts);
+
+        $this->assertSame(array_map(fn ($part) => $part.'/20', range(1, 20)), array_values($parts));
     }
 
     public function test_bytes_are_formatted_for_humans(): void

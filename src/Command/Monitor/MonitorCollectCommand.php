@@ -113,6 +113,13 @@ class MonitorCollectCommand extends Command
             $output->writeln('Sent '.$sent.' backups.');
         }
 
+        // Results of backup:maintenance the monitor did not accept right after it
+        if (($sent = $agent->sendBackupChecks($error)) === null) {
+            $output->writeln('<comment>The monitor did not accept the checks of the backups ('.$error.'), they are sent with the next run.</comment>');
+        } elseif ($sent) {
+            $output->writeln('Sent '.$sent.' checks of the backups.');
+        }
+
         $output->writeln('The monitor shares '.count($state['shared'] ?? []).' addresses ('.count($answer['shared_ips']['data'] ?? []).' changed).');
 
         foreach ($servers as $label => $fail2ban) {

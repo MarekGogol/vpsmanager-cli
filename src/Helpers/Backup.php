@@ -67,6 +67,13 @@ class Backup extends Application
     const KEEP_DATA = ['daily' => 7, 'weekly' => 4, 'monthly' => 3];
 
     /**
+     * The weekly check reads one of these parts of the data of the repository.
+     *
+     * @var int
+     */
+    const CHECK_PARTS = 20;
+
+    /**
      * Types of the backups, by their tag in restic.
      *
      * @var array
@@ -544,7 +551,20 @@ class Backup extends Application
     }
 
     /**
-     * Remove the data of the forgotten snapshots and check the repository.
+     * Part of the data read by the weekly check: one twentieth by the count of weeks since 1970, so every chunk is read
+     * in any 20 weeks in a row, also over the end of a year, e.g. 3/20.
+     *
+     * @param  \Carbon\Carbon  $date
+     * @return string
+     */
+    public static function readDataSubset(Carbon $date): string
+    {
+        return (intdiv($date->getTimestamp(), 7 * 86400) % self::CHECK_PARTS + 1).'/'.self::CHECK_PARTS;
+    }
+
+    /**
+     * Remove the data of the forgotten snapshots, check the repository with a part of its data and report the result
+     * to the monitor, also a successful one.
      *
      * @return \Gogol\VpsManagerCLI\Helpers\Response
      */
@@ -553,6 +573,7 @@ class Backup extends Application
         $this->date = null;
         $this->log = [];
         $start = microtime(true);
+        $subset = self::readDataSubset($this->now());
 
         $this->restic()->run(['unlock'], $output, $error);
 
@@ -562,21 +583,39 @@ class Backup extends Application
             $this->sendError('Prune of the repository failed: '.Restic::errorMessage($error));
         }
 
-        $this->response()->success('Checking the repository and 5% of its data.')->writeln();
+        $this->response()->success('Checking the repository and the part '.$subset.' of its data.')->writeln();
 
-        if ($this->restic()->run(['check', '--read-data-subset=5%'], $output, $error) !== 0) {
+        if ($this->restic()->run(['check', '--read-data-subset='.$subset], $output, $error) !== 0) {
             $this->sendError('Check of the repository failed: '.Restic::errorMessage($error));
         }
 
         $this->sendNotification();
+        $this->sendCheckToMonitor($subset);
 
-        $this->log('INFO', 'Maintenance end | '.round((microtime(true) - $start) / 60, 1).' Min.');
+        $this->log('INFO', 'Maintenance end | check '.$subset.' | '.round((microtime(true) - $start) / 60, 1).' Min.');
 
         if ($this->log) {
             return $this->response()->error(implode(' ', $this->log));
         }
 
         return $this->response()->success('Maintenance of the backups has been successfully performed.');
+    }
+
+    /**
+     * Report the result of the maintenance to the monitor. When the monitor does not answer, monitor:collect sends it later.
+     *
+     * @param  string  $subset
+     * @return void
+     */
+    private function sendCheckToMonitor(string $subset): void
+    {
+        $agent = vpsManager()->monitorAgent();
+
+        $agent->queueBackupCheck($this->log ? 'error' : 'ok', $this->log ? implode(' ', $this->log) : null, $subset, time());
+
+        if ($agent->getUrl() && $agent->sendBackupChecks($error) === null) {
+            $this->response()->message('<comment>The monitor did not accept the check ('.$error.'), monitor:collect sends it later.</comment>')->writeln();
+        }
     }
 
     /**

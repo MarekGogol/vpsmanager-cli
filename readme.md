@@ -490,7 +490,7 @@ The access log holds addresses of visitors for a week, mention it in the privacy
    - Endpoints of every host: the method and the path without the query, numbers, uuids, hashes and tokens of the path replaced (`GET /blog/{id}`). Each with its requests, total and longest duration, `5xx` errors and the url of its slowest request (secrets of the query are masked by the access log). The 20 most requested endpoints and the 20 with the longest total duration are sent, the rest is one endpoint `(ostatné)`, so scanners of random paths do not grow the window. The monitor keeps them 6 hours by 5 minutes, then 7 days by hours, and shows the most requested and the slowest endpoints (by total duration) of all hosts above the table Hosty and of one host in its form.
 3. **Bans** of the recidive jail which the monitor does not know yet, with their level and end. Every report counts in the monitor, so a ban is reported once.
 4. **Active hosts**: the names of the `server_name` of the enabled sites (without `www.` and wildcards). The monitor adds the sites without requests and marks the other hosts of the server inactive, e.g. `xyz.example.com` tried by a bot and caught by `*.example.com`, or a removed site (filters Aktívne / Neaktívne of the table Hosty).
-5. **Backups** which the monitor did not accept right after `backup:run` (`/var/lib/vpsmanager/monitor-backups.json`), see [Backups in the monitor](#backups-in-the-monitor).
+5. **Backups** which the monitor did not accept right after `backup:run` (`/var/lib/vpsmanager/monitor-backups.json`), see [Backups in the monitor](#backups-in-the-monitor). Results of `backup:maintenance` not accepted right after it (`/var/lib/vpsmanager/monitor-backup-checks.json`) are sent the same way.
 6. **Shared bans** in the answer: the whole list in the first call, then the changes since the previous call. The server keeps the list and bans the new addresses in the jail of their level (`vpsmanager-shared-1d`, `-7d`, `-30d`), moves an address whose level changed and unbans those the monitor does not share any more, with `fail2ban-client set … banip|unbanip`. fail2ban is never reloaded or restarted.
 
 - The monitor is optional. When it does not answer, the windows wait for the next run (an hour at most), nothing is banned nor unbanned and the jails of the server work as before. The shared bans last the days of their level, so they expire also when the monitor is gone.
@@ -570,6 +570,7 @@ scanner ─▶ router: iptables (fail2ban of the router) ─▶ server: NGINX, /
 | `/etc/cron.d/vpsmanager-monitor-collect` | managed (agent of the monitor) |
 | `/var/lib/vpsmanager/monitor-collect.json`, `monitor-metrics.state`, `monitor-collect.lock` | state of `monitor:collect` |
 | `/var/lib/vpsmanager/monitor-backups.json` | backups not yet accepted by the monitor |
+| `/var/lib/vpsmanager/monitor-backup-checks.json` | results of `backup:maintenance` not yet accepted by the monitor |
 | `/etc/nginx/vpsmanager/router-scanners.conf`, `router-auth.conf`, `/etc/nginx/conf.d/vpsmanager-realip.conf` | generated for the server (a comment only when it is not behind a router) |
 | Router: `/etc/rsyslog.d/vpsmanager.conf`, `/etc/logrotate.d/vpsmanager`, fail2ban files as above | managed over SSH by `monitor:install` of the server behind it |
 
@@ -779,7 +780,9 @@ Files keep their original paths under the target. Move what you need into place 
 sudo php vpsmanager backup:maintenance
 ```
 
-Removes the unused data of the forgotten snapshots (`restic prune`) and checks the repository with 5% of its data (`restic check --read-data-subset=5%`). It waits for a running backup, prune needs the repository alone. Errors are logged and sent by email. `backup:setup` adds it to the crontab on Sundays at 5:30.
+Removes the unused data of the forgotten snapshots (`restic prune`) and checks the repository with one twentieth of its data (`restic check --read-data-subset=N/20`). N follows the count of weeks since 1970, so a weekly maintenance reads every chunk of the repository in any 20 weeks in a row. It waits for a running backup, prune needs the repository alone. Errors are logged and sent by email. `backup:setup` adds it to the crontab on Sundays at 5:30.
+
+The result is sent to the monitor **also when it succeeded** (`POST /api/agent/backup-checks`: status, errors, the checked part, the end). When the monitor does not answer, it waits in `/var/lib/vpsmanager/monitor-backup-checks.json` for the next `monitor:collect`. The monitor alerts a failed check and a server without a successful check, see [Backups in the monitor](#backups-in-the-monitor), so damaged backups are found by the weekly check and not by a restore a year later, even without the email notifications.
 
 ### restic commands
 
@@ -796,6 +799,7 @@ sudo php vpsmanager backup:restic -- stats --mode raw-data
 At the end of every `backup:run` the server sends the monitor (`POST /api/agent/backups`) the name of the run (`Y-m-d_H-00-00` in the `Europe/Bratislava` timezone, runs within the same hour share it), and for each type its end and the databases, directories and users of the websites which were backed up. A failed one is not sent. When the monitor does not answer, they wait in `/var/lib/vpsmanager/monitor-backups.json` for the next `monitor:collect`.
 
 - **Zálohy**: one row of each run with the end of the backup of the databases, the websites and the directories, the users of the backup under it. `backup:run --databases` and `backup:run --www` in one hour fill one row.
+- **Kontroly záloh**: one row of each `backup:maintenance` with its result, the checked part of the data and its errors. The metric `backup_check_missing_hours` is the count of hours since the last successful check (a server which never reported a check is not checked), `backup_check_failed` is `1` when the last check failed, with its error in the detail. Alerts, e.g. `backup_check_missing_hours > 192` (8 days) and `backup_check_failed > 0`, are created in the administration of the monitor.
 - **Sledované zálohy**: every user, database and directory backed up at least once, with its last backup. The metric `backup_missing_hours` of the server is the age of the oldest of them in hours, an alert (e.g. `backup_missing_hours > 48`) sends an email. The monitor checks all alerts every 5 minutes (`app:check-alerts`) and sends one summary email of all servers when the alerts change, without a change it repeats it after 12 hours. A removed website or database stops being checked once it is unpublished there.
 
 ### Retention

@@ -33,6 +33,11 @@ class MonitorAgent extends Application
     const BACKUPS = '/var/lib/vpsmanager/monitor-backups.json';
 
     /**
+     * Results of backup:maintenance (checks of the repository) not yet accepted by the monitor.
+     */
+    const BACKUP_CHECKS = '/var/lib/vpsmanager/monitor-backup-checks.json';
+
+    /**
      * Counters of CPU and network of the previous run of metrics.sh.
      */
     const METRICS_STATE = '/var/lib/vpsmanager/monitor-metrics.state';
@@ -197,7 +202,7 @@ class MonitorAgent extends Application
             return;
         }
 
-        $this->updateBackups(function ($backups) use ($snapshot, $types, $time) {
+        $this->updateQueue(self::BACKUPS, function ($backups) use ($snapshot, $types, $time) {
             foreach (array_filter($types) as $type => $names) {
                 $backups[] = ['snapshot' => $snapshot, 'type' => $type, 'names' => array_values($names), 'finished_at' => date('c', $time)];
             }
@@ -216,19 +221,71 @@ class MonitorAgent extends Application
     {
         $sent = 0;
 
-        $this->updateBackups(function ($backups) use (&$sent, &$error) {
-            if (! $backups) {
-                return $backups;
+        return $this->sendQueue(self::BACKUPS, 'backups', 'backups', $error);
+    }
+
+    /**
+     * Remember the result of backup:maintenance for the monitor, also a successful one: the monitor alerts a failed
+     * check and a check which did not succeed for days. Sent by sendBackupChecks() right away, or with the next
+     * monitor:collect.
+     *
+     * @param  string  $status  ok or error
+     * @param  string|null  $message  errors of the maintenance
+     * @param  string|null  $subset  data read by restic check, e.g. 3/20
+     * @param  int  $time  end of the maintenance
+     * @return void
+     */
+    public function queueBackupCheck(string $status, ?string $message, ?string $subset, int $time): void
+    {
+        if (! $this->getUrl() || ! $this->getToken()) {
+            return;
+        }
+
+        $this->updateQueue(self::BACKUP_CHECKS, function ($checks) use ($status, $message, $subset, $time) {
+            $checks[] = ['status' => $status, 'message' => $message ? mb_substr($message, 0, 2000) : null, 'subset' => $subset, 'finished_at' => date('c', $time)];
+
+            // A monitor unreachable for months keeps only the latest results
+            return array_slice($checks, -50);
+        });
+    }
+
+    /**
+     * Send the remembered results of backup:maintenance to the monitor.
+     *
+     * @param  string|null  $error
+     * @return int|null sent results, null when the monitor did not accept them
+     */
+    public function sendBackupChecks(?string &$error = null): ?int
+    {
+        return $this->sendQueue(self::BACKUP_CHECKS, 'backup-checks', 'checks', $error);
+    }
+
+    /**
+     * Send a queue of remembered items to the monitor, they are removed once accepted.
+     *
+     * @param  string  $path  file of the queue
+     * @param  string  $endpoint  path of the API of the agent
+     * @param  string  $key  key of the items in the request
+     * @param  string|null  $error
+     * @return int|null sent items, null when the monitor did not accept them
+     */
+    private function sendQueue(string $path, string $endpoint, string $key, ?string &$error = null): ?int
+    {
+        $sent = 0;
+
+        $this->updateQueue($path, function ($items) use ($endpoint, $key, &$sent, &$error) {
+            if (! $items) {
+                return $items;
             }
 
-            if (($answer = $this->request('POST', 'backups', ['backups' => $backups], $error)) === null || empty($answer['success'])) {
+            if (($answer = $this->request('POST', $endpoint, [$key => $items], $error)) === null || empty($answer['success'])) {
                 $error ??= 'no success';
                 $sent = null;
 
-                return $backups;
+                return $items;
             }
 
-            $sent = count($backups);
+            $sent = count($items);
 
             return [];
         });
@@ -237,29 +294,30 @@ class MonitorAgent extends Application
     }
 
     /**
-     * Change the remembered backups under a lock, backup:run and monitor:collect may run at once.
+     * Change a queue of remembered items under a lock, backup:run, backup:maintenance and monitor:collect may run at once.
      *
-     * @param  callable  $callback  backups => backups
+     * @param  string  $path
+     * @param  callable  $callback  items => items
      * @return void
      */
-    private function updateBackups(callable $callback): void
+    private function updateQueue(string $path, callable $callback): void
     {
-        if (! is_dir(dirname(self::BACKUPS))) {
-            mkdir(dirname(self::BACKUPS), 0700, true);
+        if (! is_dir(dirname($path))) {
+            mkdir(dirname($path), 0700, true);
         }
 
-        if (! ($file = fopen(self::BACKUPS, 'c+'))) {
+        if (! ($file = fopen($path, 'c+'))) {
             return;
         }
 
         flock($file, LOCK_EX);
 
-        $backups = json_decode((string) stream_get_contents($file), true);
-        $backups = $callback(is_array($backups) ? $backups : []);
+        $items = json_decode((string) stream_get_contents($file), true);
+        $items = $callback(is_array($items) ? $items : []);
 
         ftruncate($file, 0);
         rewind($file);
-        fwrite($file, $backups ? json_encode($backups, JSON_UNESCAPED_SLASHES) : '');
+        fwrite($file, $items ? json_encode($items, JSON_UNESCAPED_SLASHES) : '');
         flock($file, LOCK_UN);
         fclose($file);
     }
