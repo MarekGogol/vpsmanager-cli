@@ -4,6 +4,7 @@ namespace Gogol\VpsManagerCLI\Command\Backup;
 
 use Exception;
 use Gogol\VpsManagerCLI\Helpers\Backup;
+use Gogol\VpsManagerCLI\Helpers\Cron;
 use Gogol\VpsManagerCLI\Helpers\Restic;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -100,6 +101,10 @@ class BackupSetupCommand extends Command
         $this->save($config);
 
         vpsManager()->backup()->installLogrotate();
+
+        foreach (vpsManager()->cron()->write() as $change) {
+            $output->writeln('<comment>'.$change.'</comment>');
+        }
 
         $output->writeln('');
         $output->writeln('<info>Backup setup has been successfully completed.</info>');
@@ -536,7 +541,7 @@ class BackupSetupCommand extends Command
     }
 
     /**
-     * Ask if the backups and their maintenance should be added into root crontab.
+     * Ask if the backups run from cron and how often the databases are backed up.
      *
      * @param  array  $config
      * @return void
@@ -545,42 +550,35 @@ class BackupSetupCommand extends Command
     {
         $default = $config['crontab_add'] ?? true;
 
-        $question = new ConfirmationQuestion('<info>Would you like to run backups daily at</info> <comment>4AM</comment> <info>and their maintenance on Sundays? Crontab entries will be added. '.$this->getConfirmationHint($default).'</info> ', (bool) $default);
+        $question = new ConfirmationQuestion('<info>Would you like to run backups daily at</info> <comment>'.Cron::BACKUP_HOUR.'AM</comment> <info>and their maintenance on Sundays from cron? '.$this->getConfirmationHint($default).'</info> ', (bool) $default);
 
         $config['crontab_add'] = $value = $this->ask($question);
 
-        $app_path = implode('/', array_slice(explode('/', __DIR__), 0, -3));
-
-        $lines = [
-            'vpsmanager backup:run' => '0 4 * * * php '.$app_path.'/vpsmanager backup:run',
-            'vpsmanager backup:maintenance' => '30 5 * * 0 php '.$app_path.'/vpsmanager backup:maintenance',
-        ];
+        $this->output->writeln('Cron: <comment>'.($value ? 'ON' : 'OFF').'</comment>');
 
         if (! $value) {
-            $this->output->writeln('You can add crontab manually later:');
-
-            foreach ($lines as $line) {
-                $this->output->writeln('<info>'.$line.'</info>');
-            }
-
             return;
         }
 
-        $crontab_path = '/var/spool/cron/crontabs/root';
+        $default = $config['backup_databases_interval'] ?? Cron::DATABASES_INTERVAL;
+        $intervals = implode(', ', array_filter(Cron::DATABASES_INTERVALS));
 
-        foreach ($lines as $search => $line) {
-            $crontab_data = @file_get_contents($crontab_path) ?: '';
+        $this->output->writeln('');
+        $this->output->writeln('<info>How often should the databases be backed up?</info>');
 
-            if (str_contains($crontab_data, $search)) {
-                $this->output->writeln('Crontab already exists: <comment>'.$search.'</comment>');
-
-                continue;
+        $question = new Question('Type every how many hours (<comment>'.$intervals.'</comment>), <comment>0</comment> for only the daily backup, or press enter to use <comment>'.$default.'</comment>: ');
+        $question->setValidator(function ($value) {
+            if ($value !== null && $value !== '' && (! ctype_digit((string) $value) || ! in_array((int) $value, Cron::DATABASES_INTERVALS))) {
+                throw new Exception('Please fill one of '.implode(', ', Cron::DATABASES_INTERVALS).'.');
             }
 
-            @file_put_contents($crontab_path, $line."\n", FILE_APPEND);
+            return $value;
+        });
 
-            $this->output->writeln('Crontab has been added: <comment>'.$line.'</comment>');
-        }
+        $value = $this->ask($question);
+        $config['backup_databases_interval'] = $value = ($value === null || $value === '') ? (int) $default : (int) $value;
+
+        $this->output->writeln('Databases: <comment>'.($value ? 'every '.$value.' hours' : 'only daily').'</comment>');
     }
 
     /**

@@ -5,6 +5,7 @@ namespace Gogol\VpsManagerCLI;
 use Gogol\VpsManagerCLI\Helpers\Backup;
 use Gogol\VpsManagerCLI\Helpers\Certbot;
 use Gogol\VpsManagerCLI\Helpers\Chroot;
+use Gogol\VpsManagerCLI\Helpers\Cron;
 use Gogol\VpsManagerCLI\Helpers\Fail2ban;
 use Gogol\VpsManagerCLI\Helpers\Hosting;
 use Gogol\VpsManagerCLI\Helpers\Laravel;
@@ -232,6 +233,16 @@ class Application
     public function backup(): Backup
     {
         return $this->boot(Backup::class);
+    }
+
+    /**
+     * Get the helper of the cron file of VPS Manager.
+     *
+     * @return \Gogol\VpsManagerCLI\Helpers\Cron
+     */
+    public function cron(): Cron
+    {
+        return $this->boot(Cron::class);
     }
 
     /**

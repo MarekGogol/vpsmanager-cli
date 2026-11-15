@@ -18,7 +18,7 @@ class MonitorAgent extends Application
     const VERSION = '2.2.0';
 
     /**
-     * Cron of monitor:collect.
+     * Old cron file of monitor:collect, replaced by /etc/cron.d/vpsmanager.
      */
     const CRON = '/etc/cron.d/vpsmanager-monitor-collect';
 
@@ -710,21 +710,14 @@ class MonitorAgent extends Application
     }
 
     /**
-     * Content of the cron of monitor:collect: every 5 minutes at a minute of this server derived from its hostname,
-     * monitor:collect --spread waits a few more seconds, so the servers do not call the monitor at the same time.
+     * Get the cron job of monitor:collect, every 5 minutes from a minute derived from the hostname.
      *
+     * @param  string  $command
      * @return string
      */
-    public function getCron(): string
+    public function getCronJob(string $command): string
     {
-        $minute = crc32((string) gethostname()) % 5;
-        $command = escapeshellarg(PHP_BINARY).' '.escapeshellarg(realpath(vpsManagerPath().'/../vpsmanager') ?: vpsManagerPath().'/../vpsmanager').' monitor:collect --spread';
-
-        return "# Sends the metrics of the server, the requests of its hosts and its bans to the monitor every 5 minutes and\n"
-            ."# bans the addresses shared by the monitor. The minute is derived from the hostname.\n"
-            ."#\n"
-            ."# Managed by VPS Manager (monitor:install), changes are overwritten.\n\n"
-            .$minute.'-59/5 * * * * root '.$command." > /dev/null 2>&1\n";
+        return (crc32((string) gethostname()) % 5).'-59/5 * * * * root '.$command.' > /dev/null 2>&1';
     }
 
     /**
@@ -735,43 +728,6 @@ class MonitorAgent extends Application
     public function getSpreadSeconds(): int
     {
         return intdiv(crc32((string) gethostname()), 5) % 40;
-    }
-
-    /**
-     * Write the cron of monitor:collect when it differs.
-     *
-     * @param  bool  $dryRun
-     * @return bool true when the cron has been (or would be) written
-     */
-    public function writeCron(bool $dryRun = false): bool
-    {
-        $content = $this->getCron();
-
-        if (file_exists(self::CRON) && file_get_contents(self::CRON) === $content) {
-            return false;
-        }
-
-        if (! $dryRun) {
-            file_put_contents(self::CRON, $content);
-            chmod(self::CRON, 0644);
-        }
-
-        return true;
-    }
-
-    /**
-     * Remove the cron of monitor:collect.
-     *
-     * @param  bool  $dryRun
-     * @return bool true when the cron has been (or would be) removed
-     */
-    public function removeCron(bool $dryRun = false): bool
-    {
-        if (! file_exists(self::CRON)) {
-            return false;
-        }
-
-        return $dryRun || @unlink(self::CRON);
     }
 
     /**

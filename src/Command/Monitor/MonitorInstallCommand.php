@@ -2,6 +2,7 @@
 
 namespace Gogol\VpsManagerCLI\Command\Monitor;
 
+use Gogol\VpsManagerCLI\Helpers\Cron;
 use Gogol\VpsManagerCLI\Helpers\Fail2ban;
 use Gogol\VpsManagerCLI\Helpers\Monitor;
 use Gogol\VpsManagerCLI\Helpers\MonitorAgent;
@@ -375,8 +376,13 @@ class MonitorInstallCommand extends Command
         }
 
         if ($remove) {
-            if ($agent->removeCron($dryRun)) {
-                $output->writeln(($dryRun ? 'Would remove' : 'Removed').' <comment>'.MonitorAgent::CRON.'</comment>');
+            if (! $dryRun) {
+                vpsManager()->saveConfig(['monitor_collect' => false] + vpsManager()->config());
+                vpsManager()->bootConfig(true);
+            }
+
+            foreach (vpsManager()->cron()->write($dryRun) as $change) {
+                $output->writeln('<comment>'.$change.'</comment>');
             }
 
             $output->writeln('The url of the monitor and the token stay in the configuration.');
@@ -396,7 +402,7 @@ class MonitorInstallCommand extends Command
         }
 
         if ($dryRun) {
-            $output->writeln('Would check the token in '.$url.', save it and write <comment>'.MonitorAgent::CRON.'</comment>');
+            $output->writeln('Would check the token in '.$url.', save it and write <comment>'.Cron::PATH.'</comment>');
 
             foreach ($agent->removeLegacyAgent(true) as $part) {
                 $output->writeln('Would remove the old bash agent: <comment>'.$part.'</comment>');
@@ -419,8 +425,13 @@ class MonitorInstallCommand extends Command
             $output->writeln('Saved the url of the monitor and the token into <comment>'.(realpath(vpsManagerPath().'/config.php') ?: vpsManagerPath().'/config.php').'</comment>');
         }
 
-        if ($agent->writeCron()) {
-            $output->writeln('Wrote <comment>'.MonitorAgent::CRON.'</comment>');
+        if (vpsManager()->config('monitor_collect') !== true) {
+            vpsManager()->saveConfig(['monitor_collect' => true] + vpsManager()->config());
+            vpsManager()->bootConfig(true);
+        }
+
+        foreach (vpsManager()->cron()->write() as $change) {
+            $output->writeln('<comment>'.$change.'</comment>');
         }
 
         foreach ($agent->removeLegacyAgent() as $part) {

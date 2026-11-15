@@ -58,7 +58,7 @@ git clone https://github.com/MarekGogol/vpsmanager-cli vpsmanager && cd vpsmanag
 bash install.sh
 ```
 
-VPS Manager lives in **`/root/vpsmanager`** on every server: the alias `vpsmanager` in `/root/.bashrc`, the crons of `backup:run` and `monitor:collect` use this path. To move an older installation from `/root/vpsmanager-cli`, wait until no `vpsmanager` process runs, `mv /root/vpsmanager-cli /root/vpsmanager` and replace the path in `crontab -e`, `/etc/cron.d/vpsmanager-*` and the alias in `/root/.bashrc`.
+VPS Manager lives in **`/root/vpsmanager`** on every server: the alias `vpsmanager` in `/root/.bashrc`, the jobs of `backup:run` and `monitor:collect` in `/etc/cron.d/vpsmanager` use this path. To move an older installation from `/root/vpsmanager-cli`, wait until no `vpsmanager` process runs, `mv /root/vpsmanager-cli /root/vpsmanager` and run `backup:setup` or `monitor:install` again to rewrite `/etc/cron.d/vpsmanager`, and replace the path in the alias in `/root/.bashrc`.
 
 `install.sh` runs three steps:
 
@@ -131,6 +131,7 @@ All configuration lives in **`src/config.php`**, a plain PHP file that returns a
 | `mysql_host` | `localhost` | Host part of created MySQL users (`localhost`, `192.168.1.%`, `%`...). The CLI itself always connects to `localhost` |
 | `monitor_url` | `https://monitor.marekgogol.sk` | Url of the monitor, set by `monitor:install` |
 | `monitor_token` | - | Token of the server in the monitor (button Inštalovať of the server), set by `monitor:install` |
+| `monitor_collect` | `false` | `monitor:collect` runs from `/etc/cron.d/vpsmanager`, set by `monitor:install` (`false` by `--remove`) |
 
 ### Backup keys (`backup:setup`)
 
@@ -154,7 +155,8 @@ All configuration lives in **`src/config.php`**, a plain PHP file that returns a
 | `email_server` | | SMTP server as `host:port`. Port `465` uses SMTPS, any other port uses STARTTLS. With no port, `465` is used |
 | `email_username` | | SMTP username, also used as the sender address |
 | `email_password` | | SMTP password. You type it hidden and it is shown as `********` |
-| `crontab_add` | `true` | Add the daily 4 AM backup and the Sunday maintenance cron jobs |
+| `crontab_add` | `true` | Run the backups from `/etc/cron.d/vpsmanager`: everything daily at 4 AM, the maintenance on Sundays at 5:30 |
+| `backup_databases_interval` | `6` | The databases are backed up also every 1, 2, 3, 4, 6, 8 or 12 hours, `0` only daily |
 
 The `backup_local_path` key is asked only for a local repository, the `backup_sftp_*` keys only for an SFTP repository, the email keys only when `email_notifications` is on. The retention keys are not asked, change them in `src/config.php`.
 
@@ -496,7 +498,7 @@ The access log holds addresses of visitors for a week, mention it in the privacy
 - The monitor is optional. When it does not answer, the windows wait for the next run (an hour at most), nothing is banned nor unbanned and the jails of the server work as before. The shared bans last the days of their level, so they expire also when the monitor is gone.
 - Own addresses, private networks, proxies and crawlers are never banned (the same list as `ignoreip`), the addresses of the recidive jail are not banned twice. Hiding an address in the monitor (or `monitor:ip:allow`) unbans it on all servers within 5 minutes.
 - The url and the token are `monitor_url` and `monitor_token` of the configuration, without them `monitor:collect` sends nothing. The API is `/api/agent/*` of the monitor with `Authorization: Bearer <token>`. `monitor:install` offers the url and the token of the old bash agent (`/etc/server_monitor/monitor.sh`) when it replaces it.
-- `monitor:install` checks the token by a call of the monitor, writes `/etc/cron.d/vpsmanager-monitor-collect` (every 5 minutes from a minute derived from the hostname, `--spread` waits up to 40 more seconds) and removes the old bash agent: its user `server_monitor` with its crontab, `/etc/server_monitor`, the setuid bit its installer set on `ping`, and `/etc/cron.d/vpsmanager-monitor-sync`. Then it runs `monitor:collect` once. Behind a router the shared jails live on the router.
+- `monitor:install` checks the token by a call of the monitor, writes its job into `/etc/cron.d/vpsmanager` (every 5 minutes from a minute derived from the hostname, `--spread` waits up to 40 more seconds) and removes the old bash agent: its user `server_monitor` with its crontab, `/etc/server_monitor`, the setuid bit its installer set on `ping`, and `/etc/cron.d/vpsmanager-monitor-sync`. Then it runs `monitor:collect` once. Behind a router the shared jails live on the router.
 - State between the runs: `/var/lib/vpsmanager/monitor-collect.json` (positions in the logs, unsent windows, reported and shared bans). A lock (`monitor-collect.lock`) never runs two of them at once.
 
 ```bash
@@ -567,7 +569,7 @@ scanner ─▶ router: iptables (fail2ban of the router) ─▶ server: NGINX, /
 | `/etc/fail2ban/filter.d/vpsmanager-scanners.conf`, `vpsmanager-scanners-recidive.conf`, `vpsmanager-http-auth.conf`, `jail.d/vpsmanager-scanners.conf`, `fail2ban.d/vpsmanager.conf` | managed |
 | `/etc/fail2ban/jail.d/vpsmanager-scanners.local` | yours (own addresses never banned) |
 | `/etc/vpsmanager/logrotate-monitor.conf`, `/etc/cron.hourly/vpsmanager-monitor` | managed |
-| `/etc/cron.d/vpsmanager-monitor-collect` | managed (agent of the monitor) |
+| `/etc/cron.d/vpsmanager` | managed (jobs of the monitor and the backups) |
 | `/var/lib/vpsmanager/monitor-collect.json`, `monitor-metrics.state`, `monitor-collect.lock` | state of `monitor:collect` |
 | `/var/lib/vpsmanager/monitor-backups.json` | backups not yet accepted by the monitor |
 | `/var/lib/vpsmanager/monitor-backup-checks.json` | results of `backup:maintenance` not yet accepted by the monitor |
@@ -702,7 +704,7 @@ The command asks for every [backup key](#backup-keys-backupsetup) and then:
    - the repository exists with other passwords (e.g. a reinstalled server): you type a password which opens it, e.g. the recovery password, and the password of the server is added into it.
 4. Asks for the **recovery password**, every time, see below.
 5. **Deletes the old tar.gz backups** of the previous versions in `{backup_path}/local` after a confirmation and removes the obsolete keys (`backup_path`, `backup_www_max_limit`, `remote_*`) from the configuration.
-6. Writes `/etc/logrotate.d/vpsmanager-backup` and, if you confirm, adds the cron jobs (see [Crontab](#crontab)).
+6. Writes `/etc/logrotate.d/vpsmanager-backup` and the jobs of the backups into `/etc/cron.d/vpsmanager` (see [Crontab](#crontab)).
 
 ### Recovery password
 
@@ -829,12 +831,25 @@ web/storage/app/huge.zip
 
 ### Crontab
 
-`backup:setup` can add the cron jobs for you. To add them manually, run `crontab -e` and add these lines (use your installation path):
+All jobs of VPS Manager are in one file, **`/etc/cron.d/vpsmanager`**, generated from the configuration by `backup:setup` and `monitor:install`. Either command rewrites it whole, with the jobs of the backups (when they are configured and `crontab_add` is on) and of the monitor (`monitor_collect`), so manual changes are overwritten. On ms with the databases every 6 hours:
 
-```bash
-0 4 * * * php /root/vpsmanager/vpsmanager backup:run
-30 5 * * 0 php /root/vpsmanager/vpsmanager backup:maintenance
 ```
+# Jobs of VPS Manager, managed by backup:setup and monitor:install, changes are overwritten.
+
+# Sends the metrics of the server, the requests of its hosts and its bans to the monitor every 5 minutes and
+# bans the addresses shared by the monitor. The minute is derived from the hostname (monitor:install).
+0-59/5 * * * * root '/usr/bin/php8.5' '/root/vpsmanager/vpsmanager' monitor:collect --spread > /dev/null 2>&1
+
+# Backups into the restic repository: everything daily, the databases more often, the maintenance on Sundays
+# (backup:setup).
+0 4 * * * root '/usr/bin/php8.5' '/root/vpsmanager/vpsmanager' backup:run > /dev/null 2>&1
+0 0,6,12,18 * * * root '/usr/bin/php8.5' '/root/vpsmanager/vpsmanager' backup:run --databases > /dev/null 2>&1
+30 5 * * 0 root '/usr/bin/php8.5' '/root/vpsmanager/vpsmanager' backup:maintenance > /dev/null 2>&1
+```
+
+- The databases are backed up every `backup_databases_interval` hours, except at 4 AM, when the daily backup saves them.
+- The output goes nowhere, the results are in `/var/log/vpsmanager/backup.log` and errors are sent by email.
+- Writing the file removes the old ones: `/etc/cron.d/vpsmanager-monitor-collect` (its state is kept as `monitor_collect`) and the lines of `backup:run` and `backup:maintenance` in the crontab of root.
 
 `backup:run` holds the lock `/var/lib/vpsmanager/backup.lock` until its end: a second run started meanwhile ends at once, `backup:maintenance`, `swap:refresh` and `setup:run` (stunnel) wait for its end. `backup:maintenance` holds the same lock and `/var/lib/vpsmanager/backup-maintenance.lock`, a `backup:run` started during the maintenance waits for its end instead of skipping.
 
