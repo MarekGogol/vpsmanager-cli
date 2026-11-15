@@ -674,7 +674,8 @@ class BackupSetupCommand extends Command
     }
 
     /**
-     * Ask for the recovery password and add it into the repository, unless it opens the repository already.
+     * Ask for the recovery password and add it into the repository. It is required while the repository has none,
+     * another one is added only on request. A new password is typed twice, it is not saved anywhere to check a typo.
      *
      * @param  array  $config
      * @return void
@@ -689,6 +690,14 @@ class BackupSetupCommand extends Command
         $this->output->writeln('<info>Recovery password</info>');
         $this->output->writeln('The recovery password opens the repository without this server. It is not saved on the server, keep it in your password manager.');
 
+        if (self::countRecoveryKeys($restic) > 0) {
+            $this->output->writeln('The repository has a recovery password already.');
+
+            if (! $this->ask(new ConfirmationQuestion('<info>Add another recovery password? (y/N)</info> ', false))) {
+                return;
+            }
+        }
+
         while (true) {
             $password = $this->askHidden('Type the recovery password: ');
 
@@ -698,7 +707,14 @@ class BackupSetupCommand extends Command
                 continue;
             }
 
-            if ($this->askHidden('Type the recovery password again: ') !== $password) {
+            // A password which opens the repository is correct, no need to type it again
+            if ($restic->run(['cat', 'config'], $output, $error, $password) === 0) {
+                $this->output->writeln('The recovery password opens the repository already.');
+
+                return;
+            }
+
+            if ($this->askHidden('The password is new for this repository, type it again: ') !== $password) {
                 $this->output->writeln('<error>The passwords do not match.</error>');
 
                 continue;
@@ -707,15 +723,24 @@ class BackupSetupCommand extends Command
             break;
         }
 
-        if ($restic->run(['cat', 'config'], $output, $error, $password) === 0) {
-            $this->output->writeln('The recovery password opens the repository already.');
-
-            return;
-        }
-
         $this->addKey($restic, $password, 'recovery', $config['backup_password']);
 
         $this->output->writeln('<info>The recovery password has been added into the repository.</info>');
+    }
+
+    /**
+     * Count the recovery passwords of the repository, the keys added by backup:setup with the user recovery.
+     *
+     * @param  \Gogol\VpsManagerCLI\Helpers\Restic  $restic
+     * @return int
+     */
+    private static function countRecoveryKeys(Restic $restic): int
+    {
+        if ($restic->run(['key', 'list', '--json'], $output, $error) !== 0) {
+            return 0;
+        }
+
+        return count(array_filter((array) json_decode($output, true), fn ($key) => ($key['userName'] ?? null) === 'recovery'));
     }
 
     /**

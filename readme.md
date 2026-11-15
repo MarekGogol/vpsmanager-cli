@@ -703,7 +703,7 @@ The command asks for every [backup key](#backup-keys-backupsetup) and then:
    - the repository does not exist: it is created (`restic init`),
    - the password opens it: nothing changes,
    - the repository exists with other passwords (e.g. a reinstalled server): you type a password which opens it, e.g. the recovery password, and the password of the server is added into it.
-4. Asks for the **recovery password**, every time, see below.
+4. Asks for the **recovery password** when the repository has none, otherwise offers to add another one, see below.
 5. **Deletes the old tar.gz backups** of the previous versions in `{backup_path}/local` after a confirmation and removes the obsolete keys (`backup_path`, `backup_www_max_limit`, `remote_*`) from the configuration.
 6. Writes `/etc/logrotate.d/vpsmanager-backup` and the jobs of the backups into `/etc/cron.d/vpsmanager` (see [Crontab](#crontab)).
 
@@ -712,7 +712,7 @@ The command asks for every [backup key](#backup-keys-backupsetup) and then:
 A repository can be opened by more passwords. Every repository has two:
 
 - **the password of the server** (`backup_password` in `src/config.php`), random, used by the cron jobs,
-- **your recovery password**, asked by every `backup:setup`. It is added into the repository unless it opens it already, and it is never saved on the server.
+- **your recovery password**, required by `backup:setup` while the repository has none. A new one is typed twice (it is not saved anywhere to catch a typo), one which opens the repository already once. When the repository has a recovery password, `backup:setup` only offers to add another one (`y/N`). It is never saved on the server.
 
 Keep the recovery password in your password manager. **Without a password the backups cannot be read by anybody, nor restored.** With one recovery password for all servers you open the repository of any server, also when the server is lost.
 
