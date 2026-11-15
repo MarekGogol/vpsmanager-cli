@@ -9,6 +9,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Question\ConfirmationQuestion;
 
 class BackupRestoreCommand extends Command
 {
@@ -32,7 +33,8 @@ class BackupRestoreCommand extends Command
             ->addArgument('name', InputArgument::OPTIONAL, 'Name of the database or the website, a path for dirs')
             ->addOption('snapshot', null, InputOption::VALUE_REQUIRED, 'ID of the backup from backup:list --name, latest by default', 'latest')
             ->addOption('target', null, InputOption::VALUE_REQUIRED, 'File or directory of the restored data, in '.self::RESTORE_PATH.' by default')
-            ->addOption('database', null, InputOption::VALUE_REQUIRED, 'Import the database into this new database instead of a file');
+            ->addOption('database', null, InputOption::VALUE_REQUIRED, 'Import the database into this new database instead of a file')
+            ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Restore without the confirmation');
     }
 
     /**
@@ -67,16 +69,108 @@ class BackupRestoreCommand extends Command
 
         $snapshot = $this->findSnapshot($type, $name, $input->getOption('snapshot'));
         $time = BackupListCommand::time($snapshot['time']);
-
-        $output->writeln('Restoring the backup <comment>'.$snapshot['short_id'].'</comment> from <comment>'.$time->format('d.m.Y H:i').'</comment>.');
+        $database = $type === 'databases' ? $input->getOption('database') : null;
 
         if ($type === 'databases') {
-            return $this->restoreDatabase($output, $snapshot, $name, $input->getOption('target'), $input->getOption('database'));
+            $target = $input->getOption('target') ?: self::RESTORE_PATH.'/databases/'.$name.'-'.$time->format('Y-m-d_H-i').'.sql';
+        } else {
+            $target = $input->getOption('target') ?: self::RESTORE_PATH.'/'.$type.'/'.($type === 'www' ? $name : 'directories').'-'.$time->format('Y-m-d_H-i');
         }
 
-        $target = $input->getOption('target') ?: self::RESTORE_PATH.'/'.$type.'/'.($type === 'www' ? $name : 'directories').'-'.$time->format('Y-m-d_H-i');
+        if (! $this->confirm($input, $output, $snapshot, $type, $name, $target, $database)) {
+            $output->writeln('<comment>Nothing was restored.</comment>');
+
+            return Command::SUCCESS;
+        }
+
+        if ($type === 'databases') {
+            return $this->restoreDatabase($output, $snapshot, $name, $target, $database);
+        }
 
         return $this->restoreFiles($output, $snapshot, $target, $type === 'dirs' ? $name : null);
+    }
+
+    /**
+     * Show what will be restored, how much data and where, and ask for the confirmation.
+     *
+     * @param  \Symfony\Component\Console\Input\InputInterface  $input
+     * @param  \Symfony\Component\Console\Output\OutputInterface  $output
+     * @param  array  $snapshot
+     * @param  string  $type
+     * @param  string|null  $name
+     * @param  string  $target
+     * @param  string|null  $database
+     * @return bool
+     *
+     * @throws \Exception
+     */
+    private function confirm(InputInterface $input, OutputInterface $output, array $snapshot, string $type, ?string $name, string $target, ?string $database): bool
+    {
+        $size = $this->getSize($snapshot);
+        $where = $database ? 'new database '.$database : $target;
+        $free = vpsManager()->backup()->getFreeDiskSpace($this->getExistingParent($database ? '/var/lib/mysql' : $target)) * 1000000;
+
+        $output->writeln('');
+        $output->writeln('Backup:   <comment>'.match ($type) {
+            'databases' => 'database '.$name,
+            'www' => 'website '.$name,
+            default => 'directories'.($name ? ' (only '.$name.')' : ''),
+        }.'</comment>');
+        $output->writeln('Snapshot: <comment>'.$snapshot['short_id'].'</comment> from <comment>'.BackupListCommand::time($snapshot['time'])->format('d.m.Y H:i').'</comment>');
+        $output->writeln('Size:     <comment>'.($type === 'dirs' && $name ? 'up to ' : '').BackupListCommand::formatBytes($size).'</comment>'.($type === 'databases' ? ' (SQL dump)' : ''));
+        $output->writeln('Into:     <comment>'.$where.'</comment>');
+        $output->writeln('Free:     <comment>'.BackupListCommand::formatBytes($free).'</comment>');
+
+        if ($size !== null && $size > $free) {
+            $output->writeln('<error>There is not enough free disk space for the restore.</error>');
+        }
+
+        $output->writeln('');
+
+        if ($input->getOption('yes')) {
+            return true;
+        }
+
+        if (! $input->isInteractive()) {
+            throw new Exception('Confirm the restore with --yes.');
+        }
+
+        return (bool) $this->getHelper('question')->ask($input, $output, new ConfirmationQuestion('<info>Restore it? (y/N)</info> ', false));
+    }
+
+    /**
+     * Get the size of the restored data of a snapshot in bytes.
+     *
+     * @param  array  $snapshot
+     * @return int|null
+     */
+    private function getSize(array $snapshot): ?int
+    {
+        if (isset($snapshot['summary']['total_bytes_processed'])) {
+            return (int) $snapshot['summary']['total_bytes_processed'];
+        }
+
+        // Snapshots of restic older than 0.17 have no summary
+        if (vpsManager()->restic()->run(['stats', $snapshot['id'], '--json', '--mode', 'restore-size'], $stats) === 0) {
+            return json_decode($stats, true)['total_size'] ?? null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Get the nearest existing directory of a path, for its free disk space.
+     *
+     * @param  string  $path
+     * @return string
+     */
+    private function getExistingParent(string $path): string
+    {
+        while ($path !== '/' && $path !== '.' && ! file_exists($path)) {
+            $path = dirname($path);
+        }
+
+        return $path;
     }
 
     /**
@@ -131,13 +225,13 @@ class BackupRestoreCommand extends Command
      * @param  \Symfony\Component\Console\Output\OutputInterface  $output
      * @param  array  $snapshot
      * @param  string  $name
-     * @param  string|null  $target
+     * @param  string  $target
      * @param  string|null  $database
      * @return int
      *
      * @throws \Exception
      */
-    private function restoreDatabase(OutputInterface $output, array $snapshot, string $name, ?string $target, ?string $database): int
+    private function restoreDatabase(OutputInterface $output, array $snapshot, string $name, string $target, ?string $database): int
     {
         $restic = vpsManager()->restic();
         $path = $snapshot['paths'][0];
@@ -174,8 +268,6 @@ class BackupRestoreCommand extends Command
 
             return Command::SUCCESS;
         }
-
-        $target = $target ?: self::RESTORE_PATH.'/databases/'.$name.'-'.BackupListCommand::time($snapshot['time'])->format('Y-m-d_H-i').'.sql';
 
         if (file_exists($target)) {
             throw new Exception('File '.$target.' exists already.');
