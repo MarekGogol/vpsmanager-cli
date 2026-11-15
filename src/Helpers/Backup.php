@@ -248,7 +248,8 @@ class Backup extends Application
             @mkdir(dirname(self::LOG), 0750, true);
         }
 
-        @file_put_contents(self::LOG, $this->now()->format('Y-m-d H:i:s').' ['.$type.'] - '.$message."\n", FILE_APPEND);
+        // The real time, now() is the start of the run which names the backups for the monitor
+        @file_put_contents(self::LOG, Carbon::now(self::TIMEZONE)->format('Y-m-d H:i:s').' ['.$type.'] - '.$message."\n", FILE_APPEND);
     }
 
     /**
