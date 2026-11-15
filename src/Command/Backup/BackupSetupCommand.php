@@ -560,6 +560,11 @@ class BackupSetupCommand extends Command
             return;
         }
 
+        // Servers on one storage start their backups at their own minute
+        $config['backup_cron_minute'] ??= Cron::minuteOf((string) $config['backup_server_name']);
+
+        $this->output->writeln('Minute of the backups: <comment>'.$config['backup_cron_minute'].'</comment> (backup_cron_minute)');
+
         $default = $config['backup_databases_interval'] ?? Cron::DATABASES_INTERVAL;
         $intervals = implode(', ', array_filter(Cron::DATABASES_INTERVALS));
 

@@ -14,6 +14,7 @@ use Gogol\VpsManagerCLI\Command\Backup\BackupTestMailServer;
 use Gogol\VpsManagerCLI\Command\Chroot\ChrootCreateCommand;
 use Gogol\VpsManagerCLI\Command\Chroot\ChrootRemoveCommand;
 use Gogol\VpsManagerCLI\Command\Chroot\ChrootUpdateCommand;
+use Gogol\VpsManagerCLI\Command\CronWriteCommand;
 use Gogol\VpsManagerCLI\Command\Hosting\HostingCreateCommand;
 use Gogol\VpsManagerCLI\Command\Hosting\HostingRemoveCommand;
 use Gogol\VpsManagerCLI\Command\InstallManagerCommand;
@@ -65,5 +66,6 @@ $application->addCommand(new LaravelQueueCommand());
 $application->addCommand(new LaravelOctaneCommand());
 $application->addCommand(new SetupRunCommand());
 $application->addCommand(new SwapRefreshCommand());
+$application->addCommand(new CronWriteCommand());
 
 $application->run();

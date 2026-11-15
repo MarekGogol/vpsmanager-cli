@@ -79,24 +79,54 @@ class Cron extends Application
     }
 
     /**
+     * Get the minute of a server derived from its name, so the servers do not all start their backups at once
+     * on one storage, and one server keeps its minute.
+     *
+     * @param  string  $name
+     * @return int 0-59
+     */
+    public static function minuteOf(string $name): int
+    {
+        return crc32('vpsmanager-backup:'.$name) % 60;
+    }
+
+    /**
+     * Get the minute of the backups of this server.
+     *
+     * @return int
+     */
+    public function getBackupMinute(): int
+    {
+        $minute = $this->config('backup_cron_minute');
+
+        if (is_numeric($minute) && $minute >= 0 && $minute <= 59) {
+            return (int) $minute;
+        }
+
+        return self::minuteOf((string) $this->config('backup_server_name', gethostname()));
+    }
+
+    /**
      * Get the jobs of the backups.
      *
      * @param  string  $command  command of VPS Manager without arguments
      * @param  int  $interval  hours between the backups of the databases, 0 for none
+     * @param  int  $minute  minute of all jobs
      * @return array
      */
-    public static function backupJobs(string $command, int $interval): array
+    public static function backupJobs(string $command, int $interval, int $minute = 0): array
     {
-        $jobs = ['0 '.self::BACKUP_HOUR.' * * * root '.$command.' backup:run > /dev/null 2>&1'];
+        $jobs = [$minute.' '.self::BACKUP_HOUR.' * * * root '.$command.' backup:run > /dev/null 2>&1'];
 
         if (in_array($interval, self::DATABASES_INTERVALS) && $interval > 0) {
             // The hour of the daily backup is left out, it backs up the databases too
             $hours = array_values(array_diff(range(0, 23, $interval), [self::BACKUP_HOUR]));
 
-            $jobs[] = '0 '.implode(',', $hours).' * * * root '.$command.' backup:run --databases > /dev/null 2>&1';
+            $jobs[] = $minute.' '.implode(',', $hours).' * * * root '.$command.' backup:run --databases > /dev/null 2>&1';
         }
 
-        $jobs[] = '30 5 * * 0 root '.$command.' backup:maintenance > /dev/null 2>&1';
+        // An hour after the daily backup, the maintenance waits for its end anyway
+        $jobs[] = $minute.' '.(self::BACKUP_HOUR + 1).' * * 0 root '.$command.' backup:maintenance > /dev/null 2>&1';
 
         return $jobs;
     }
@@ -120,15 +150,15 @@ class Cron extends Application
             $interval = (int) $this->config('backup_databases_interval', self::DATABASES_INTERVAL);
 
             $sections[] = "# Backups into the restic repository: everything daily, the databases more often, the maintenance on Sundays\n"
-                ."# (backup:setup).\n"
-                .implode("\n", self::backupJobs(rtrim($this->command('')), $interval));
+                ."# (backup:setup). The minute is derived from the name of the server (backup_cron_minute).\n"
+                .implode("\n", self::backupJobs(rtrim($this->command('')), $interval, $this->getBackupMinute()));
         }
 
         if (! $sections) {
             return null;
         }
 
-        return "# Jobs of VPS Manager, managed by backup:setup and monitor:install, changes are overwritten.\n\n"
+        return "# Jobs of VPS Manager, managed by backup:setup, monitor:install and cron:write, changes are overwritten.\n\n"
             .implode("\n\n", $sections)."\n";
     }
 

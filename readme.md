@@ -155,7 +155,8 @@ All configuration lives in **`src/config.php`**, a plain PHP file that returns a
 | `email_server` | | SMTP server as `host:port`. Port `465` uses SMTPS, any other port uses STARTTLS. With no port, `465` is used |
 | `email_username` | | SMTP username, also used as the sender address |
 | `email_password` | | SMTP password. You type it hidden and it is shown as `********` |
-| `crontab_add` | `true` | Run the backups from `/etc/cron.d/vpsmanager`: everything daily at 4 AM, the maintenance on Sundays at 5:30 |
+| `crontab_add` | `true` | Run the backups from `/etc/cron.d/vpsmanager`: everything daily at 4 AM, the maintenance on Sundays at 5 AM, at `backup_cron_minute` |
+| `backup_cron_minute` | derived from `backup_server_name` | Minute (0-59) of all backup jobs, so the servers on one storage do not start at once. Set once by `backup:setup`, change it here and run `cron:write` |
 | `backup_databases_interval` | `6` | The databases are backed up also every 1, 2, 3, 4, 6, 8 or 12 hours, `0` only daily |
 
 The `backup_local_path` key is asked only for a local repository, the `backup_sftp_*` keys only for an SFTP repository, the email keys only when `email_notifications` is on. The retention keys are not asked, change them in `src/config.php`.
@@ -782,7 +783,7 @@ Files keep their original paths under the target. Move what you need into place 
 sudo php vpsmanager backup:maintenance
 ```
 
-Removes the unused data of the forgotten snapshots (`restic prune`) and checks the repository with one twentieth of its data (`restic check --read-data-subset=N/20`). N follows the count of weeks since 1970, so a weekly maintenance reads every chunk of the repository in any 20 weeks in a row. It waits for a running backup, prune needs the repository alone. Errors are logged and sent by email. `backup:setup` adds it to the crontab on Sundays at 5:30.
+Removes the unused data of the forgotten snapshots (`restic prune`) and checks the repository with one twentieth of its data (`restic check --read-data-subset=N/20`). N follows the count of weeks since 1970, so a weekly maintenance reads every chunk of the repository in any 20 weeks in a row. It waits for a running backup, prune needs the repository alone. Errors are logged and sent by email. `backup:setup` adds it to `/etc/cron.d/vpsmanager` on Sundays at 5 AM.
 
 The result is sent to the monitor **also when it succeeded** (`POST /api/agent/backup-checks`: status, errors, the checked part, the end). When the monitor does not answer, it waits in `/var/lib/vpsmanager/monitor-backup-checks.json` for the next `monitor:collect`. The monitor alerts a failed check and a server without a successful check, see [Backups in the monitor](#backups-in-the-monitor), so damaged backups are found by the weekly check and not by a restore a year later, even without the email notifications.
 
@@ -831,23 +832,25 @@ web/storage/app/huge.zip
 
 ### Crontab
 
-All jobs of VPS Manager are in one file, **`/etc/cron.d/vpsmanager`**, generated from the configuration by `backup:setup` and `monitor:install`. Either command rewrites it whole, with the jobs of the backups (when they are configured and `crontab_add` is on) and of the monitor (`monitor_collect`), so manual changes are overwritten. On ms with the databases every 6 hours:
+All jobs of VPS Manager are in one file, **`/etc/cron.d/vpsmanager`**, generated from the configuration by `backup:setup`, `monitor:install` and `cron:write`. Each of them rewrites it whole, with the jobs of the backups (when they are configured and `crontab_add` is on) and of the monitor (`monitor_collect`), so manual changes are overwritten. On ms with the databases every 6 hours and the minute 29:
 
 ```
-# Jobs of VPS Manager, managed by backup:setup and monitor:install, changes are overwritten.
+# Jobs of VPS Manager, managed by backup:setup, monitor:install and cron:write, changes are overwritten.
 
 # Sends the metrics of the server, the requests of its hosts and its bans to the monitor every 5 minutes and
 # bans the addresses shared by the monitor. The minute is derived from the hostname (monitor:install).
 0-59/5 * * * * root '/usr/bin/php8.5' '/root/vpsmanager/vpsmanager' monitor:collect --spread > /dev/null 2>&1
 
 # Backups into the restic repository: everything daily, the databases more often, the maintenance on Sundays
-# (backup:setup).
-0 4 * * * root '/usr/bin/php8.5' '/root/vpsmanager/vpsmanager' backup:run > /dev/null 2>&1
-0 0,6,12,18 * * * root '/usr/bin/php8.5' '/root/vpsmanager/vpsmanager' backup:run --databases > /dev/null 2>&1
-30 5 * * 0 root '/usr/bin/php8.5' '/root/vpsmanager/vpsmanager' backup:maintenance > /dev/null 2>&1
+# (backup:setup). The minute is derived from the name of the server (backup_cron_minute).
+29 4 * * * root '/usr/bin/php8.5' '/root/vpsmanager/vpsmanager' backup:run > /dev/null 2>&1
+29 0,6,12,18 * * * root '/usr/bin/php8.5' '/root/vpsmanager/vpsmanager' backup:run --databases > /dev/null 2>&1
+29 5 * * 0 root '/usr/bin/php8.5' '/root/vpsmanager/vpsmanager' backup:maintenance > /dev/null 2>&1
 ```
 
+- All backup jobs start at `backup_cron_minute`, derived from the name of the server (0-59), so ten servers on one Storage Box do not start at once. The monitor spreads `monitor:collect` the same way.
 - The databases are backed up every `backup_databases_interval` hours, except at 4 AM, when the daily backup saves them.
+- `php vpsmanager cron:write` rewrites the file from the configuration (`--dry-run` prints it), e.g. after an update or a change of `backup_cron_minute`.
 - The output goes nowhere, the results are in `/var/log/vpsmanager/backup.log` and errors are sent by email.
 - Writing the file removes the old ones: `/etc/cron.d/vpsmanager-monitor-collect` (its state is kept as `monitor_collect`) and the lines of `backup:run` and `backup:maintenance` in the crontab of root.
 
