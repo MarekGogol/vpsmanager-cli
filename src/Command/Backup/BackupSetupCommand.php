@@ -422,7 +422,18 @@ class BackupSetupCommand extends Command
      */
     private function askBackupDirectories(array &$config): void
     {
-        $default = $config['backup_directories'] ?? implode(';', ['/etc/nginx', '/etc/php', '/etc/mysql --exclude="*/debian.cnf"', '/etc/ssh/sshd_config', '/var/spool/cron/crontabs']);
+        $default = $config['backup_directories'] ?? implode(';', Backup::DEFAULT_DIRECTORIES);
+
+        // Offer only the directories of this server, e.g. no /etc/nginx on a database server
+        if ($default !== '-') {
+            [$default, $missing] = Restic::filterExistingDirectories($default, 'file_exists');
+
+            if ($missing) {
+                $this->output->writeln('Left out paths which do not exist on this server: <comment>'.implode(' ', $missing).'</comment>');
+            }
+
+            $default = $default ?: '-';
+        }
 
         $this->output->writeln('<info>Please set which additional directories should be backed up.</info>');
 

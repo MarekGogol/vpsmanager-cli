@@ -246,6 +246,30 @@ class Restic extends Application
     }
 
     /**
+     * Keep the entries of the backup_directories configuration whose path exists.
+     *
+     * @param  string  $directories
+     * @param  callable  $exists  path => bool
+     * @return array [kept entries joined with ;, missing paths]
+     */
+    public static function filterExistingDirectories(string $directories, callable $exists): array
+    {
+        $kept = $missing = [];
+
+        foreach (array_filter(array_map('trim', explode(';', $directories))) as $entry) {
+            $path = rtrim(preg_split('/\s+/', $entry)[0], '/') ?: '/';
+
+            if ($exists($path)) {
+                $kept[] = $entry;
+            } else {
+                $missing[] = $path;
+            }
+        }
+
+        return [implode(';', $kept), $missing];
+    }
+
+    /**
      * Get the excluded patterns of the backup of a website.
      *
      * @param  string  $webPath  backed up directory, e.g. /var/www/example.com/data

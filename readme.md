@@ -149,7 +149,7 @@ All configuration lives in **`src/config.php`**, a plain PHP file that returns a
 | `backup_keep_databases` | `['within' => '1d', 'daily' => 7, 'weekly' => 4, 'monthly' => 6]` | Retention of every database, the `--keep-*` options of `restic forget` |
 | `backup_keep_data` | `['daily' => 7, 'weekly' => 4, 'monthly' => 3]` | Retention of every website and of the directories |
 | `backup_www_path` | `/var/www` | Directory whose subdirectories (one per website) are backed up |
-| `backup_directories` | `/etc/nginx;/etc/php;/etc/mysql --exclude="*/debian.cnf";/etc/ssh/sshd_config;/var/spool/cron/crontabs` | `;`-separated list of extra paths. After the first space only `--exclude=pattern` is supported. Use `-` to back up no directories |
+| `backup_directories` | `/etc/nginx;/etc/php;/etc/mysql --exclude="*/debian.cnf";/etc/ssh/sshd_config;/var/spool/cron/crontabs` | `;`-separated list of extra paths. After the first space only `--exclude=pattern` is supported. Use `-` to back up no directories. `backup:setup` offers only the paths which exist on the server, e.g. no `/etc/nginx` on a database server |
 | `email_notifications` | `true` | Send an email when a backup error occurs |
 | `email_receiver` | | Address that receives notifications |
 | `email_server` | | SMTP server as `host:port`. Port `465` uses SMTPS, any other port uses STARTTLS. With no port, `465` is used |

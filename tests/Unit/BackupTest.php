@@ -189,4 +189,14 @@ class BackupTest extends TestCase
         $this->assertSame('<comment>1.2 GB</comment>, added 3.4 MB in 5.2s', Backup::describeSummary($summary));
         $this->assertNull(Restic::backupSummary('not json'));
     }
+
+    public function test_missing_directories_are_not_offered(): void
+    {
+        $existing = ['/etc/php', '/etc/mysql', '/etc/ssh/sshd_config', '/var/spool/cron/crontabs'];
+
+        [$kept, $missing] = Restic::filterExistingDirectories(implode(';', Backup::DEFAULT_DIRECTORIES), fn ($path) => in_array($path, $existing));
+
+        $this->assertSame('/etc/php;/etc/mysql --exclude="*/debian.cnf";/etc/ssh/sshd_config;/var/spool/cron/crontabs', $kept);
+        $this->assertSame(['/etc/nginx'], $missing);
+    }
 }

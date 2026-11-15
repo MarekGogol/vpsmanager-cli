@@ -74,6 +74,13 @@ class Backup extends Application
     const CHECK_PARTS = 20;
 
     /**
+     * Default directories of the server backed up by backup_directories, the missing ones are not offered.
+     *
+     * @var array
+     */
+    const DEFAULT_DIRECTORIES = ['/etc/nginx', '/etc/php', '/etc/mysql --exclude="*/debian.cnf"', '/etc/ssh/sshd_config', '/var/spool/cron/crontabs'];
+
+    /**
      * Types of the backups, by their tag in restic.
      *
      * @var array
