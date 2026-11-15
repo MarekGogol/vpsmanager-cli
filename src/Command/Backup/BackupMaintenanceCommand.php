@@ -44,6 +44,9 @@ class BackupMaintenanceCommand extends Command
             throw new Exception('The lock of the backups could not be acquired.');
         }
 
+        // Taken after the lock of the backups, so it is held only while the maintenance really runs
+        $maintenanceLock = Backup::lockMaintenance();
+
         $response = $backup->maintenance();
 
         if ($response->isError()) {

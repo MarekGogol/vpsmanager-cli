@@ -32,6 +32,13 @@ class Backup extends Application
     const LOCK = '/var/lib/vpsmanager/backup.lock';
 
     /**
+     * Lock held by a running backup:maintenance, backup:run waits for its end instead of skipping.
+     *
+     * @var string
+     */
+    const MAINTENANCE_LOCK = '/var/lib/vpsmanager/backup-maintenance.lock';
+
+    /**
      * Log of the backups.
      *
      * @var string
@@ -142,21 +149,62 @@ class Backup extends Application
      * Acquire the lock of the backups.
      *
      * @param  bool  $wait  wait for a running backup instead of failing
+     * @param  string  $path
      * @return resource|null the lock held until it is closed, null when another backup holds it
      */
-    public static function lock(bool $wait = false)
+    public static function lock(bool $wait = false, string $path = self::LOCK)
     {
-        if (! is_dir(dirname(self::LOCK))) {
-            mkdir(dirname(self::LOCK), 0700, true);
+        if (! is_dir(dirname($path))) {
+            mkdir(dirname($path), 0700, true);
         }
 
-        $lock = fopen(self::LOCK, 'c');
+        $lock = fopen($path, 'c');
 
         if (! $lock || ! flock($lock, $wait ? LOCK_EX : LOCK_EX | LOCK_NB)) {
             return null;
         }
 
         return $lock;
+    }
+
+    /**
+     * Acquire the lock of a running backup:maintenance, held together with the lock of the backups.
+     *
+     * @param  string  $path
+     * @return resource|null
+     */
+    public static function lockMaintenance(string $path = self::MAINTENANCE_LOCK)
+    {
+        return self::lock(true, $path);
+    }
+
+    /**
+     * Determine if a lock is held by another process.
+     *
+     * @param  string  $path
+     * @return bool
+     */
+    public static function isLocked(string $path): bool
+    {
+        if (! file_exists($path) || ! $lock = fopen($path, 'r')) {
+            return false;
+        }
+
+        $locked = ! flock($lock, LOCK_SH | LOCK_NB);
+
+        fclose($lock);
+
+        return $locked;
+    }
+
+    /**
+     * Determine if backup:maintenance is running.
+     *
+     * @return bool
+     */
+    public static function isMaintenanceRunning(): bool
+    {
+        return self::isLocked(self::MAINTENANCE_LOCK);
     }
 
     /**

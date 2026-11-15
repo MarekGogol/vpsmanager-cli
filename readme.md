@@ -832,7 +832,7 @@ web/storage/app/huge.zip
 30 5 * * 0 php /root/vpsmanager/vpsmanager backup:maintenance
 ```
 
-`backup:run` holds the lock `/var/lib/vpsmanager/backup.lock` until its end: a second run started meanwhile ends at once, `backup:maintenance`, `swap:refresh` and `setup:run` (stunnel) wait for its end.
+`backup:run` holds the lock `/var/lib/vpsmanager/backup.lock` until its end: a second run started meanwhile ends at once, `backup:maintenance`, `swap:refresh` and `setup:run` (stunnel) wait for its end. `backup:maintenance` holds the same lock and `/var/lib/vpsmanager/backup-maintenance.lock`, a `backup:run` started during the maintenance waits for its end instead of skipping.
 
 ### Test the repository
 

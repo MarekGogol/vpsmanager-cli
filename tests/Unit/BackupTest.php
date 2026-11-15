@@ -136,6 +136,25 @@ class BackupTest extends TestCase
         }
     }
 
+    public function test_lock_held_by_the_maintenance_is_seen_by_the_backups(): void
+    {
+        $path = sys_get_temp_dir().'/vpsmanager-maintenance-test-'.bin2hex(random_bytes(4)).'.lock';
+
+        try {
+            $this->assertFalse(Backup::isLocked($path));
+
+            $lock = Backup::lockMaintenance($path);
+
+            $this->assertTrue(Backup::isLocked($path));
+
+            fclose($lock);
+
+            $this->assertFalse(Backup::isLocked($path));
+        } finally {
+            @unlink($path);
+        }
+    }
+
     public function test_bytes_are_formatted_for_humans(): void
     {
         $this->assertSame('-', BackupListCommand::formatBytes(null));

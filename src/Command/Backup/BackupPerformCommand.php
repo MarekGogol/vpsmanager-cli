@@ -51,9 +51,16 @@ class BackupPerformCommand extends Command
 
         // Held until the end of the run, swap:refresh does not run during a backup
         if (! $lock = Backup::lock()) {
-            $output->writeln('<comment>backup:run or backup:maintenance is running already.</comment>');
+            // A running maintenance ends soon, the backup waits for it instead of skipping
+            if (! Backup::isMaintenanceRunning()) {
+                $output->writeln('<comment>backup:run is running already.</comment>');
 
-            return Command::SUCCESS;
+                return Command::SUCCESS;
+            }
+
+            $output->writeln('<comment>backup:maintenance is running, waiting for its end.</comment>');
+
+            $lock = Backup::lock(true);
         }
 
         // If no option has been passed, everything will be backed up
