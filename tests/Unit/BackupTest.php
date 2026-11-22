@@ -55,6 +55,29 @@ class BackupTest extends TestCase
         $this->assertTrue(Restic::isConfigured(['backup_repository_type' => 'local', 'backup_local_path' => '/backups', 'backup_password' => 'secret']));
     }
 
+    public function test_memory_limit_of_restic_is_a_quarter_of_the_ram(): void
+    {
+        // ms: 3914 MB of RAM
+        $this->assertSame('978MiB', Restic::memoryLimit(3914 * 1024 * 1024));
+
+        // A small server gets at least 256 MiB
+        $this->assertSame('256MiB', Restic::memoryLimit(512 * 1024 * 1024));
+
+        $this->assertNull(Restic::memoryLimit(0));
+    }
+
+    public function test_killed_restic_reports_the_oom_killer(): void
+    {
+        // Killed restic writes nothing, the message is the last line of the error output
+        $this->assertSame(Restic::KILLED_ERROR, Restic::errorMessage(Restic::withKilledError(9, '')));
+
+        // A killed pipeline (bash -o pipefail) exits with 128 + 9
+        $this->assertSame(Restic::KILLED_ERROR, Restic::errorMessage(Restic::withKilledError(137, "repository locked\n")));
+
+        $this->assertSame('Fatal: wrong password', Restic::errorMessage(Restic::withKilledError(12, 'Fatal: wrong password')));
+        $this->assertSame('unknown error', Restic::errorMessage(Restic::withKilledError(1, null)));
+    }
+
     public function test_supported_versions_of_restic(): void
     {
         $this->assertFalse(Restic::isSupportedVersion(null));

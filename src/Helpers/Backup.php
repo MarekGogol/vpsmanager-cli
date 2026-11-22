@@ -680,6 +680,9 @@ class Backup extends Application
 
         if ($this->restic()->run(['prune'], $output, $error) !== 0) {
             $this->sendError('Prune of the repository failed: '.Restic::errorMessage($error));
+
+            // A killed prune leaves its exclusive lock, which would fail the check. Unlock removes only stale locks.
+            $this->restic()->run(['unlock'], $output, $error);
         }
 
         $this->response()->success('Checking the repository and the part '.$subset.' of its data.')->writeln();

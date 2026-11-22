@@ -752,7 +752,7 @@ Before it starts, the command checks that `backup:setup` has been run, that rest
 7. A summary line (types, duration) is appended to `/var/log/vpsmanager/backup.log`. Errors are logged there too.
 8. **Monitor.** With the monitor installed (`monitor:install`), the backed up databases, directories and websites are sent to it, see below.
 
-restic and `mysqldump` run under `nice -n 15 ionice -c2 -n7` with `GOGC=25`, to keep the load and the memory low on a live server. The first backup of a website uploads all its data, the next ones only the changes.
+restic and `mysqldump` run under `nice -n 15 ionice -c2 -n7` with `GOGC=25`, to keep the load and the memory low on a live server. restic also gets the soft memory limit `GOMEMLIMIT` of a quarter of the RAM (at least 256 MiB, e.g. `978MiB` on 4 GB, a `GOMEMLIMIT` of the environment is kept): near it Go collects the garbage more often, the limit is soft and does not stop restic. When the kernel kills restic (SIGKILL, mostly the OOM killer), the error says so instead of `unknown error`. The first backup of a website uploads all its data, the next ones only the changes.
 
 ### List backups
 
@@ -784,7 +784,7 @@ Files keep their original paths under the target. Move what you need into place 
 sudo php vpsmanager backup:maintenance
 ```
 
-Removes the unused data of the forgotten snapshots (`restic prune`) and checks the repository with one twentieth of its data (`restic check --read-data-subset=N/20`). N follows the count of weeks since 1970, so a weekly maintenance reads every chunk of the repository in any 20 weeks in a row. It waits for a running backup, prune needs the repository alone. Errors are logged and sent by email. `backup:setup` adds it to `/etc/cron.d/vpsmanager` on Sundays at 5 AM.
+Removes the unused data of the forgotten snapshots (`restic prune`) and checks the repository with one twentieth of its data (`restic check --read-data-subset=N/20`). N follows the count of weeks since 1970, so a weekly maintenance reads every chunk of the repository in any 20 weeks in a row. It waits for a running backup, prune needs the repository alone. A failed prune is followed by `restic unlock`, so the lock of a killed prune (e.g. out of memory) does not fail the check. Errors are logged and sent by email. `backup:setup` adds it to `/etc/cron.d/vpsmanager` on Sundays at 5 AM.
 
 The result is sent to the monitor **also when it succeeded** (`POST /api/agent/backup-checks`: status, errors, the checked part, the end). When the monitor does not answer, it waits in `/var/lib/vpsmanager/monitor-backup-checks.json` for the next `monitor:collect`. The monitor alerts a failed check and a server without a successful check, see [Backups in the monitor](#backups-in-the-monitor), so damaged backups are found by the weekly check and not by a restore a year later, even without the email notifications.
 

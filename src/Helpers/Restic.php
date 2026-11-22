@@ -3,6 +3,7 @@
 namespace Gogol\VpsManagerCLI\Helpers;
 
 use Gogol\VpsManagerCLI\Application;
+use Gogol\VpsManagerCLI\Helpers\Settings\SystemInfo;
 
 /*
  * Restic binary of the backups: installation of a pinned release, the repository of the configuration and running of
@@ -68,6 +69,34 @@ class Restic extends Application
      * @var int
      */
     const EXIT_INCOMPLETE = 3;
+
+    /**
+     * Exit codes of a process killed by SIGKILL, e.g. by the OOM killer: of restic itself and of a bash pipeline.
+     *
+     * @var array
+     */
+    const EXIT_KILLED = [9, 137];
+
+    /**
+     * Error appended to the output of a killed restic, the last line is the message of the error.
+     *
+     * @var string
+     */
+    const KILLED_ERROR = 'restic was killed (SIGKILL), most likely by the OOM killer: the server is out of memory';
+
+    /**
+     * Part of the RAM of the server given to restic as its soft memory limit (GOMEMLIMIT).
+     *
+     * @var float
+     */
+    const MEMORY_LIMIT_SHARE = 0.25;
+
+    /**
+     * Lowest soft memory limit of restic in bytes.
+     *
+     * @var int
+     */
+    const MEMORY_LIMIT_MIN = 256 * 1024 * 1024;
 
     /**
      * Lower priority of the backups on a live server.
@@ -410,9 +439,47 @@ class Restic extends Application
         // Lower memory usage of restic on small servers
         $env['GOGC'] = '25';
 
+        // Soft limit: near it Go collects the garbage more often, e.g. prune with a big index on a server with 4 GB
+        if (empty($env['GOMEMLIMIT']) && $limit = self::memoryLimit((int) (SystemInfo::memInfo()['MemTotal'] ?? 0))) {
+            $env['GOMEMLIMIT'] = $limit;
+        }
+
         unset($env['RESTIC_PASSWORD_FILE'], $env['RESTIC_PASSWORD_COMMAND']);
 
         return $env;
+    }
+
+    /**
+     * Get the soft memory limit of restic (GOMEMLIMIT) by the RAM of the server, e.g. 979MiB for 3.9 GB.
+     *
+     * @param  int  $memTotal  RAM of the server in bytes, 0 when unknown
+     * @return string|null null when the RAM is unknown
+     */
+    public static function memoryLimit(int $memTotal): ?string
+    {
+        if ($memTotal <= 0) {
+            return null;
+        }
+
+        $limit = max(self::MEMORY_LIMIT_MIN, (int) ($memTotal * self::MEMORY_LIMIT_SHARE));
+
+        return intdiv($limit, 1024 * 1024).'MiB';
+    }
+
+    /**
+     * Add the error of a killed process to its error output, restic itself writes nothing when the kernel kills it.
+     *
+     * @param  int  $code
+     * @param  string|null  $error
+     * @return string|null
+     */
+    public static function withKilledError(int $code, ?string $error): ?string
+    {
+        if (! in_array($code, self::EXIT_KILLED, true)) {
+            return $error;
+        }
+
+        return rtrim((string) $error)."\n".self::KILLED_ERROR;
     }
 
     /**
@@ -453,7 +520,10 @@ class Restic extends Application
 
         [$output, $error] = $this->readPipes($pipes[1], $pipes[2]);
 
-        return proc_close($process);
+        $code = proc_close($process);
+        $error = self::withKilledError($code, $error);
+
+        return $code;
     }
 
     /**
@@ -483,7 +553,10 @@ class Restic extends Application
 
         [, $error] = $this->readPipes($pipes[1], $pipes[2]);
 
-        return proc_close($process);
+        $code = proc_close($process);
+        $error = self::withKilledError($code, $error);
+
+        return $code;
     }
 
     /**
