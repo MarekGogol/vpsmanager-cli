@@ -18,7 +18,7 @@ class CronWriteCommand extends Command
     protected function configure(): void
     {
         $this->setName('cron:write')
-            ->setDescription('Rewrite '.Cron::PATH.' with the jobs of the monitor and the backups from the configuration')
+            ->setDescription('Rewrite '.Cron::PATH.' with the jobs of the monitor, the backups and the cleanup from the configuration')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Print the file without writing it');
     }
 

@@ -107,6 +107,45 @@ class Cron extends Application
     }
 
     /**
+     * Hour of the weekly sessions:clean on Mondays.
+     *
+     * @var int
+     */
+    const SESSIONS_HOUR = 3;
+
+    /**
+     * Hour of the monthly cache:clean on the first day of the month.
+     *
+     * @var int
+     */
+    const CACHE_HOUR = 2;
+
+    /**
+     * Determine if the old sessions and caches are cleaned from cron (cleanup_cron, on by default).
+     *
+     * @return bool
+     */
+    public function isCleanupEnabled(): bool
+    {
+        return (bool) $this->config('cleanup_cron', true);
+    }
+
+    /**
+     * Get the jobs of the cleanup: the sessions on Mondays, the caches on the first day of the month.
+     *
+     * @param  string  $command  command of VPS Manager without arguments
+     * @param  int  $minute  minute of all jobs
+     * @return array
+     */
+    public static function cleanupJobs(string $command, int $minute = 0): array
+    {
+        return [
+            $minute.' '.self::SESSIONS_HOUR.' * * 1 root '.$command.' sessions:clean > /dev/null 2>&1',
+            $minute.' '.self::CACHE_HOUR.' 1 * * root '.$command.' cache:clean > /dev/null 2>&1',
+        ];
+    }
+
+    /**
      * Get the jobs of the backups.
      *
      * @param  string  $command  command of VPS Manager without arguments
@@ -153,6 +192,12 @@ class Cron extends Application
             $sections[] = "# Backups into the restic repository: everything daily, the databases more often, the maintenance on Sundays\n"
                 ."# (backup:setup). The minute is derived from the name of the server (backup_cron_minute).\n"
                 .implode("\n", self::backupJobs(rtrim($this->command('')), $interval, $this->getBackupMinute()));
+        }
+
+        if ($this->isCleanupEnabled()) {
+            $sections[] = "# Removes the file sessions of the Laravel applications older than their lifetime on Mondays and the caches\n"
+                ."# of npm, Cypress, Composer and APT on the first day of the month, logs are kept (cleanup_cron).\n"
+                .implode("\n", self::cleanupJobs(rtrim($this->command('')), $this->getBackupMinute()));
         }
 
         if (! $sections) {
