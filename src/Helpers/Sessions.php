@@ -3,7 +3,7 @@
 namespace Gogol\VpsManagerCLI\Helpers;
 
 /*
- * Old file sessions of the Laravel applications of the hostings (sessions:clean). Laravel removes them only by
+ * Old file sessions of the Laravel applications of the hostings (clean:sessions). Laravel removes them only by
  * the lottery of its requests (2 of 100), which does not keep up with hundreds of thousands of files (2.2 GB
  * on trinityfinance.sk, 5.9 GB on cech1990.sk).
  *
@@ -22,12 +22,12 @@ class Sessions
     /**
      * Log of the runs.
      */
-    const LOG = '/var/log/vpsmanager/sessions-clean.log';
+    const LOG = '/var/log/vpsmanager/clean-sessions.log';
 
     /**
-     * Lock of a running sessions:clean.
+     * Lock of a running clean:sessions.
      */
-    const LOCK = '/var/lib/vpsmanager/sessions-clean.lock';
+    const LOCK = '/var/lib/vpsmanager/clean-sessions.lock';
 
     /**
      * Seconds allowed to read the configuration of one application.

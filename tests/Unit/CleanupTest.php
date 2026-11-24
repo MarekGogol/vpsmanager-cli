@@ -200,8 +200,8 @@ PHP, "SESSION_DRIVER=file\nSESSION_LIFETIME=120\n");
     public function test_cleanup_jobs(): void
     {
         $this->assertSame([
-            '17 3 * * 1 root vm sessions:clean > /dev/null 2>&1',
-            '17 2 1 * * root vm cache:clean > /dev/null 2>&1',
+            '17 3 * * 1 root vm clean:sessions > /dev/null 2>&1',
+            '17 2 1 * * root vm clean:cache > /dev/null 2>&1',
         ], Cron::cleanupJobs('vm', 17));
     }
 

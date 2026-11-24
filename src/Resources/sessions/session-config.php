@@ -3,7 +3,7 @@
 /*
  * Prints the session configuration of a Laravel application as JSON: {"driver":…,"lifetime":…,"files":…}.
  *
- * Usage: php -- <application path> < session-config.php, run as the owner of the hosting by sessions:clean.
+ * Usage: php -- <application path> < session-config.php, run as the owner of the hosting by clean:sessions.
  *
  * Only config/session.php is included, the application is not booted: old applications (Laravel 5) cannot boot
  * on a newer PHP and have no config:show. The helpers used by config/session.php are replaced by minimal

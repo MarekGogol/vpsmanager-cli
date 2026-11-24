@@ -10,7 +10,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class SessionsCleanCommand extends Command
+class CleanSessionsCommand extends Command
 {
     /**
      * Configure the command.
@@ -19,7 +19,7 @@ class SessionsCleanCommand extends Command
      */
     protected function configure(): void
     {
-        $this->setName('sessions:clean')
+        $this->setName('clean:sessions')
             ->setDescription('Remove the file sessions of the Laravel applications older than their lifetime from config/session.php, at least '.(Sessions::MIN_MINUTES / 60).' hours old')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Only print what would be removed');
     }
@@ -44,7 +44,7 @@ class SessionsCleanCommand extends Command
         $lock = fopen(Sessions::LOCK, 'c');
 
         if (! $lock || ! flock($lock, LOCK_EX | LOCK_NB)) {
-            $output->writeln('<comment>sessions:clean is running already.</comment>');
+            $output->writeln('<comment>clean:sessions is running already.</comment>');
 
             return Command::SUCCESS;
         }

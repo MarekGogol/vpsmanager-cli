@@ -3,7 +3,7 @@
 namespace Gogol\VpsManagerCLI\Helpers;
 
 /*
- * Caches of npm, Cypress and Composer in the homes of the hostings, root and /home (cache:clean). They are
+ * Caches of npm, Cypress and Composer in the homes of the hostings, root and /home (clean:cache). They are
  * downloaded again by the next install, e.g. two copies of npx mint took 2 GB on crudadmin.com and Cypress
  * 800 MB on autbill.com and korfs.sk. Logs are never removed.
  */
@@ -35,12 +35,12 @@ class Caches
     /**
      * Log of the runs.
      */
-    const LOG = '/var/log/vpsmanager/cache-clean.log';
+    const LOG = '/var/log/vpsmanager/clean-cache.log';
 
     /**
-     * Lock of a running cache:clean.
+     * Lock of a running clean:cache.
      */
-    const LOCK = '/var/lib/vpsmanager/cache-clean.lock';
+    const LOCK = '/var/lib/vpsmanager/clean-cache.lock';
 
     /**
      * Homes with caches: data of the hostings, root and the users of /home.

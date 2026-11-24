@@ -10,7 +10,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class CacheCleanCommand extends Command
+class CleanCacheCommand extends Command
 {
     /**
      * Configure the command.
@@ -19,7 +19,7 @@ class CacheCleanCommand extends Command
      */
     protected function configure(): void
     {
-        $this->setName('cache:clean')
+        $this->setName('clean:cache')
             ->setDescription('Remove the caches of npm, Cypress and Composer of the hostings, root and /home and the downloaded packages of APT, logs are kept')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Only print what would be removed');
     }
@@ -44,7 +44,7 @@ class CacheCleanCommand extends Command
         $lock = fopen(Caches::LOCK, 'c');
 
         if (! $lock || ! flock($lock, LOCK_EX | LOCK_NB)) {
-            $output->writeln('<comment>cache:clean is running already.</comment>');
+            $output->writeln('<comment>clean:cache is running already.</comment>');
 
             return Command::SUCCESS;
         }

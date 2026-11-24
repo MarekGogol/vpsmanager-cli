@@ -107,14 +107,14 @@ class Cron extends Application
     }
 
     /**
-     * Hour of the weekly sessions:clean on Mondays.
+     * Hour of the weekly clean:sessions on Mondays.
      *
      * @var int
      */
     const SESSIONS_HOUR = 3;
 
     /**
-     * Hour of the monthly cache:clean on the first day of the month.
+     * Hour of the monthly clean:cache on the first day of the month.
      *
      * @var int
      */
@@ -140,8 +140,8 @@ class Cron extends Application
     public static function cleanupJobs(string $command, int $minute = 0): array
     {
         return [
-            $minute.' '.self::SESSIONS_HOUR.' * * 1 root '.$command.' sessions:clean > /dev/null 2>&1',
-            $minute.' '.self::CACHE_HOUR.' 1 * * root '.$command.' cache:clean > /dev/null 2>&1',
+            $minute.' '.self::SESSIONS_HOUR.' * * 1 root '.$command.' clean:sessions > /dev/null 2>&1',
+            $minute.' '.self::CACHE_HOUR.' 1 * * root '.$command.' clean:cache > /dev/null 2>&1',
         ];
     }
 
