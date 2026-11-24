@@ -12,6 +12,7 @@ use Gogol\VpsManagerCLI\Command\Backup\BackupSetupCommand;
 use Gogol\VpsManagerCLI\Command\Backup\BackupTestCommand;
 use Gogol\VpsManagerCLI\Command\Backup\BackupTestMailServer;
 use Gogol\VpsManagerCLI\Command\Chroot\ChrootCreateCommand;
+use Gogol\VpsManagerCLI\Command\Cleanup\CleanAllCommand;
 use Gogol\VpsManagerCLI\Command\Cleanup\CleanCacheCommand;
 use Gogol\VpsManagerCLI\Command\Cleanup\CleanSessionsCommand;
 use Gogol\VpsManagerCLI\Command\Chroot\ChrootRemoveCommand;
@@ -71,5 +72,6 @@ $application->addCommand(new SwapRefreshCommand());
 $application->addCommand(new CronWriteCommand());
 $application->addCommand(new CleanSessionsCommand());
 $application->addCommand(new CleanCacheCommand());
+$application->addCommand(new CleanAllCommand());
 
 $application->run();
